@@ -1,0 +1,873 @@
+import React, { useEffect, useMemo, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RouteProp } from '@react-navigation/native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { RootStackParamList } from '../navigation/types';
+import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
+import api, { getApiErrorMessage } from '../services/api';
+import DashboardOnboardingOverlay from '../components/DashboardOnboardingOverlay';
+import WebSideWingLayout from '../components/WebSideWingLayout';
+import ActivePredictionCard from '../components/ActivePredictionCard';
+import { fetchUnreadNotificationCount } from '../services/notifications';
+import {
+  completeDashboardOnboarding,
+  hasCompletedDashboardOnboarding,
+} from '../services/onboardingStorage';
+import AppHeader from '../components/AppHeader';
+import BottomNav, { NavTab } from '../components/BottomNav';
+import CategoryTile from '../components/CategoryTile';
+import SectionHeader from '../components/SectionHeader';
+import EmptyState from '../components/EmptyState';
+import { CATEGORY_LIST } from '../config/categoryTheme';
+import { palette } from '../theme/designSystem';
+
+type Props = {
+  navigation: NativeStackNavigationProp<RootStackParamList, 'Home'>;
+  route: RouteProp<RootStackParamList, 'Home'>;
+};
+
+interface DashboardState {
+  summary: any;
+  recommendations: string[];
+  activeRooms: any[];
+  followingLeaderboard: any[];
+  dailyChallenge: any | null;
+  dailySpin: any | null;
+  dropsNearUnlock: any[];
+  activityFeed: any[];
+  suggestedFollows: any[];
+  activePredictions: any[];
+}
+
+type DemoChoice = 'Yes' | 'No' | 'Exact time';
+type HomeTab = NavTab;
+type ActivePredictionFilter = 'all' | 'needs_prediction' | 'live_now' | 'result_ready' | 'created_by_me';
+
+const fallbackLiveRooms = [
+  {
+    roomId: 'office-demo',
+    icon: '💼',
+    color: '#2563eb',
+    question: 'When will Rohan reach office?',
+    guesses: 18,
+    timeLeft: '22m left',
+    timerColor: '#38bdf8',
+  },
+  {
+    roomId: 'delivery-demo',
+    icon: '🍅',
+    color: '#ef4444',
+    question: 'Will dinner arrive before 35 mins?',
+    guesses: 12,
+    timeLeft: '15m left',
+    timerColor: '#f59e0b',
+  },
+  {
+    roomId: 'gym-demo',
+    icon: '🏋️',
+    color: '#16a34a',
+    question: 'Will Neha go to gym tomorrow?',
+    guesses: 9,
+    timeLeft: '1d left',
+    timerColor: '#22c55e',
+  },
+];
+
+const waysToPlay = [
+  { label: 'On the Move', icon: '🚙', tint: '#2563eb' },
+  { label: 'Food', icon: '🍕', tint: '#f97316' },
+  { label: 'Gym', icon: '🏋️', tint: '#16a34a' },
+  { label: 'Friends', icon: '👥', tint: '#9333ea' },
+  { label: 'Sports', icon: '🏆', tint: '#d97706' },
+];
+
+export default function HomeScreen({ navigation, route }: Props) {
+  const { user, logout } = useAuth();
+  const { colors } = useTheme();
+  const [dashboard, setDashboard] = useState<DashboardState | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [tourVisible, setTourVisible] = useState(false);
+  const [demoChoice, setDemoChoice] = useState<DemoChoice>('Yes');
+  const [activeTab, setActiveTab] = useState<HomeTab>('Home');
+  const [activePredictionFilter, setActivePredictionFilter] = useState<ActivePredictionFilter>('all');
+  const [activePredictions, setActivePredictions] = useState<any[]>([]);
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
+
+  async function loadDashboard() {
+    setLoading(true);
+    try {
+      const [
+        summaryRes,
+        recRes,
+        roomsRes,
+        leaderboardRes,
+        challengeRes,
+        spinRes,
+        dropsRes,
+        activityRes,
+        followsRes,
+        followingRes,
+        activePredictionsRes,
+      ] = await Promise.all([
+        api.get('/dashboard/summary'),
+        api.get('/dashboard/recommendations'),
+        api.get('/dashboard/active-rooms'),
+        api.get('/dashboard/following-leaderboard'),
+        api.get('/dashboard/daily-challenge'),
+        api.get('/dashboard/daily-spin'),
+        api.get('/dashboard/drops-near-unlock'),
+        api.get('/dashboard/activity-feed'),
+        api.get('/dashboard/suggested-follows'),
+        api.get('/users/me/following'),
+        api.get('/dashboard/active-predictions'),
+      ]);
+
+      setDashboard({
+        summary: summaryRes.data,
+        recommendations: recRes.data.recommendations ?? [],
+        activeRooms: roomsRes.data ?? [],
+        followingLeaderboard: leaderboardRes.data ?? [],
+        dailyChallenge: challengeRes.data ?? null,
+        dailySpin: spinRes.data ?? null,
+        dropsNearUnlock: dropsRes.data ?? [],
+        activityFeed: activityRes.data ?? [],
+        suggestedFollows: followsRes.data ?? [],
+        activePredictions: activePredictionsRes.data ?? [],
+      });
+      setActivePredictions(activePredictionsRes.data ?? []);
+      fetchUnreadNotificationCount()
+        .then(setUnreadNotifications)
+        .catch(() => setUnreadNotifications(0));
+      void followingRes;
+    } catch (err) {
+      Alert.alert('Dashboard unavailable', 'We could not load your dashboard right now.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadDashboard();
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+
+    async function maybeShowTour() {
+      if (route.params?.replayOnboarding) {
+        if (active) setTourVisible(true);
+        navigation.setParams({ replayOnboarding: undefined });
+        return;
+      }
+
+      const alreadyCompleted = await hasCompletedDashboardOnboarding();
+      if (!alreadyCompleted && active) {
+        setTourVisible(true);
+      }
+    }
+
+    void maybeShowTour();
+
+    return () => {
+      active = false;
+    };
+  }, [navigation, route.params?.replayOnboarding]);
+
+  const summary = dashboard?.summary;
+  const filteredActivePredictions = useMemo(() => {
+    return activePredictions.filter((room) => {
+      if (activePredictionFilter === 'needs_prediction') return !room.hasSubmittedPrediction;
+      if (activePredictionFilter === 'live_now') return room.status === 'live';
+      if (activePredictionFilter === 'result_ready') return room.status === 'result_ready';
+      if (activePredictionFilter === 'created_by_me') return room.isCreator;
+      return true;
+    });
+  }, [activePredictionFilter, activePredictions]);
+  const liveRooms = useMemo(() => {
+    const activeRooms = activePredictions;
+    if (activeRooms.length === 0) return [];
+
+    return activeRooms.slice(0, 3).map((room, index) => {
+      const fallback = fallbackLiveRooms[index] ?? fallbackLiveRooms[0];
+      return {
+        roomId: room.roomId,
+        icon: fallback.icon,
+        color: fallback.color,
+        question: room.title ?? room.roomTitle ?? fallback.question,
+        guesses: room.participantCount ?? fallback.guesses,
+        timeLeft: room.quickAction?.label ?? room.cta ?? fallback.timeLeft,
+        timerColor: fallback.timerColor,
+        status: room.status,
+        rawRoom: room,
+      };
+    });
+  }, [activePredictions]);
+
+  const hasLiveHubActivity = activePredictions.length > 0;
+  const topResult = dashboard?.followingLeaderboard?.[0];
+  const hasFollowingResults =
+    (dashboard?.followingLeaderboard?.length ?? 0) > 1 || (topResult?.weeklyAura ?? 0) > 0;
+  const totalAura = summary?.totalAura ?? user?.totalAura ?? 0;
+  const weeklyAura = summary?.weeklyAura ?? user?.weeklyAura ?? 0;
+  const demoRank = topResult?.rank ?? 3;
+
+  if (loading) {
+    return (
+      <View style={[styles.loadingState, { backgroundColor: colors.bg }]}>
+        <ActivityIndicator color={colors.purple} size="large" />
+        <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Loading your PREDIKT dashboard...</Text>
+      </View>
+    );
+  }
+
+  async function openRoom(room: any) {
+    const roomId = room.rawRoom?.roomId ?? room.roomId;
+    const targetScreen = room.rawRoom?.quickAction?.targetScreen;
+    if (!room.rawRoom?.roomId) {
+      navigation.navigate('CreateRoom');
+      return;
+    }
+
+    try {
+      const response = await api.get(`/rooms/${roomId}`);
+      const fullRoom = response.data;
+      const normalizedStatus =
+        fullRoom.status === 'prediction_open' ? 'predictions_open' : fullRoom.status;
+      const isCreator = fullRoom.creatorUserId === user?.userId || fullRoom.creator?.userId === user?.userId;
+
+      if (targetScreen === 'LiveRoom') {
+        navigation.navigate('LiveRoom', { roomId, isCreator });
+        return;
+      }
+
+      if (targetScreen === 'Result') {
+        navigation.navigate('Result', { roomId });
+        return;
+      }
+
+      if (normalizedStatus === 'predictions_open') {
+        navigation.navigate('Prediction', { roomId, room: fullRoom });
+        return;
+      }
+
+      if (normalizedStatus === 'completed' || normalizedStatus === 'reached') {
+        navigation.navigate('Result', { roomId });
+        return;
+      }
+
+      navigation.navigate('LiveRoom', { roomId, isCreator });
+    } catch (error: unknown) {
+      Alert.alert('Room unavailable', getApiErrorMessage(error, 'Could not open this room right now.'));
+    }
+  }
+
+  function handleBottomNav(tab: HomeTab) {
+    setActiveTab(tab);
+    if (tab === 'Home') return;
+    if (tab === 'Activity') {
+      navigation.navigate('Leaderboard');
+      return;
+    }
+    if (tab === 'Create') {
+      navigation.navigate('CreateRoom');
+      return;
+    }
+    navigation.navigate('Profile');
+  }
+
+  async function closeTour() {
+    setTourVisible(false);
+    await completeDashboardOnboarding();
+  }
+
+  async function persistActivePredictionOrder(nextItems: any[], fallbackItems: any[]) {
+    try {
+      await api.patch('/dashboard/active-predictions/order', {
+        items: nextItems.map((item, index) => ({
+          roomId: item.roomId,
+          displayOrder: index,
+          pinned: !!item.pinned,
+        })),
+      });
+    } catch (error: unknown) {
+      setActivePredictions(fallbackItems);
+      Alert.alert('Order not saved', getApiErrorMessage(error, 'We kept your previous room order.'));
+    }
+  }
+
+  function updateActivePredictionOrder(transform: (items: any[]) => any[]) {
+    setActivePredictions((current) => {
+      const previous = [...current];
+      const next = transform([...current]).map((item, index) => ({ ...item, displayOrder: index }));
+      void persistActivePredictionOrder(next, previous);
+      return next;
+    });
+  }
+
+  function togglePin(roomId: string) {
+    updateActivePredictionOrder((items) =>
+      items
+        .map((item) => (item.roomId === roomId ? { ...item, pinned: !item.pinned } : item))
+        .sort((left, right) => {
+          if (left.pinned !== right.pinned) return left.pinned ? -1 : 1;
+          return (left.displayOrder ?? 0) - (right.displayOrder ?? 0);
+        }),
+    );
+  }
+
+  function moveRoom(roomId: string, direction: -1 | 1) {
+    updateActivePredictionOrder((items) => {
+      const index = items.findIndex((item) => item.roomId === roomId);
+      const targetIndex = index + direction;
+      if (index < 0 || targetIndex < 0 || targetIndex >= items.length) return items;
+      const next = [...items];
+      const [picked] = next.splice(index, 1);
+      next.splice(targetIndex, 0, picked);
+      return next;
+    });
+  }
+
+  return (
+    <WebSideWingLayout leftPlacement="dashboard_left" rightPlacement="dashboard_right">
+      <View style={styles.screen}>
+        <View style={styles.bgGlowTop} />
+        <View style={styles.bgGlowBottom} />
+
+        <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
+          <AppHeader
+            greeting={user?.name ? `Hey, ${user.name.split(' ')[0]}` : 'Hey there'}
+            subtitle="What can you PREDIKT today?"
+            aura={totalAura}
+            streak={summary?.currentStreak ?? user?.currentStreak}
+            unreadCount={unreadNotifications}
+            onNotifications={() => navigation.navigate('Notifications')}
+            onProfile={() => navigation.navigate('Profile')}
+          />
+
+          <View style={styles.topCtas}>
+            <TouchableOpacity
+              style={styles.ctaFlex}
+              onPress={() =>
+                hasLiveHubActivity && liveRooms[0]
+                  ? openRoom(liveRooms[0])
+                  : navigation.navigate('CreateRoom')
+              }
+            >
+              <LinearGradient colors={['#1da1ff', '#9333ea']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.primaryCta}>
+                <Text style={styles.ctaIcon}>⚡</Text>
+                <Text style={styles.primaryCtaText}>Start a PREDIKT</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.secondaryCta, styles.ctaFlex]} onPress={() => navigation.navigate('JoinRoom')}>
+              <Text style={styles.ctaIcon}>🔗</Text>
+              <Text style={styles.secondaryCtaText}>Join with Code</Text>
+            </TouchableOpacity>
+          </View>
+
+          <SectionHeader title="Quick Start" subtitle="One tap to pick a category" />
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingBottom: 4 }}>
+            {CATEGORY_LIST.map((theme) => (
+              <CategoryTile
+                key={theme.key}
+                theme={theme}
+                compact
+                onPress={() => navigation.navigate('CreateRoom')}
+              />
+            ))}
+          </ScrollView>
+
+          <SectionHeader title="Live PREDIKTs" live={hasLiveHubActivity} />
+
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
+            {[
+              ['all', 'All'],
+              ['needs_prediction', 'Needs my prediction'],
+              ['live_now', 'Live now'],
+              ['result_ready', 'Result ready'],
+              ['created_by_me', 'Created by me'],
+            ].map(([value, label]) => {
+              const active = activePredictionFilter === value;
+              return (
+                <TouchableOpacity
+                  key={value}
+                  style={[styles.filterChip, active && styles.filterChipActive]}
+                  onPress={() => setActivePredictionFilter(value as ActivePredictionFilter)}
+                >
+                  <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>{label}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+
+          {filteredActivePredictions.length > 0 ? (
+            <View style={styles.activePredictionList}>
+              {filteredActivePredictions.map((room, index) => (
+                <ActivePredictionCard
+                  key={room.roomId}
+                  item={room}
+                  onOpen={() => openRoom({ roomId: room.roomId, rawRoom: room })}
+                  onTogglePin={() => togglePin(room.roomId)}
+                  onMoveUp={() => moveRoom(room.roomId, -1)}
+                  onMoveDown={() => moveRoom(room.roomId, 1)}
+                  disableMoveUp={index === 0}
+                  disableMoveDown={index === filteredActivePredictions.length - 1}
+                />
+              ))}
+            </View>
+          ) : activePredictions.length === 0 ? (
+            <EmptyState
+              title="Create your first PREDIKT"
+              body="Start a room or join one with a code to fill your live hub."
+              primaryLabel="Start a PREDIKT"
+              secondaryLabel="Join with Code"
+              onPrimary={() => navigation.navigate('CreateRoom')}
+              onSecondary={() => navigation.navigate('JoinRoom')}
+            />
+          ) : (
+            <View style={styles.emptyStateCard}>
+              <Text style={styles.emptyStateTitle}>No rooms match this filter</Text>
+              <Text style={styles.emptyStateCopy}>Try another filter or open one of your other active rooms.</Text>
+            </View>
+          )}
+
+          {hasLiveHubActivity ? (
+            <>
+              <Text style={styles.sectionTitle}>Try it now</Text>
+              <LinearGradient colors={['rgba(37,99,235,0.22)', 'rgba(124,58,237,0.2)']} style={styles.demoCard}>
+                <View style={styles.scooterArt}>
+                  <Text style={styles.rider}>🛵</Text>
+                </View>
+                <View style={styles.demoContent}>
+                  <Text style={styles.demoQuestion}>{dashboard?.dailyChallenge?.title ?? 'Will this delivery arrive before 35 mins?'}</Text>
+                  <View style={styles.optionRow}>
+                    {(['Yes', 'No', 'Exact time'] as DemoChoice[]).map((option) => (
+                      <TouchableOpacity
+                        key={option}
+                        style={[
+                          styles.option,
+                          option === 'Yes' && styles.optionYes,
+                          option === 'No' && styles.optionNo,
+                          option === 'Exact time' && styles.optionExact,
+                          demoChoice === option && styles.optionSelected,
+                        ]}
+                        onPress={() => setDemoChoice(option)}
+                      >
+                        <Text
+                          style={[
+                            styles.optionText,
+                            option === 'Yes' && styles.optionTextYes,
+                            option === 'No' && styles.optionTextNo,
+                            option === 'Exact time' && styles.optionTextExact,
+                          ]}
+                        >
+                          {option}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                  <View style={styles.demoResult}>
+                    <Text style={styles.targetIcon}>🎯</Text>
+                    <View>
+                      <Text style={styles.demoResultText}>Your demo guess: 34 mins</Text>
+                      <Text style={styles.demoResultText}>
+                        You would currently rank <Text style={styles.rankText}>#{demoRank}</Text>
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+              </LinearGradient>
+            </>
+          ) : null}
+
+          <Text style={styles.sectionTitle}>Popular ways to play</Text>
+          <View style={styles.chipRow}>
+            {waysToPlay.map((way) => (
+              <TouchableOpacity key={way.label} style={[styles.playChip, { backgroundColor: `${way.tint}33` }]}>
+                <Text style={styles.chipIcon}>{way.icon}</Text>
+                <Text style={styles.chipLabel}>{way.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {hasFollowingResults ? (
+            <>
+              <Text style={styles.sectionTitle}>Recent Results</Text>
+              <View style={styles.resultCard}>
+                <View style={styles.avatarWrap}>
+                  <Text style={styles.crown}>👑</Text>
+                  <LinearGradient colors={['#fde68a', '#7c3aed']} style={styles.avatar}>
+                    <Text style={styles.avatarText}>{(topResult?.name ?? user?.name ?? 'R').charAt(0).toUpperCase()}</Text>
+                  </LinearGradient>
+                </View>
+                <View style={styles.resultMain}>
+                  <Text style={styles.resultTitle}>
+                    {topResult?.prediktHandle ? `@${topResult.prediktHandle}` : topResult?.name ?? 'Friend'} · Rank #{topResult?.rank ?? 1}
+                  </Text>
+                  <Text style={styles.resultLine}>Weekly Aura: {topResult?.weeklyAura ?? 0}</Text>
+                  <Text style={styles.resultLine}>
+                    Clout: <Text style={styles.accuracy}>{topResult?.cloutBalance ?? 0}</Text>
+                  </Text>
+                </View>
+                <View style={styles.resultBadges}>
+                  {topResult?.rank === 1 ? <Text style={styles.winnerBadge}>TOP 🏆</Text> : null}
+                  <Text style={styles.auraBadge}>💎 {topResult?.weeklyAura ?? 0} Aura this week</Text>
+                </View>
+              </View>
+            </>
+          ) : null}
+
+          <SectionHeader title="Today's PREDIKTs" subtitle={dashboard?.dailyChallenge?.title ?? 'Beat the Forecast · Food ETA · Who\'s Late'} />
+
+          <View style={[styles.weeklyCard, { borderColor: palette.border }]}>
+            <Text style={styles.weeklyTitle}>This Week in PREDIKT</Text>
+            <Text style={styles.weeklyPersonality}>
+              {(summary?.currentStreak ?? 0) >= 3 ? 'Comeback Merchant' : weeklyAura > 50 ? 'Route Whisperer' : 'The Human Edge'}
+            </Text>
+            <Text style={styles.weeklyCopy}>
+              {weeklyAura > 0 ? `+${weeklyAura} Aura this week. Share the story.` : 'Complete a room to unlock your weekly personality.'}
+            </Text>
+          </View>
+
+          <LinearGradient colors={['#6d28d9', '#1d4ed8', '#0ea5e9']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.createCard}>
+            <Text style={styles.createTitle}>Create your first PREDIKT{'\n'}in 30 seconds</Text>
+            <TouchableOpacity style={styles.createButton} onPress={() => navigation.navigate('CreateRoom')}>
+              <Text style={styles.createButtonText}>Create Room</Text>
+              <Text style={styles.createBolt}>ϟ</Text>
+            </TouchableOpacity>
+          </LinearGradient>
+
+          {(dashboard?.recommendations ?? []).length > 0 ? (
+            <View style={styles.nextMoveCard}>
+              <Text style={styles.sectionTitle}>Your next move</Text>
+              {(dashboard?.recommendations ?? []).slice(0, 3).map((item, index) => (
+                <Text key={`${item}-${index}`} style={styles.mutedText}>• {item}</Text>
+              ))}
+            </View>
+          ) : null}
+
+          <TouchableOpacity style={styles.logoutButton} onPress={logout}>
+            <Text style={styles.logoutText}>Log Out</Text>
+          </TouchableOpacity>
+        </ScrollView>
+
+        <BottomNav active={activeTab} onChange={handleBottomNav} />
+        <DashboardOnboardingOverlay visible={tourVisible} onClose={closeTour} />
+      </View>
+    </WebSideWingLayout>
+  );
+}
+
+const styles = StyleSheet.create({
+  screen: { flex: 1, backgroundColor: '#030816' },
+  bgGlowTop: {
+    position: 'absolute',
+    top: -140,
+    right: -110,
+    width: 280,
+    height: 280,
+    borderRadius: 140,
+    backgroundColor: 'rgba(124,58,237,0.45)',
+  },
+  bgGlowBottom: {
+    position: 'absolute',
+    bottom: -130,
+    left: -100,
+    width: 260,
+    height: 260,
+    borderRadius: 130,
+    backgroundColor: 'rgba(14,165,233,0.25)',
+  },
+  container: {
+    width: '100%',
+    maxWidth: 980,
+    alignSelf: 'center',
+    paddingTop: 56,
+    paddingHorizontal: 22,
+    paddingBottom: 112,
+    gap: 11,
+  },
+  loadingState: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
+  loadingText: { marginTop: 12, fontSize: 14 },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  brandRow: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
+  logoMark: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    backgroundColor: '#0f1b45',
+    borderWidth: 1,
+    borderColor: 'rgba(96,165,250,0.35)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    transform: [{ skewX: '-10deg' }],
+  },
+  logoP: { color: '#8b5cf6', fontSize: 29, fontWeight: '900', transform: [{ skewX: '10deg' }] },
+  wordmark: { color: '#fff', fontSize: 27, fontWeight: '900', letterSpacing: 4 },
+  tagline: { color: 'rgba(255,255,255,0.72)', fontSize: 9, marginTop: 1, fontWeight: '700' },
+  headerIcons: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  iconButton: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
+  bell: { fontSize: 20 },
+  notifyDot: { position: 'absolute', top: 6, right: 6, width: 7, height: 7, borderRadius: 4, backgroundColor: '#ef4444' },
+  botAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(59,130,246,0.24)',
+    borderWidth: 1,
+    borderColor: 'rgba(96,165,250,0.55)',
+  },
+  botFace: { fontSize: 22 },
+  hero: { minHeight: 176, flexDirection: 'row', alignItems: 'center' },
+  heroText: { flex: 1.2 },
+  headline: { color: '#fff', fontSize: 28, lineHeight: 35, fontWeight: '900', letterSpacing: -0.4 },
+  gradientWord: { color: '#8b5cf6' },
+  subtext: { color: 'rgba(255,255,255,0.7)', fontSize: 12, lineHeight: 18, marginTop: 10 },
+  heroArt: { flex: 0.85, minHeight: 160, alignItems: 'center', justifyContent: 'center' },
+  pin: { position: 'absolute', left: 0, top: 58, fontSize: 28 },
+  dumbbell: { position: 'absolute', right: -6, top: 34, fontSize: 27, transform: [{ rotate: '-24deg' }] },
+  crystalAura: {
+    width: 130,
+    height: 130,
+    borderRadius: 65,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(168,85,247,0.25)',
+  },
+  crystalShardTop: {
+    position: 'absolute',
+    top: 7,
+    width: 48,
+    height: 66,
+    backgroundColor: 'rgba(216,180,254,0.34)',
+    transform: [{ rotate: '28deg' }],
+    borderRadius: 12,
+  },
+  crystalCore: {
+    width: 58,
+    height: 92,
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
+    borderBottomLeftRadius: 14,
+    borderBottomRightRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.38)',
+    alignItems: 'center',
+  },
+  crystalFacet: { width: 1, flex: 1, backgroundColor: 'rgba(255,255,255,0.46)' },
+  crystalBase: {
+    position: 'absolute',
+    bottom: 13,
+    width: 68,
+    height: 28,
+    borderRadius: 9,
+    backgroundColor: 'rgba(76,29,149,0.88)',
+    borderWidth: 1,
+    borderColor: 'rgba(168,85,247,0.7)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  crystalBaseText: { color: '#fff', fontSize: 14, fontWeight: '900' },
+  topCtas: { flexDirection: 'row', gap: 11 },
+  ctaFlex: { flex: 1 },
+  primaryCta: { height: 44, borderRadius: 9, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9 },
+  secondaryCta: {
+    height: 44,
+    borderRadius: 9,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.36)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 9,
+    backgroundColor: 'rgba(3,8,22,0.72)',
+  },
+  ctaIcon: { color: '#fff', fontSize: 15, fontWeight: '900' },
+  primaryCtaText: { color: '#fff', fontSize: 13, fontWeight: '900' },
+  secondaryCtaText: { color: '#fff', fontSize: 13, fontWeight: '900' },
+  sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 5 },
+  sectionTitle: { color: '#fff', fontSize: 16, fontWeight: '900' },
+  liveRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  liveDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: '#a855f7' },
+  liveText: { color: '#a855f7', fontSize: 10, fontWeight: '900', letterSpacing: 1 },
+  filterRow: { gap: 8, paddingVertical: 6 },
+  filterChip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.16)',
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  filterChipActive: { backgroundColor: 'rgba(139,92,246,0.28)', borderColor: 'rgba(139,92,246,0.65)' },
+  filterChipText: { color: 'rgba(255,255,255,0.72)', fontSize: 11, fontWeight: '800' },
+  filterChipTextActive: { color: '#fff' },
+  activePredictionList: { gap: 10 },
+  liveList: { gap: 8 },
+  liveCard: {
+    minHeight: 51,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(96,165,250,0.18)',
+    backgroundColor: 'rgba(10,20,46,0.84)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    gap: 10,
+  },
+  roomIconCircle: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
+  roomIcon: { fontSize: 17 },
+  roomText: { flex: 1 },
+  roomQuestion: { color: '#fff', fontSize: 12.4, fontWeight: '800', lineHeight: 16 },
+  roomGuesses: { color: 'rgba(255,255,255,0.55)', fontSize: 11, marginTop: 1 },
+  timeColumn: { alignItems: 'flex-end', flexDirection: 'row', gap: 7 },
+  timerText: { fontSize: 11.5, fontWeight: '800' },
+  chevron: { color: 'rgba(255,255,255,0.6)', fontSize: 25, fontWeight: '300' },
+  emptyStateCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(96,165,250,0.18)',
+    backgroundColor: 'rgba(10,20,46,0.84)',
+    padding: 16,
+    gap: 8,
+  },
+  emptyStateTitle: { color: '#fff', fontSize: 16, fontWeight: '900' },
+  emptyStateCopy: { color: 'rgba(255,255,255,0.72)', fontSize: 12, lineHeight: 18 },
+  emptyStateActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 6 },
+  emptyPrimary: { backgroundColor: '#7c3aed', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10 },
+  emptyPrimaryText: { color: '#fff', fontWeight: '900', fontSize: 12 },
+  emptySecondary: {
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  emptySecondaryText: { color: '#fff', fontWeight: '800', fontSize: 12 },
+  demoCard: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(96,165,250,0.35)',
+    minHeight: 122,
+    flexDirection: 'row',
+    padding: 10,
+    gap: 10,
+  },
+  scooterArt: { width: 102, alignItems: 'center', justifyContent: 'center' },
+  rider: { fontSize: 64 },
+  demoContent: { flex: 1, justifyContent: 'center' },
+  demoQuestion: { color: '#fff', fontSize: 13.5, fontWeight: '900', lineHeight: 18, marginBottom: 8 },
+  optionRow: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
+  option: { borderRadius: 10, borderWidth: 1, paddingVertical: 6, paddingHorizontal: 13 },
+  optionSelected: { backgroundColor: 'rgba(255,255,255,0.07)' },
+  optionYes: { borderColor: '#22c55e' },
+  optionNo: { borderColor: '#ef4444' },
+  optionExact: { borderColor: '#a855f7' },
+  optionText: { fontSize: 11, fontWeight: '900' },
+  optionTextYes: { color: '#22c55e' },
+  optionTextNo: { color: '#ef4444' },
+  optionTextExact: { color: '#fff' },
+  demoResult: {
+    marginTop: 8,
+    borderRadius: 11,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    backgroundColor: 'rgba(15,23,42,0.55)',
+    paddingHorizontal: 9,
+    paddingVertical: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  targetIcon: { fontSize: 25 },
+  demoResultText: { color: 'rgba(255,255,255,0.82)', fontSize: 11.2, lineHeight: 15 },
+  rankText: { color: '#f59e0b', fontWeight: '900' },
+  chipRow: { flexDirection: 'row', gap: 7, flexWrap: 'wrap' },
+  playChip: { borderRadius: 17, paddingVertical: 8, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', gap: 5 },
+  chipIcon: { fontSize: 13 },
+  chipLabel: { color: '#fff', fontSize: 10.2, fontWeight: '800' },
+  resultCard: {
+    minHeight: 76,
+    borderRadius: 13,
+    borderWidth: 1,
+    borderColor: 'rgba(124,58,237,0.44)',
+    backgroundColor: 'rgba(20,24,62,0.92)',
+    padding: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  avatarWrap: { width: 58, height: 58, alignItems: 'center', justifyContent: 'center' },
+  crown: { position: 'absolute', top: -7, left: 0, fontSize: 20, zIndex: 2 },
+  avatar: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
+  avatarText: { color: '#fff', fontSize: 20, fontWeight: '900' },
+  resultMain: { flex: 1 },
+  resultTitle: { color: '#fff', fontSize: 13.2, fontWeight: '900', marginBottom: 3 },
+  resultLine: { color: 'rgba(255,255,255,0.66)', fontSize: 11.2, lineHeight: 15 },
+  accuracy: { color: '#22c55e', fontWeight: '900' },
+  resultBadges: { alignItems: 'flex-end', gap: 6 },
+  winnerBadge: { color: '#fbbf24', borderWidth: 1, borderColor: 'rgba(251,191,36,0.42)', borderRadius: 12, paddingHorizontal: 8, paddingVertical: 5, fontSize: 9, fontWeight: '900' },
+  auraBadge: { color: '#fff', backgroundColor: 'rgba(124,58,237,0.28)', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 6, fontSize: 10.5, fontWeight: '800' },
+  playedBadge: { color: '#dbeafe', backgroundColor: 'rgba(37,99,235,0.25)', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 6, fontSize: 10.5, fontWeight: '800' },
+  createCard: { borderRadius: 12, minHeight: 72, padding: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  createTitle: { color: '#fff', flex: 1, fontSize: 17, lineHeight: 23, fontWeight: '900' },
+  createButton: { backgroundColor: '#fff', borderRadius: 10, paddingHorizontal: 16, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  createButtonText: { color: '#3730a3', fontWeight: '900', fontSize: 13.5 },
+  createBolt: { color: '#2563eb', fontWeight: '900', fontSize: 16 },
+  weeklyCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    backgroundColor: 'rgba(18,26,53,0.9)',
+    padding: 16,
+    gap: 6,
+  },
+  weeklyTitle: { color: 'rgba(255,255,255,0.65)', fontSize: 11, fontWeight: '800', letterSpacing: 0.6, textTransform: 'uppercase' },
+  weeklyPersonality: { color: '#fff', fontSize: 20, fontWeight: '900' },
+  weeklyCopy: { color: 'rgba(255,255,255,0.7)', fontSize: 13, lineHeight: 18 },
+  nextMoveCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(96,165,250,0.26)',
+    backgroundColor: 'rgba(12,23,52,0.9)',
+    padding: 14,
+    gap: 6,
+  },
+  mutedText: { color: 'rgba(255,255,255,0.64)', fontSize: 12, lineHeight: 18 },
+  logoutButton: { alignItems: 'center', paddingVertical: 8 },
+  logoutText: { color: 'rgba(255,255,255,0.46)', fontSize: 12, fontWeight: '800' },
+  bottomNav: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    minHeight: 82,
+    paddingTop: 11,
+    paddingBottom: 14,
+    paddingHorizontal: 12,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(96,165,250,0.12)',
+    backgroundColor: 'rgba(3,8,22,0.96)',
+    flexDirection: 'row',
+  },
+  navItem: { flex: 1, alignItems: 'center', gap: 5 },
+  navIcon: { color: 'rgba(255,255,255,0.62)', fontSize: 24, fontWeight: '500' },
+  navIconActive: { color: '#60a5fa' },
+  navLabel: { color: 'rgba(255,255,255,0.58)', fontSize: 10, fontWeight: '700' },
+  navLabelActive: { color: '#93c5fd' },
+  createNavIcon: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: -16,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.22)',
+  },
+  createNavPlus: { color: '#fff', fontSize: 31, lineHeight: 34, fontWeight: '300' },
+});
