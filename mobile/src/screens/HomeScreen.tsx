@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
@@ -22,6 +22,9 @@ import SectionHeader from '../components/SectionHeader';
 import EmptyState from '../components/EmptyState';
 import { CATEGORY_LIST } from '../config/categoryTheme';
 import { palette } from '../theme/designSystem';
+import { hasSeenTodaysTea, markTodaysTeaSeen } from '../services/todaysTeaStorage';
+import { buildTodaysTea, TodaysTea } from '../utils/todaysTea';
+import TodaysTeaOverlay from '../components/TodaysTeaOverlay';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Home'>;
@@ -94,6 +97,12 @@ export default function HomeScreen({ navigation, route }: Props) {
   const [activePredictionFilter, setActivePredictionFilter] = useState<ActivePredictionFilter>('all');
   const [activePredictions, setActivePredictions] = useState<any[]>([]);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
+  const [todaysTea, setTodaysTea] = useState<TodaysTea | null>(null);
+  const [teaVisible, setTeaVisible] = useState(false);
+  const teaTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const summary = dashboard?.summary;
+  const userId = user?.userId;
+  const userName = user?.name;
 
   async function loadDashboard() {
     setLoading(true);
@@ -175,7 +184,52 @@ export default function HomeScreen({ navigation, route }: Props) {
     };
   }, [navigation, route.params?.replayOnboarding]);
 
-  const summary = dashboard?.summary;
+  useEffect(() => {
+    if (!userId || loading || tourVisible) {
+      return;
+    }
+
+    let active = true;
+    const currentUserId = userId;
+
+    async function maybeShowTodaysTea() {
+      const alreadySeen = await hasSeenTodaysTea(currentUserId);
+      if (!active || alreadySeen) return;
+
+      const nextTea = buildTodaysTea({
+        userName,
+        summary,
+        activePredictions,
+        followingLeaderboard: dashboard?.followingLeaderboard ?? [],
+      });
+
+      setTodaysTea(nextTea);
+      setTeaVisible(true);
+      await markTodaysTeaSeen(currentUserId);
+
+      const baseDuration = 3200 + Math.min(3, nextTea.body.length % 4) * 700;
+      teaTimerRef.current = setTimeout(() => {
+        if (active) {
+          setTeaVisible(false);
+        }
+      }, baseDuration);
+    }
+
+    void maybeShowTodaysTea();
+
+    return () => {
+      active = false;
+    };
+  }, [activePredictions, dashboard?.followingLeaderboard, loading, summary, tourVisible, userId, userName]);
+
+  useEffect(() => {
+    return () => {
+      if (teaTimerRef.current) {
+        clearTimeout(teaTimerRef.current);
+      }
+    };
+  }, []);
+
   const filteredActivePredictions = useMemo(() => {
     return activePredictions.filter((room) => {
       if (activePredictionFilter === 'needs_prediction') return !room.hasSubmittedPrediction;
@@ -280,6 +334,14 @@ export default function HomeScreen({ navigation, route }: Props) {
   async function closeTour() {
     setTourVisible(false);
     await completeDashboardOnboarding();
+  }
+
+  function dismissTodaysTea() {
+    if (teaTimerRef.current) {
+      clearTimeout(teaTimerRef.current);
+      teaTimerRef.current = null;
+    }
+    setTeaVisible(false);
   }
 
   async function persistActivePredictionOrder(nextItems: any[], fallbackItems: any[]) {
@@ -554,6 +616,7 @@ export default function HomeScreen({ navigation, route }: Props) {
 
         <BottomNav active={activeTab} onChange={handleBottomNav} />
         <DashboardOnboardingOverlay visible={tourVisible} onClose={closeTour} />
+        <TodaysTeaOverlay visible={teaVisible} tea={todaysTea} onClose={dismissTodaysTea} />
       </View>
     </WebSideWingLayout>
   );

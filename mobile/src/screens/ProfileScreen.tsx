@@ -20,6 +20,7 @@ import api from '../services/api';
 import BadgeChip from '../components/BadgeChip';
 import SectionHeader from '../components/SectionHeader';
 import { cardStyle, layout, palette, spacing } from '../theme/designSystem';
+import { getStartupSparkEnabled, setStartupSparkEnabled } from '../services/startupSpark';
 
 interface Stats {
   totalAura: number;
@@ -86,6 +87,11 @@ export default function ProfileScreen() {
   const [commentaryEnabled, setCommentaryEnabled] = useState(true);
   const [aiCommentaryOptOut, setAiCommentaryOptOut] = useState(false);
   const [savingCommentaryPref, setSavingCommentaryPref] = useState(false);
+  const [startupSparkEnabled, setStartupSparkEnabledState] = useState(true);
+
+  useEffect(() => {
+    void getStartupSparkEnabled().then(setStartupSparkEnabledState);
+  }, []);
 
   async function loadStats() {
     setLoading(true);
@@ -330,6 +336,23 @@ export default function ProfileScreen() {
 
       <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         <Text style={[styles.section, { color: colors.textPrimary }]}>App settings</Text>
+        <View style={[styles.settingRow, { borderBottomColor: colors.border }]}>
+          <View>
+            <Text style={[styles.settingLabel, { color: colors.textPrimary }]}>Today&apos;s Spark</Text>
+            <Text style={[styles.settingHint, { color: colors.textSecondary }]}>
+              Show the premium startup moment once per day during app launch.
+            </Text>
+          </View>
+          <Switch
+            value={startupSparkEnabled}
+            onValueChange={(enabled) => {
+              setStartupSparkEnabledState(enabled);
+              void setStartupSparkEnabled(enabled);
+            }}
+            trackColor={{ false: colors.border, true: colors.purple }}
+            thumbColor={startupSparkEnabled ? colors.purpleLight : '#f8fafc'}
+          />
+        </View>
         <View style={[styles.settingRow, { borderBottomColor: colors.border }]}>
           <View>
             <Text style={[styles.settingLabel, { color: colors.textPrimary }]}>

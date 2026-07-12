@@ -1,16 +1,44 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Platform, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { ThemeProvider } from './src/context/ThemeContext';
 import { AuthProvider } from './src/context/AuthContext';
 import AppNavigator from './src/navigation/AppNavigator';
 import { useTheme } from './src/context/ThemeContext';
+import { useAuth } from './src/context/AuthContext';
+import StartupSpark from './src/components/StartupSpark';
+import { getStartupSparkPayload } from './src/services/startupSpark';
 
 function AppShell() {
   const { colors } = useTheme();
   const { width } = useWindowDimensions();
+  const { isLoading } = useAuth();
+  const [sparkPayload, setSparkPayload] = useState<Awaited<ReturnType<typeof getStartupSparkPayload>> | null>(null);
+  const [sparkDone, setSparkDone] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+
+    void getStartupSparkPayload().then((payload) => {
+      if (active) {
+        setSparkPayload(payload);
+        if (!payload) {
+          setSparkDone(true);
+        }
+      }
+    });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   if (Platform.OS !== 'web') {
-    return <AppNavigator />;
+    return (
+      <View style={{ flex: 1 }}>
+        <AppNavigator />
+        {!sparkDone ? <StartupSpark payload={sparkPayload} appReady={!isLoading} onDone={() => setSparkDone(true)} /> : null}
+      </View>
+    );
   }
 
   const isLargeScreen = width >= 1024;
@@ -29,6 +57,7 @@ function AppShell() {
         ]}
       >
         <AppNavigator />
+        {!sparkDone ? <StartupSpark payload={sparkPayload} appReady={!isLoading} onDone={() => setSparkDone(true)} /> : null}
       </View>
     </View>
   );
