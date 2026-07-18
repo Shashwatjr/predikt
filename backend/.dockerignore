@@ -1,0 +1,14 @@
+# Build artifacts — must be regenerated fresh inside the image, never copied from host.
+# A stale tsconfig.build.tsbuildinfo poisons `incremental` compiles (nest build skips emit).
+dist
+**/*.tsbuildinfo
+
+# Host deps (wrong arch) and local secrets/config
+node_modules
+.env
+.env.*
+
+# VCS / misc
+.git
+.gitignore
+npm-debug.log*
