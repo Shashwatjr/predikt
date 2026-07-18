@@ -1,5 +1,6 @@
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
 }
 
 datasource db {
@@ -267,6 +268,8 @@ model User {
   avatarKey               String?         @map("avatar_key")
   selectedBackgroundKey   String?         @map("selected_background_key")
   passwordHash            String?         @map("password_hash")
+  isGuest                 Boolean         @default(false) @map("is_guest")
+  guestKey                String?         @unique @map("guest_key")
   status                  String          @default("active")
   totalAura               Int             @default(0) @map("total_aura")
   weeklyAura              Int             @default(0) @map("weekly_aura")
@@ -315,6 +318,7 @@ model User {
   followers             Follow[]              @relation("Followers")
   dailySpinClaims       DailySpinClaim[]
   activityEvents        ActivityEvent[]
+  feedbackSubmissions   UserFeedback[]
   roomPreferences       UserRoomPreference[]
   reliabilityLedger     UserReliabilityLedger[]
   roomMemberships       RoomMembership[]
@@ -337,6 +341,10 @@ model PredictionRoom {
   baselineLabel             String?             @map("baseline_label")
   baselineValue             Json?               @map("baseline_value")
   baselineSnapshot          Json?               @map("baseline_snapshot")
+  baselineCapturedAt        DateTime?           @map("baseline_captured_at")
+  providerName              String?             @map("provider_name")
+  providerConfidence        String?             @map("provider_confidence")
+  hostPrediction            Json?               @map("host_prediction")
   oracleBotPrediction       Json?               @map("oracle_bot_prediction")
   options                   Json?               @map("options")
   roomType                  String              @default("journey") @map("room_type")
@@ -379,6 +387,7 @@ model PredictionRoom {
   sponsorTagline            String?             @map("sponsor_tagline")
   resultCardSponsorText     String?             @map("result_card_sponsor_text")
   inviteCode                String              @unique @map("invite_code")
+  rematchOfRoomId           String?             @map("rematch_of_room_id")
   plannedStartTime          DateTime?           @map("planned_start_time")
   startTime                 DateTime?           @map("start_time")
   predictionCloseTime       DateTime            @map("prediction_close_time")
@@ -415,10 +424,13 @@ model PredictionRoom {
   updatedAt                 DateTime            @updatedAt @map("updated_at")
 
   creator               User                  @relation("creator_rooms", fields: [creatorUserId], references: [userId])
+  rematchOfRoom         PredictionRoom?       @relation("RoomRematch", fields: [rematchOfRoomId], references: [roomId])
+  rematches             PredictionRoom[]      @relation("RoomRematch")
   milestones            RoomMilestone[]
   milestonePredictions  MilestonePrediction[]
   results               RoomResult[]
   locationEvents        LiveLocationEvent[]
+  checkpoints          RoomCheckpoint[]
   auraTransactions      AuraTransaction[]
   cloutTransactions     CloutTransaction[]
   roomDropRules         RoomDropRule[]
@@ -438,6 +450,22 @@ model PredictionRoom {
   userBadges            UserBadge[]
 
   @@map("prediction_rooms")
+}
+
+model RoomCheckpoint {
+  roomCheckpointId String   @id @default(uuid()) @map("room_checkpoint_id")
+  roomId           String   @map("room_id")
+  checkpoint       Int      @map("checkpoint")
+  lat              Float    @map("lat")
+  lng              Float    @map("lng")
+  capturedAt       DateTime @map("captured_at")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  room PredictionRoom @relation(fields: [roomId], references: [roomId])
+
+  @@unique([roomId, checkpoint])
+  @@index([roomId, capturedAt])
+  @@map("room_checkpoints")
 }
 
 model RoomCommentary {
@@ -736,21 +764,27 @@ model UserSession {
 }
 
 model Report {
-  reportId     String       @id @default(uuid()) @map("report_id")
-  reporterId   String       @map("reporter_id")
-  targetUserId String?      @map("target_user_id")
-  roomId       String?      @map("room_id")
-  reportType   ReportType   @map("report_type")
-  reason       String?
-  status       ReportStatus @default(submitted)
-  metadata     Json?
-  createdAt    DateTime     @default(now()) @map("created_at")
-  updatedAt    DateTime     @updatedAt @map("updated_at")
+  reportId          String       @id @default(uuid()) @map("report_id")
+  reporterId        String       @map("reporter_id")
+  targetUserId      String?      @map("target_user_id")
+  roomId            String?      @map("room_id")
+  reportType        ReportType   @map("report_type")
+  reason            String?
+  status            ReportStatus @default(submitted)
+  priority          String       @default("normal")
+  assignedAdminId   String?      @map("assigned_admin_id")
+  metadata          Json?
+  createdAt         DateTime     @default(now()) @map("created_at")
+  updatedAt         DateTime     @updatedAt @map("updated_at")
 
-  reporter   User            @relation("reporter_reports", fields: [reporterId], references: [userId])
-  targetUser User?           @relation("target_user_reports", fields: [targetUserId], references: [userId])
-  room       PredictionRoom? @relation(fields: [roomId], references: [roomId])
+  reporter      User            @relation("reporter_reports", fields: [reporterId], references: [userId])
+  targetUser    User?           @relation("target_user_reports", fields: [targetUserId], references: [userId])
+  room          PredictionRoom? @relation(fields: [roomId], references: [roomId])
+  assignedAdmin AdminUser?      @relation("assigned_reports", fields: [assignedAdminId], references: [adminUserId])
 
+  @@index([status])
+  @@index([reportType])
+  @@index([createdAt])
   @@map("reports")
 }
 
@@ -1000,10 +1034,38 @@ model AdminUser {
   createdAt   DateTime    @default(now()) @map("created_at")
   updatedAt   DateTime    @updatedAt @map("updated_at")
 
-  role                AdminRole         @relation(fields: [roleId], references: [roleId])
-  assignedPrivacyRequests PrivacyRequest[] @relation("privacy_request_admin")
+  role                    AdminRole         @relation(fields: [roleId], references: [roleId])
+  assignedPrivacyRequests PrivacyRequest[]  @relation("privacy_request_admin")
+  assignedReports         Report[]          @relation("assigned_reports")
+  assignedFeedback        UserFeedback[]    @relation("assigned_feedback")
 
   @@map("admin_users")
+}
+
+model UserFeedback {
+  feedbackId        String   @id @default(uuid()) @map("feedback_id")
+  userId            String?  @map("user_id")
+  feedbackType      String   @map("feedback_type")
+  category          String?
+  status            String   @default("new")
+  priority          String   @default("normal")
+  message           String
+  contactAllowed    Boolean  @default(false) @map("contact_allowed")
+  platform          String?
+  roomId            String?  @map("room_id")
+  assignedAdminId   String?  @map("assigned_admin_id")
+  internalNotes     String?  @map("internal_notes")
+  metadata          Json?
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  user          User?      @relation(fields: [userId], references: [userId])
+  assignedAdmin AdminUser? @relation("assigned_feedback", fields: [assignedAdminId], references: [adminUserId])
+
+  @@index([status])
+  @@index([feedbackType])
+  @@index([createdAt])
+  @@map("user_feedback")
 }
 
 model AuditLog {
@@ -1112,6 +1174,11 @@ model DailySpinClaim {
 model ActivityEvent {
   activityEventId String   @id @default(uuid()) @map("activity_event_id")
   userId          String?  @map("user_id")
+  roomId          String?  @map("room_id")
+  category        String?
+  platform        String?
+  sessionId       String?  @map("session_id")
+  eventVersion    String   @default("1") @map("event_version")
   eventType       String   @map("event_type")
   message         String
   metadata        Json?
@@ -1119,6 +1186,11 @@ model ActivityEvent {
 
   user User? @relation(fields: [userId], references: [userId])
 
+  @@index([eventType])
+  @@index([createdAt])
+  @@index([roomId])
+  @@index([userId])
+  @@index([category])
   @@map("activity_events")
 }
 

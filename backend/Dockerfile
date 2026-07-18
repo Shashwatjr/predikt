@@ -1,6 +1,9 @@
 # ─── Stage 1: Build ──────────────────────────────────────────────────────────
 FROM node:20-alpine AS builder
 
+# OpenSSL so Prisma detects OpenSSL 3 and generates/loads the correct engine
+RUN apk add --no-cache openssl
+
 WORKDIR /app
 
 COPY package*.json ./
@@ -16,6 +19,9 @@ RUN npm run build
 
 # ─── Stage 2: Production runtime ─────────────────────────────────────────────
 FROM node:20-alpine AS runner
+
+# OpenSSL so Prisma's runtime detection picks the openssl-3.0.x engine (not the 1.1.x default)
+RUN apk add --no-cache openssl
 
 WORKDIR /app
 
