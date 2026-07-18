@@ -1,0 +1,1146 @@
+{
+  "@borewit/text-codec@0.2.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/Borewit/text-codec",
+    "publisher": "Borewit",
+    "url": "https://github.com/Borewit",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/@borewit/text-codec",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/@borewit/text-codec/LICENSE.txt"
+  },
+  "@lukeed/csprng@1.1.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/lukeed/csprng",
+    "publisher": "Luke Edwards",
+    "email": "luke.edwards05@gmail.com",
+    "url": "https://lukeed.com",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/@lukeed/csprng",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/@lukeed/csprng/license"
+  },
+  "@nestjs/common@11.1.27": {
+    "licenses": "MIT",
+    "repository": "https://github.com/nestjs/nest",
+    "publisher": "Kamil Mysliwiec",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/@nestjs/common",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/@nestjs/common/LICENSE"
+  },
+  "@nestjs/config@4.0.4": {
+    "licenses": "MIT",
+    "repository": "https://github.com/nestjs/config",
+    "publisher": "Kamil Mysliwiec",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/@nestjs/config",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/@nestjs/config/LICENSE"
+  },
+  "@nestjs/core@11.1.27": {
+    "licenses": "MIT",
+    "repository": "https://github.com/nestjs/nest",
+    "publisher": "Kamil Mysliwiec",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/@nestjs/core",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/@nestjs/core/LICENSE"
+  },
+  "@nestjs/jwt@11.0.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/nestjs/jwt",
+    "publisher": "Kamil Mysliwiec",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/@nestjs/jwt",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/@nestjs/jwt/LICENSE"
+  },
+  "@nestjs/passport@11.0.5": {
+    "licenses": "MIT",
+    "repository": "https://github.com/nestjs/passport",
+    "publisher": "Kamil Mysliwiec",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/@nestjs/passport",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/@nestjs/passport/LICENSE"
+  },
+  "@nestjs/platform-express@11.1.27": {
+    "licenses": "MIT",
+    "repository": "https://github.com/nestjs/nest",
+    "publisher": "Kamil Mysliwiec",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/@nestjs/platform-express",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/@nestjs/platform-express/LICENSE"
+  },
+  "@nestjs/throttler@6.5.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/nestjs/throttler",
+    "publisher": "Jay McDoniel",
+    "email": "me@jaymcdoniel.dev",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/@nestjs/throttler",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/@nestjs/throttler/LICENSE"
+  },
+  "@prisma/client@5.22.0": {
+    "licenses": "Apache-2.0",
+    "repository": "https://github.com/prisma/prisma",
+    "publisher": "Tim Suchanek",
+    "email": "suchanek@prisma.io",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/@prisma/client",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/@prisma/client/LICENSE"
+  },
+  "@prisma/debug@5.22.0": {
+    "licenses": "Apache-2.0",
+    "repository": "https://github.com/prisma/prisma",
+    "publisher": "Tim Suchanek",
+    "email": "suchanek@prisma.io",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/@prisma/debug",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/@prisma/debug/LICENSE"
+  },
+  "@prisma/engines-version@5.22.0-44.605197351a3c8bdd595af2d2a9bc3025bca48ea2": {
+    "licenses": "Apache-2.0",
+    "repository": "https://github.com/prisma/engines-wrapper",
+    "publisher": "Tim Suchanek",
+    "email": "suchanek@prisma.io",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/@prisma/engines-version",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/@prisma/engines-version/LICENSE"
+  },
+  "@prisma/engines@5.22.0": {
+    "licenses": "Apache-2.0",
+    "repository": "https://github.com/prisma/prisma",
+    "publisher": "Tim Suchanek",
+    "email": "suchanek@prisma.io",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/@prisma/engines",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/@prisma/engines/LICENSE"
+  },
+  "@prisma/fetch-engine@5.22.0": {
+    "licenses": "Apache-2.0",
+    "repository": "https://github.com/prisma/prisma",
+    "publisher": "Tim Suchanek",
+    "email": "suchanek@prisma.io",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/@prisma/fetch-engine",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/@prisma/fetch-engine/LICENSE"
+  },
+  "@prisma/get-platform@5.22.0": {
+    "licenses": "Apache-2.0",
+    "repository": "https://github.com/prisma/prisma",
+    "publisher": "Tim Suchanek",
+    "email": "suchanek@prisma.io",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/@prisma/get-platform",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/@prisma/get-platform/LICENSE"
+  },
+  "@tokenizer/inflate@0.4.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/Borewit/tokenizer-inflate",
+    "publisher": "Borewit",
+    "url": "https://github.com/Borewit",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/@tokenizer/inflate",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/@tokenizer/inflate/LICENSE"
+  },
+  "@tokenizer/token@0.3.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/Borewit/tokenizer-token",
+    "publisher": "Borewit",
+    "url": "https://github.com/Borewit",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/@tokenizer/token",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/@tokenizer/token/README.md"
+  },
+  "@types/jsonwebtoken@9.0.10": {
+    "licenses": "MIT",
+    "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/@types/jsonwebtoken",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/@types/jsonwebtoken/LICENSE"
+  },
+  "@types/ms@2.1.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/@types/ms",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/@types/ms/LICENSE"
+  },
+  "@types/node@24.13.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/@types/node",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/@types/node/LICENSE"
+  },
+  "@types/validator@13.15.10": {
+    "licenses": "MIT",
+    "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/@types/validator",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/@types/validator/LICENSE"
+  },
+  "accepts@2.0.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/jshttp/accepts",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/accepts",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/accepts/LICENSE"
+  },
+  "append-field@1.0.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/LinusU/node-append-field",
+    "publisher": "Linus Unnebäck",
+    "email": "linus@folkdatorn.se",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/append-field",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/append-field/LICENSE"
+  },
+  "backend@0.0.1": {
+    "licenses": "UNLICENSED",
+    "private": true,
+    "path": "/Users/krivikshaaitech/predikt/backend",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/README.md"
+  },
+  "bcrypt@6.0.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/kelektiv/node.bcrypt.js",
+    "publisher": "Nick Campbell",
+    "url": "https://github.com/ncb000gt",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/bcrypt",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/bcrypt/LICENSE"
+  },
+  "body-parser@2.3.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/expressjs/body-parser",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/body-parser",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/body-parser/LICENSE"
+  },
+  "buffer-equal-constant-time@1.0.1": {
+    "licenses": "BSD-3-Clause",
+    "repository": "https://github.com/goinstant/buffer-equal-constant-time",
+    "publisher": "GoInstant Inc., a salesforce.com company",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/buffer-equal-constant-time",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/buffer-equal-constant-time/LICENSE.txt"
+  },
+  "buffer-from@1.1.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/LinusU/buffer-from",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/buffer-from",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/buffer-from/LICENSE"
+  },
+  "busboy@1.6.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/mscdex/busboy",
+    "publisher": "Brian White",
+    "email": "mscdex@mscdex.net",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/busboy",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/busboy/LICENSE"
+  },
+  "bytes@3.1.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/visionmedia/bytes.js",
+    "publisher": "TJ Holowaychuk",
+    "email": "tj@vision-media.ca",
+    "url": "http://tjholowaychuk.com",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/bytes",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/bytes/LICENSE"
+  },
+  "call-bind-apply-helpers@1.0.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/ljharb/call-bind-apply-helpers",
+    "publisher": "Jordan Harband",
+    "email": "ljharb@gmail.com",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/call-bind-apply-helpers",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/call-bind-apply-helpers/LICENSE"
+  },
+  "call-bound@1.0.4": {
+    "licenses": "MIT",
+    "repository": "https://github.com/ljharb/call-bound",
+    "publisher": "Jordan Harband",
+    "email": "ljharb@gmail.com",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/call-bound",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/call-bound/LICENSE"
+  },
+  "class-transformer@0.5.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/typestack/class-transformer",
+    "publisher": "TypeStack contributors",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/class-transformer",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/class-transformer/LICENSE"
+  },
+  "class-validator@0.15.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/typestack/class-validator",
+    "publisher": "TypeStack contributors",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/class-validator",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/class-validator/LICENSE"
+  },
+  "concat-stream@2.0.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/maxogden/concat-stream",
+    "publisher": "Max Ogden",
+    "email": "max@maxogden.com",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/concat-stream",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/concat-stream/LICENSE"
+  },
+  "content-disposition@1.1.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/jshttp/content-disposition",
+    "publisher": "Douglas Christopher Wilson",
+    "email": "doug@somethingdoug.com",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/content-disposition",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/content-disposition/LICENSE"
+  },
+  "content-type@1.0.5": {
+    "licenses": "MIT",
+    "repository": "https://github.com/jshttp/content-type",
+    "publisher": "Douglas Christopher Wilson",
+    "email": "doug@somethingdoug.com",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/content-type",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/content-type/LICENSE"
+  },
+  "content-type@2.0.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/jshttp/content-type",
+    "publisher": "Douglas Christopher Wilson",
+    "email": "doug@somethingdoug.com",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/body-parser/node_modules/content-type",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/body-parser/node_modules/content-type/LICENSE"
+  },
+  "cookie-signature@1.2.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/visionmedia/node-cookie-signature",
+    "publisher": "TJ Holowaychuk",
+    "email": "tj@learnboost.com",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/cookie-signature",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/cookie-signature/LICENSE"
+  },
+  "cookie@0.7.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/jshttp/cookie",
+    "publisher": "Roman Shtylman",
+    "email": "shtylman@gmail.com",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/cookie",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/cookie/LICENSE"
+  },
+  "cors@2.8.6": {
+    "licenses": "MIT",
+    "repository": "https://github.com/expressjs/cors",
+    "publisher": "Troy Goode",
+    "email": "troygoode@gmail.com",
+    "url": "https://github.com/troygoode/",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/cors",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/cors/LICENSE"
+  },
+  "debug@4.4.3": {
+    "licenses": "MIT",
+    "repository": "https://github.com/debug-js/debug",
+    "publisher": "Josh Junon",
+    "url": "https://github.com/qix-",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/debug",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/debug/LICENSE"
+  },
+  "depd@2.0.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/dougwilson/nodejs-depd",
+    "publisher": "Douglas Christopher Wilson",
+    "email": "doug@somethingdoug.com",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/depd",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/depd/LICENSE"
+  },
+  "dotenv-expand@12.0.3": {
+    "licenses": "BSD-2-Clause",
+    "repository": "https://github.com/motdotla/dotenv-expand",
+    "publisher": "motdotla",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/dotenv-expand",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/dotenv-expand/LICENSE"
+  },
+  "dotenv@16.6.1": {
+    "licenses": "BSD-2-Clause",
+    "repository": "https://github.com/motdotla/dotenv",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/dotenv-expand/node_modules/dotenv",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/dotenv-expand/node_modules/dotenv/LICENSE"
+  },
+  "dotenv@17.4.1": {
+    "licenses": "BSD-2-Clause",
+    "repository": "https://github.com/motdotla/dotenv",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/@nestjs/config/node_modules/dotenv",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/@nestjs/config/node_modules/dotenv/LICENSE"
+  },
+  "dunder-proto@1.0.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/es-shims/dunder-proto",
+    "publisher": "Jordan Harband",
+    "email": "ljharb@gmail.com",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/dunder-proto",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/dunder-proto/LICENSE"
+  },
+  "ecdsa-sig-formatter@1.0.11": {
+    "licenses": "Apache-2.0",
+    "repository": "https://github.com/Brightspace/node-ecdsa-sig-formatter",
+    "publisher": "D2L Corporation",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/ecdsa-sig-formatter",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/ecdsa-sig-formatter/LICENSE"
+  },
+  "ee-first@1.1.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/jonathanong/ee-first",
+    "publisher": "Jonathan Ong",
+    "email": "me@jongleberry.com",
+    "url": "http://jongleberry.com",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/ee-first",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/ee-first/LICENSE"
+  },
+  "encodeurl@2.0.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/pillarjs/encodeurl",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/encodeurl",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/encodeurl/LICENSE"
+  },
+  "es-define-property@1.0.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/ljharb/es-define-property",
+    "publisher": "Jordan Harband",
+    "email": "ljharb@gmail.com",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/es-define-property",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/es-define-property/LICENSE"
+  },
+  "es-errors@1.3.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/ljharb/es-errors",
+    "publisher": "Jordan Harband",
+    "email": "ljharb@gmail.com",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/es-errors",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/es-errors/LICENSE"
+  },
+  "es-object-atoms@1.1.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/ljharb/es-object-atoms",
+    "publisher": "Jordan Harband",
+    "email": "ljharb@gmail.com",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/es-object-atoms",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/es-object-atoms/LICENSE"
+  },
+  "escape-html@1.0.3": {
+    "licenses": "MIT",
+    "repository": "https://github.com/component/escape-html",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/escape-html",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/escape-html/LICENSE"
+  },
+  "etag@1.8.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/jshttp/etag",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/etag",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/etag/LICENSE"
+  },
+  "express@5.2.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/expressjs/express",
+    "publisher": "TJ Holowaychuk",
+    "email": "tj@vision-media.ca",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/express",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/express/LICENSE"
+  },
+  "fast-safe-stringify@2.1.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/davidmarkclements/fast-safe-stringify",
+    "publisher": "David Mark Clements",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/fast-safe-stringify",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/fast-safe-stringify/LICENSE"
+  },
+  "file-type@21.3.4": {
+    "licenses": "MIT",
+    "repository": "https://github.com/sindresorhus/file-type",
+    "publisher": "Sindre Sorhus",
+    "email": "sindresorhus@gmail.com",
+    "url": "https://sindresorhus.com",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/file-type",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/file-type/license"
+  },
+  "finalhandler@2.1.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/pillarjs/finalhandler",
+    "publisher": "Douglas Christopher Wilson",
+    "email": "doug@somethingdoug.com",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/finalhandler",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/finalhandler/LICENSE"
+  },
+  "forwarded@0.2.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/jshttp/forwarded",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/forwarded",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/forwarded/LICENSE"
+  },
+  "fresh@2.0.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/jshttp/fresh",
+    "publisher": "TJ Holowaychuk",
+    "email": "tj@vision-media.ca",
+    "url": "http://tjholowaychuk.com",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/fresh",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/fresh/LICENSE"
+  },
+  "fsevents@2.3.3": {
+    "licenses": "MIT",
+    "repository": "https://github.com/fsevents/fsevents",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/fsevents",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/fsevents/LICENSE"
+  },
+  "function-bind@1.1.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/Raynos/function-bind",
+    "publisher": "Raynos",
+    "email": "raynos2@gmail.com",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/function-bind",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/function-bind/LICENSE"
+  },
+  "get-intrinsic@1.3.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/ljharb/get-intrinsic",
+    "publisher": "Jordan Harband",
+    "email": "ljharb@gmail.com",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/get-intrinsic",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/get-intrinsic/LICENSE"
+  },
+  "get-proto@1.0.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/ljharb/get-proto",
+    "publisher": "Jordan Harband",
+    "email": "ljharb@gmail.com",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/get-proto",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/get-proto/LICENSE"
+  },
+  "gopd@1.2.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/ljharb/gopd",
+    "publisher": "Jordan Harband",
+    "email": "ljharb@gmail.com",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/gopd",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/gopd/LICENSE"
+  },
+  "has-symbols@1.1.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/inspect-js/has-symbols",
+    "publisher": "Jordan Harband",
+    "email": "ljharb@gmail.com",
+    "url": "http://ljharb.codes",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/has-symbols",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/has-symbols/LICENSE"
+  },
+  "hasown@2.0.4": {
+    "licenses": "MIT",
+    "repository": "https://github.com/inspect-js/hasOwn",
+    "publisher": "Jordan Harband",
+    "email": "ljharb@gmail.com",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/hasown",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/hasown/LICENSE"
+  },
+  "helmet@8.2.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/helmetjs/helmet",
+    "publisher": "Adam Baldwin",
+    "email": "adam@npmjs.com",
+    "url": "https://evilpacket.net",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/helmet",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/helmet/LICENSE"
+  },
+  "http-errors@2.0.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/jshttp/http-errors",
+    "publisher": "Jonathan Ong",
+    "email": "me@jongleberry.com",
+    "url": "http://jongleberry.com",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/http-errors",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/http-errors/LICENSE"
+  },
+  "iconv-lite@0.7.3": {
+    "licenses": "MIT",
+    "repository": "https://github.com/pillarjs/iconv-lite",
+    "publisher": "Alexander Shtuchkin",
+    "email": "ashtuchkin@gmail.com",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/iconv-lite",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/iconv-lite/LICENSE"
+  },
+  "ieee754@1.2.1": {
+    "licenses": "BSD-3-Clause",
+    "repository": "https://github.com/feross/ieee754",
+    "publisher": "Feross Aboukhadijeh",
+    "email": "feross@feross.org",
+    "url": "https://feross.org",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/ieee754",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/ieee754/LICENSE"
+  },
+  "inherits@2.0.4": {
+    "licenses": "ISC",
+    "repository": "https://github.com/isaacs/inherits",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/inherits",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/inherits/LICENSE"
+  },
+  "ipaddr.js@1.9.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/whitequark/ipaddr.js",
+    "publisher": "whitequark",
+    "email": "whitequark@whitequark.org",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/ipaddr.js",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/ipaddr.js/LICENSE"
+  },
+  "is-promise@4.0.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/then/is-promise",
+    "publisher": "ForbesLindesay",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/is-promise",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/is-promise/LICENSE"
+  },
+  "iterare@1.2.1": {
+    "licenses": "ISC",
+    "repository": "https://github.com/felixfbecker/iterare",
+    "publisher": "Felix Becker",
+    "email": "felix.b@outlook.com",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/iterare",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/iterare/LICENSE.txt"
+  },
+  "jsonwebtoken@9.0.3": {
+    "licenses": "MIT",
+    "repository": "https://github.com/auth0/node-jsonwebtoken",
+    "publisher": "auth0",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/jsonwebtoken",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/jsonwebtoken/LICENSE"
+  },
+  "jwa@2.0.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/brianloveswords/node-jwa",
+    "publisher": "Brian J. Brennan",
+    "email": "brianloveswords@gmail.com",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/jwa",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/jwa/LICENSE"
+  },
+  "jws@4.0.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/brianloveswords/node-jws",
+    "publisher": "Brian J Brennan",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/jws",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/jws/LICENSE"
+  },
+  "libphonenumber-js@1.13.8": {
+    "licenses": "MIT",
+    "repository": "git+https://gitlab.com/catamphetamine/libphonenumber-js",
+    "publisher": "catamphetamine",
+    "email": "purecatamphetamine@gmail.com",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/libphonenumber-js",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/libphonenumber-js/LICENSE"
+  },
+  "load-esm@1.0.3": {
+    "licenses": "MIT",
+    "repository": "https://github.com/Borewit/load-esm",
+    "publisher": "Borewit",
+    "url": "https://github.com/Borewit",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/load-esm",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/load-esm/LICENSE.txt"
+  },
+  "lodash.includes@4.3.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/lodash/lodash",
+    "publisher": "John-David Dalton",
+    "email": "john.david.dalton@gmail.com",
+    "url": "http://allyoucanleet.com/",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/lodash.includes",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/lodash.includes/LICENSE"
+  },
+  "lodash.isboolean@3.0.3": {
+    "licenses": "MIT",
+    "repository": "https://github.com/lodash/lodash",
+    "publisher": "John-David Dalton",
+    "email": "john.david.dalton@gmail.com",
+    "url": "http://allyoucanleet.com/",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/lodash.isboolean",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/lodash.isboolean/LICENSE"
+  },
+  "lodash.isinteger@4.0.4": {
+    "licenses": "MIT",
+    "repository": "https://github.com/lodash/lodash",
+    "publisher": "John-David Dalton",
+    "email": "john.david.dalton@gmail.com",
+    "url": "http://allyoucanleet.com/",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/lodash.isinteger",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/lodash.isinteger/LICENSE"
+  },
+  "lodash.isnumber@3.0.3": {
+    "licenses": "MIT",
+    "repository": "https://github.com/lodash/lodash",
+    "publisher": "John-David Dalton",
+    "email": "john.david.dalton@gmail.com",
+    "url": "http://allyoucanleet.com/",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/lodash.isnumber",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/lodash.isnumber/LICENSE"
+  },
+  "lodash.isplainobject@4.0.6": {
+    "licenses": "MIT",
+    "repository": "https://github.com/lodash/lodash",
+    "publisher": "John-David Dalton",
+    "email": "john.david.dalton@gmail.com",
+    "url": "http://allyoucanleet.com/",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/lodash.isplainobject",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/lodash.isplainobject/LICENSE"
+  },
+  "lodash.isstring@4.0.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/lodash/lodash",
+    "publisher": "John-David Dalton",
+    "email": "john.david.dalton@gmail.com",
+    "url": "http://allyoucanleet.com/",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/lodash.isstring",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/lodash.isstring/LICENSE"
+  },
+  "lodash.once@4.1.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/lodash/lodash",
+    "publisher": "John-David Dalton",
+    "email": "john.david.dalton@gmail.com",
+    "url": "http://allyoucanleet.com/",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/lodash.once",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/lodash.once/LICENSE"
+  },
+  "lodash@4.18.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/lodash/lodash",
+    "publisher": "John-David Dalton",
+    "email": "john.david.dalton@gmail.com",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/lodash",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/lodash/LICENSE"
+  },
+  "math-intrinsics@1.1.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/es-shims/math-intrinsics",
+    "publisher": "Jordan Harband",
+    "email": "ljharb@gmail.com",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/math-intrinsics",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/math-intrinsics/LICENSE"
+  },
+  "media-typer@0.3.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/jshttp/media-typer",
+    "publisher": "Douglas Christopher Wilson",
+    "email": "doug@somethingdoug.com",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/multer/node_modules/media-typer",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/multer/node_modules/media-typer/LICENSE"
+  },
+  "media-typer@1.1.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/jshttp/media-typer",
+    "publisher": "Douglas Christopher Wilson",
+    "email": "doug@somethingdoug.com",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/media-typer",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/media-typer/LICENSE"
+  },
+  "merge-descriptors@2.0.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/sindresorhus/merge-descriptors",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/merge-descriptors",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/merge-descriptors/license"
+  },
+  "mime-db@1.52.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/jshttp/mime-db",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/multer/node_modules/mime-db",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/multer/node_modules/mime-db/LICENSE"
+  },
+  "mime-db@1.54.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/jshttp/mime-db",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/mime-db",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/mime-db/LICENSE"
+  },
+  "mime-types@2.1.35": {
+    "licenses": "MIT",
+    "repository": "https://github.com/jshttp/mime-types",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/multer/node_modules/mime-types",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/multer/node_modules/mime-types/LICENSE"
+  },
+  "mime-types@3.0.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/jshttp/mime-types",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/mime-types",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/mime-types/LICENSE"
+  },
+  "ms@2.1.3": {
+    "licenses": "MIT",
+    "repository": "https://github.com/vercel/ms",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/ms",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/ms/license.md"
+  },
+  "multer@2.1.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/expressjs/multer",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/multer",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/multer/LICENSE"
+  },
+  "negotiator@1.0.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/jshttp/negotiator",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/negotiator",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/negotiator/LICENSE"
+  },
+  "node-addon-api@8.9.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/nodejs/node-addon-api",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/node-addon-api",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/node-addon-api/LICENSE.md"
+  },
+  "node-gyp-build@4.8.4": {
+    "licenses": "MIT",
+    "repository": "https://github.com/prebuild/node-gyp-build",
+    "publisher": "Mathias Buus",
+    "url": "@mafintosh",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/node-gyp-build",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/node-gyp-build/LICENSE"
+  },
+  "object-assign@4.1.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/sindresorhus/object-assign",
+    "publisher": "Sindre Sorhus",
+    "email": "sindresorhus@gmail.com",
+    "url": "sindresorhus.com",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/object-assign",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/object-assign/license"
+  },
+  "object-inspect@1.13.4": {
+    "licenses": "MIT",
+    "repository": "https://github.com/inspect-js/object-inspect",
+    "publisher": "James Halliday",
+    "email": "mail@substack.net",
+    "url": "http://substack.net",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/object-inspect",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/object-inspect/LICENSE"
+  },
+  "on-finished@2.4.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/jshttp/on-finished",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/on-finished",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/on-finished/LICENSE"
+  },
+  "once@1.4.0": {
+    "licenses": "ISC",
+    "repository": "https://github.com/isaacs/once",
+    "publisher": "Isaac Z. Schlueter",
+    "email": "i@izs.me",
+    "url": "http://blog.izs.me/",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/once",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/once/LICENSE"
+  },
+  "parseurl@1.3.3": {
+    "licenses": "MIT",
+    "repository": "https://github.com/pillarjs/parseurl",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/parseurl",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/parseurl/LICENSE"
+  },
+  "passport-jwt@4.0.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/mikenicholson/passport-jwt",
+    "publisher": "Mike Nicholson",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/passport-jwt",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/passport-jwt/LICENSE"
+  },
+  "passport-strategy@1.0.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/jaredhanson/passport-strategy",
+    "publisher": "Jared Hanson",
+    "email": "jaredhanson@gmail.com",
+    "url": "http://www.jaredhanson.net/",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/passport-strategy",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/passport-strategy/LICENSE"
+  },
+  "passport@0.7.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/jaredhanson/passport",
+    "publisher": "Jared Hanson",
+    "email": "jaredhanson@gmail.com",
+    "url": "https://www.jaredhanson.me/",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/passport",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/passport/LICENSE"
+  },
+  "path-to-regexp@8.4.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/pillarjs/path-to-regexp",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/path-to-regexp",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/path-to-regexp/LICENSE"
+  },
+  "pause@0.0.1": {
+    "licenses": "MIT*",
+    "publisher": "TJ Holowaychuk",
+    "email": "tj@vision-media.ca",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/pause",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/pause/Readme.md"
+  },
+  "prisma@5.22.0": {
+    "licenses": "Apache-2.0",
+    "repository": "https://github.com/prisma/prisma",
+    "publisher": "Tim Suchanek",
+    "email": "suchanek@prisma.io",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/prisma",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/prisma/LICENSE"
+  },
+  "proxy-addr@2.0.7": {
+    "licenses": "MIT",
+    "repository": "https://github.com/jshttp/proxy-addr",
+    "publisher": "Douglas Christopher Wilson",
+    "email": "doug@somethingdoug.com",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/proxy-addr",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/proxy-addr/LICENSE"
+  },
+  "qs@6.15.3": {
+    "licenses": "BSD-3-Clause",
+    "repository": "https://github.com/ljharb/qs",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/qs",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/qs/LICENSE.md"
+  },
+  "range-parser@1.3.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/jshttp/range-parser",
+    "publisher": "TJ Holowaychuk",
+    "email": "tj@vision-media.ca",
+    "url": "http://tjholowaychuk.com",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/range-parser",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/range-parser/LICENSE"
+  },
+  "raw-body@3.0.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/stream-utils/raw-body",
+    "publisher": "Jonathan Ong",
+    "email": "me@jongleberry.com",
+    "url": "http://jongleberry.com",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/raw-body",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/raw-body/LICENSE"
+  },
+  "readable-stream@3.6.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/nodejs/readable-stream",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/readable-stream",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/readable-stream/LICENSE"
+  },
+  "reflect-metadata@0.2.2": {
+    "licenses": "Apache-2.0",
+    "repository": "https://github.com/rbuckton/reflect-metadata",
+    "publisher": "Ron Buckton",
+    "email": "ron.buckton@microsoft.com",
+    "url": "http://github.com/rbuckton",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/reflect-metadata",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/reflect-metadata/LICENSE"
+  },
+  "router@2.2.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/pillarjs/router",
+    "publisher": "Douglas Christopher Wilson",
+    "email": "doug@somethingdoug.com",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/router",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/router/LICENSE"
+  },
+  "rxjs@7.8.2": {
+    "licenses": "Apache-2.0",
+    "repository": "https://github.com/reactivex/rxjs",
+    "publisher": "Ben Lesh",
+    "email": "ben@benlesh.com",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/rxjs",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/rxjs/LICENSE.txt"
+  },
+  "safe-buffer@5.2.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/feross/safe-buffer",
+    "publisher": "Feross Aboukhadijeh",
+    "email": "feross@feross.org",
+    "url": "https://feross.org",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/safe-buffer",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/safe-buffer/LICENSE"
+  },
+  "safer-buffer@2.1.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/ChALkeR/safer-buffer",
+    "publisher": "Nikita Skovoroda",
+    "email": "chalkerx@gmail.com",
+    "url": "https://github.com/ChALkeR",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/safer-buffer",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/safer-buffer/LICENSE"
+  },
+  "semver@7.8.5": {
+    "licenses": "ISC",
+    "repository": "https://github.com/npm/node-semver",
+    "publisher": "GitHub Inc.",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/semver",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/semver/LICENSE"
+  },
+  "send@1.2.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/pillarjs/send",
+    "publisher": "TJ Holowaychuk",
+    "email": "tj@vision-media.ca",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/send",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/send/LICENSE"
+  },
+  "serve-static@2.2.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/expressjs/serve-static",
+    "publisher": "Douglas Christopher Wilson",
+    "email": "doug@somethingdoug.com",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/serve-static",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/serve-static/LICENSE"
+  },
+  "setprototypeof@1.2.0": {
+    "licenses": "ISC",
+    "repository": "https://github.com/wesleytodd/setprototypeof",
+    "publisher": "Wes Todd",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/setprototypeof",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/setprototypeof/LICENSE"
+  },
+  "side-channel-list@1.0.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/ljharb/side-channel-list",
+    "publisher": "Jordan Harband",
+    "email": "ljharb@gmail.com",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/side-channel-list",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/side-channel-list/LICENSE"
+  },
+  "side-channel-map@1.0.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/ljharb/side-channel-map",
+    "publisher": "Jordan Harband",
+    "email": "ljharb@gmail.com",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/side-channel-map",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/side-channel-map/LICENSE"
+  },
+  "side-channel-weakmap@1.0.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/ljharb/side-channel-weakmap",
+    "publisher": "Jordan Harband",
+    "email": "ljharb@gmail.com",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/side-channel-weakmap",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/side-channel-weakmap/LICENSE"
+  },
+  "side-channel@1.1.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/ljharb/side-channel",
+    "publisher": "Jordan Harband",
+    "email": "ljharb@gmail.com",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/side-channel",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/side-channel/LICENSE"
+  },
+  "statuses@2.0.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/jshttp/statuses",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/statuses",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/statuses/LICENSE"
+  },
+  "streamsearch@1.1.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/mscdex/streamsearch",
+    "publisher": "Brian White",
+    "email": "mscdex@mscdex.net",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/streamsearch",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/streamsearch/LICENSE"
+  },
+  "string_decoder@1.3.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/nodejs/string_decoder",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/string_decoder",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/string_decoder/LICENSE"
+  },
+  "strtok3@10.3.5": {
+    "licenses": "MIT",
+    "repository": "https://github.com/Borewit/strtok3",
+    "publisher": "Borewit",
+    "url": "https://github.com/Borewit",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/strtok3",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/strtok3/LICENSE.txt"
+  },
+  "toidentifier@1.0.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/component/toidentifier",
+    "publisher": "Douglas Christopher Wilson",
+    "email": "doug@somethingdoug.com",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/toidentifier",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/toidentifier/LICENSE"
+  },
+  "token-types@6.1.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/Borewit/token-types",
+    "publisher": "Borewit",
+    "url": "https://github.com/Borewit",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/token-types",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/token-types/LICENSE.txt"
+  },
+  "tslib@2.8.1": {
+    "licenses": "0BSD",
+    "repository": "https://github.com/Microsoft/tslib",
+    "publisher": "Microsoft Corp.",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/tslib",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/tslib/LICENSE.txt"
+  },
+  "type-is@1.6.18": {
+    "licenses": "MIT",
+    "repository": "https://github.com/jshttp/type-is",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/multer/node_modules/type-is",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/multer/node_modules/type-is/LICENSE"
+  },
+  "type-is@2.1.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/jshttp/type-is",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/type-is",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/type-is/LICENSE"
+  },
+  "typedarray@0.0.6": {
+    "licenses": "MIT",
+    "repository": "https://github.com/substack/typedarray",
+    "publisher": "James Halliday",
+    "email": "mail@substack.net",
+    "url": "http://substack.net",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/typedarray",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/typedarray/LICENSE"
+  },
+  "uid@2.0.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/lukeed/uid",
+    "publisher": "Luke Edwards",
+    "email": "luke.edwards05@gmail.com",
+    "url": "https://lukeed.com",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/uid",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/uid/license"
+  },
+  "uint8array-extras@1.5.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/sindresorhus/uint8array-extras",
+    "publisher": "Sindre Sorhus",
+    "email": "sindresorhus@gmail.com",
+    "url": "https://sindresorhus.com",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/uint8array-extras",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/uint8array-extras/license"
+  },
+  "undici-types@7.18.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/nodejs/undici",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/undici-types",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/undici-types/LICENSE"
+  },
+  "unpipe@1.0.0": {
+    "licenses": "MIT",
+    "repository": "https://github.com/stream-utils/unpipe",
+    "publisher": "Douglas Christopher Wilson",
+    "email": "doug@somethingdoug.com",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/unpipe",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/unpipe/LICENSE"
+  },
+  "util-deprecate@1.0.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/TooTallNate/util-deprecate",
+    "publisher": "Nathan Rajlich",
+    "email": "nathan@tootallnate.net",
+    "url": "http://n8.io/",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/util-deprecate",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/util-deprecate/LICENSE"
+  },
+  "utils-merge@1.0.1": {
+    "licenses": "MIT",
+    "repository": "https://github.com/jaredhanson/utils-merge",
+    "publisher": "Jared Hanson",
+    "email": "jaredhanson@gmail.com",
+    "url": "http://www.jaredhanson.net/",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/utils-merge",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/utils-merge/LICENSE"
+  },
+  "validator@13.15.35": {
+    "licenses": "MIT",
+    "repository": "https://github.com/validatorjs/validator.js",
+    "publisher": "Chris O'Hara",
+    "email": "cohara87@gmail.com",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/validator",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/validator/LICENSE"
+  },
+  "vary@1.1.2": {
+    "licenses": "MIT",
+    "repository": "https://github.com/jshttp/vary",
+    "publisher": "Douglas Christopher Wilson",
+    "email": "doug@somethingdoug.com",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/vary",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/vary/LICENSE"
+  },
+  "wrappy@1.0.2": {
+    "licenses": "ISC",
+    "repository": "https://github.com/npm/wrappy",
+    "publisher": "Isaac Z. Schlueter",
+    "email": "i@izs.me",
+    "url": "http://blog.izs.me/",
+    "path": "/Users/krivikshaaitech/predikt/backend/node_modules/wrappy",
+    "licenseFile": "/Users/krivikshaaitech/predikt/backend/node_modules/wrappy/LICENSE"
+  }
+}
+

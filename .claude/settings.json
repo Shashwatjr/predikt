@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Skill(run)",
+      "Skill(run:*)",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\('BACKEND scripts:'\\); [print\\(' ',k,'->',v\\) for k,v in d.get\\('scripts',{}\\).items\\(\\)]\")",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\('MOBILE scripts:'\\); [print\\(' ',k,'->',v\\) for k,v in d.get\\('scripts',{}\\).items\\(\\)]\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3000)",
+      "Bash(grep -rlnE \"@Controller\" src --include-dir)",
+      "Bash(cd /Users/krivikshaaitech/predikt/backend; echo \"=== create-room dto ===\"; sed -n '1,140p' src/rooms/dto/create-room.dto.ts; echo \"=== milestone-predictions dto ===\"; find src -name \"*.dto.ts\" | xargs grep -ln \"milestone\" 2>/dev/null; sed -n '1,60p' src/predictions/dto/*.ts 2>/dev/null | head -80)",
+      "Bash(CI=1 BROWSER=none EXPO_NO_TELEMETRY=1 npx expo start --web --port 8081)",
+      "Bash(TZ='Asia/Kolkata' node verify.mjs)",
+      "Bash(TZ='Asia/Kolkata' node verify2.mjs)"
+    ],
+    "additionalDirectories": [
+      "/Users/krivikshaaitech/predikt/backend/src/predictions/dto"
+    ]
+  }
+}
