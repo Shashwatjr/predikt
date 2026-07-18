@@ -38,6 +38,13 @@ export class RoomsController {
     return this.roomsService.leave(roomId, user);
   }
 
+  @UseGuards(JwtAuthGuard)
+  @Post(':roomId/rematch')
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  rematch(@Param('roomId') roomId: string, @CurrentUser() user: User) {
+    return this.roomsService.rematch(roomId, user);
+  }
+
   @Get('code/:inviteCode')
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   findByCode(@Param('inviteCode') inviteCode: string) {

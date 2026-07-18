@@ -29,4 +29,13 @@ export class EndRoomDto {
   @IsOptional()
   @IsString()
   resultText?: string;
+
+  @IsOptional()
+  location?: {
+    lat: number;
+    lng: number;
+  };
+
+  @IsOptional()
+  confirmAnyway?: boolean;
 }

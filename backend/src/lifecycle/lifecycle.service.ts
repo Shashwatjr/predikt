@@ -11,6 +11,8 @@ import { StartRoomDto } from './dto/start-room.dto';
 import { User } from '@prisma/client';
 import { safePublicUser, SAFE_PUBLIC_USER_SELECT } from '../common/utils/safe-user-select';
 import { findBannedBettingTerms } from '../common/utils/content-policy';
+import { distanceMeters } from '../common/utils/geo';
+import { usesExclusiveLocationResource } from '../rooms/rooms.service';
 import { POLICY_BLOCK_MESSAGE } from '../common/constants/policy.constants';
 import { AuditService } from '../audit/audit.service';
 import { CancelJourneyDto } from './dto/cancel-journey.dto';
@@ -33,6 +35,9 @@ const MULTIPLE_CHOICE_WIN_CLOUT = 30;
 const MULTIPLE_CHOICE_PARTICIPATION_CLOUT = 5;
 const DEFAULT_EXPECTED_DURATION_SECONDS = 60 * 60;
 const INACTIVITY_THRESHOLD_SECONDS = 20 * 60;
+const START_VISIBILITY_DELAY_MS = 2 * 60 * 1000;
+const ARRIVAL_CONFIRM_DISTANCE_METERS = 2000;
+const CHECKPOINT_MILESTONES = [50, 80] as const;
 const RELIABILITY_POINTS: Record<string, number> = {
   journey_completed_verified: 2,
   cancelled_before_lock: 0,
@@ -105,7 +110,11 @@ export class LifecycleService {
       await this.lockPredictions(roomId, user);
     }
 
-    const startDelayMinutes = dto.startDelayMinutes ?? DEFAULT_START_DELAY_MINUTES;
+    // Non-GPS rooms have no live location to protect or coordinate, so they may
+    // start immediately (no default delay) and become visible at once.
+    const isLocationTracked = usesExclusiveLocationResource(room.roomCategory);
+    const startDelayMinutes =
+      dto.startDelayMinutes ?? (isLocationTracked ? DEFAULT_START_DELAY_MINUTES : 0);
     const scheduledStartTime = new Date(Date.now() + startDelayMinutes * 60 * 1000);
     const expectedDurationSeconds =
       room.expectedDurationSeconds ??
@@ -116,6 +125,10 @@ export class LifecycleService {
       scheduledStartTime.getTime() + (expectedDurationSeconds + gracePeriodSeconds) * 1000,
     );
 
+    const visibleMovementStartTime = isLocationTracked
+      ? new Date(scheduledStartTime.getTime() + START_VISIBILITY_DELAY_MS)
+      : scheduledStartTime;
+
     const updated = await this.prisma.predictionRoom.update({
       where: { roomId },
       data: {
@@ -123,7 +136,7 @@ export class LifecycleService {
         journeyStatus: 'started',
         plannedStartTime: scheduledStartTime,
         startTime: scheduledStartTime,
-        visibleMovementStartTime: scheduledStartTime,
+        visibleMovementStartTime,
         journeyStartedAt: scheduledStartTime,
         journeyScheduledStartAt: room.journeyScheduledStartAt ?? scheduledStartTime,
         expectedDurationSeconds,
@@ -137,6 +150,10 @@ export class LifecycleService {
       },
       include: { journeyRoute: true },
     });
+
+    if (dto.location?.lat != null && dto.location?.lng != null) {
+      await this.recordCheckpoint(roomId, user.userId, 0, dto.location.lat, dto.location.lng, scheduledStartTime);
+    }
 
     await this.auditService.log({
       actorType: 'user',
@@ -155,7 +172,7 @@ export class LifecycleService {
       severity: 'info',
       actionLabel: 'View live',
       actionTarget: `room:${roomId}:live`,
-      metadata: { journeyStatus: updated.journeyStatus },
+      metadata: { journeyStatus: updated.journeyStatus, deliverAfter: visibleMovementStartTime.toISOString() },
       idempotencyKey: `journey_started:${roomId}`,
     });
 
@@ -312,10 +329,38 @@ export class LifecycleService {
   async confirmArrival(roomId: string, user: User) {
     const room = await this.getCreatorRoom(roomId, user);
     this.guardTerminal(room.status);
+    return this.confirmArrivalWithContext(room, user, {});
+  }
+
+  async previewArrivalConfirmation(roomId: string, user: User, dto: EndRoomDto) {
+    const room = await this.getCreatorRoom(roomId, user);
+    this.guardTerminal(room.status);
 
     const actualEndTime = new Date();
+    if (dto.location?.lat != null && dto.location?.lng != null) {
+      await this.recordCheckpoint(roomId, user.userId, 100, dto.location.lat, dto.location.lng, actualEndTime);
+    }
+
+    const verification = this.buildArrivalVerification(room, dto.location?.lat, dto.location?.lng);
+    if (verification.shouldPrompt && !dto.confirmAnyway) {
+      return {
+        requiresConfirmation: true,
+        prompt: `Looks like you're not quite at ${room.destinationLabel} yet — mark as arrived anyway?`,
+        distanceMeters: verification.distanceMeters,
+      };
+    }
+
+    return this.confirmArrivalWithContext(room, user, dto);
+  }
+
+  private async confirmArrivalWithContext(room: any, user: User, dto: EndRoomDto) {
+    const actualEndTime = new Date();
+    if (dto.location?.lat != null && dto.location?.lng != null) {
+      await this.recordCheckpoint(room.roomId, user.userId, 100, dto.location.lat, dto.location.lng, actualEndTime);
+    }
+
     await this.prisma.predictionRoom.update({
-      where: { roomId },
+      where: { roomId: room.roomId },
       data: {
         journeyStatus: 'arrived_verified',
         arrivalConfirmedAt: actualEndTime,
@@ -325,32 +370,82 @@ export class LifecycleService {
       },
     });
 
-    await this.adjustReliability(user.userId, roomId, 'journey_completed_verified', 'Journey completed with arrival confirmation');
+    await this.adjustReliability(user.userId, room.roomId, 'journey_completed_verified', 'Journey completed with arrival confirmation');
     await this.auditService.log({
       actorType: 'user',
       actorId: user.userId,
       action: 'journey_arrival_confirmed',
       targetType: 'room',
-      targetId: roomId,
+      targetId: room.roomId,
     });
 
     await this.notificationsService.notifyRoomMembers({
-      roomId,
+      roomId: room.roomId,
       type: 'arrival_confirmed',
       title: 'Arrival confirmed',
       body: 'Arrival was verified. Results are being prepared.',
       severity: 'success',
       actionLabel: 'View room',
-      actionTarget: `room:${roomId}:live`,
+      actionTarget: `room:${room.roomId}:live`,
       metadata: { journeyStatus: 'arrived_verified' },
-      idempotencyKey: `arrival_confirmed:${roomId}`,
+      idempotencyKey: `arrival_confirmed:${room.roomId}`,
     });
 
     return this.end(
-      roomId,
-      { actualEndTime: actualEndTime.toISOString(), outcomeSource: 'arrival_confirmed', confidenceLevel: 'verified' },
+      room.roomId,
+      {
+        actualEndTime: actualEndTime.toISOString(),
+        outcomeSource: 'arrival_confirmed',
+        confidenceLevel: 'verified',
+        location: dto.location,
+        confirmAnyway: dto.confirmAnyway,
+      },
       user,
     );
+  }
+
+  private async recordCheckpoint(
+    roomId: string,
+    creatorUserId: string,
+    checkpoint: 0 | 50 | 80 | 100,
+    lat: number,
+    lng: number,
+    capturedAt: Date,
+  ) {
+    await this.prisma.roomCheckpoint.upsert({
+      where: { roomId_checkpoint: { roomId, checkpoint } },
+      update: { lat, lng, capturedAt },
+      create: { roomId, checkpoint, lat, lng, capturedAt },
+    });
+
+    await this.prisma.liveLocationEvent.create({
+      data: {
+        roomId,
+        creatorUserId,
+        rawLat: checkpoint === 100 ? lat : undefined,
+        rawLng: checkpoint === 100 ? lng : undefined,
+        progressPercentage: checkpoint,
+        locationDisplayMode: 'progress',
+        createdAt: capturedAt,
+      },
+    });
+  }
+
+  private buildArrivalVerification(room: any, lat?: number, lng?: number) {
+    if (
+      lat == null ||
+      lng == null ||
+      room.destinationLat == null ||
+      room.destinationLng == null
+    ) {
+      return { shouldPrompt: false, distanceMeters: null };
+    }
+
+    const distance = distanceMeters(lat, lng, room.destinationLat, room.destinationLng);
+    return {
+      shouldPrompt: distance > ARRIVAL_CONFIRM_DISTANCE_METERS,
+      distanceMeters: distance,
+    };
   }
 
   async cancelJourney(roomId: string, user: User, dto: CancelJourneyDto) {
@@ -1094,8 +1189,13 @@ export class LifecycleService {
   }
 
   private resolveGracePeriodSeconds(expectedDurationSeconds: number, existingGracePeriodSeconds?: number | null) {
-    if (existingGracePeriodSeconds) return existingGracePeriodSeconds;
-    return Math.max(10 * 60, Math.min(45 * 60, Math.round(expectedDurationSeconds * 0.25)));
+    // Grace must absorb real-world traffic variance, which routinely exceeds a
+    // quarter of the trip. Floor at 60 min, and give long trips a full duration's
+    // worth of slack. Never drop below the 60-min floor, even for a value pre-baked
+    // at room creation.
+    const minimumGraceSeconds = Math.max(60 * 60, expectedDurationSeconds);
+    if (existingGracePeriodSeconds) return Math.max(existingGracePeriodSeconds, minimumGraceSeconds);
+    return minimumGraceSeconds;
   }
 
   private async applyNeutralClosure(
@@ -1138,11 +1238,11 @@ export class LifecycleService {
     await this.notificationsService.notifyRoomMembers({
       roomId: room.roomId,
       type: journeyStatus === 'auto_closed' ? 'journey_auto_closed' : 'journey_abandoned',
-      title: journeyStatus === 'auto_closed' ? 'Journey auto-closed' : 'No-Show closed',
+      title: journeyStatus === 'auto_closed' ? 'Journey auto-closed' : 'Called it a draw',
       body:
         journeyStatus === 'auto_closed'
-          ? 'No verified arrival was recorded, so this PREDIKT was closed neutrally. Your prediction was not counted as a loss.'
-          : 'The journey did not start, so this PREDIKT was closed neutrally.',
+          ? 'Nobody ever confirmed arrival, so we called this one a draw. Your guess stays off the record — no loss counted.'
+          : 'The journey never actually got moving, so this one is a clean draw. Nobody wins, nobody loses.',
       severity: 'warning',
       actionLabel: 'View result',
       actionTarget: `room:${room.roomId}:result`,
@@ -1308,7 +1408,7 @@ export class LifecycleService {
     if (journeyStatus === 'plan_changed') return 'Journey closed: plan changed';
     if (journeyStatus === 'cancelled_by_host') return 'Journey closed fairly';
     if (journeyStatus === 'auto_closed') return 'Journey auto-closed: no verified arrival';
-    if (journeyStatus === 'abandoned') return 'Journey closed: No-Show';
+    if (journeyStatus === 'abandoned') return 'Plans changed — nobody counted as a loss';
     return reasonCode ? `Journey closed: ${reasonCode.replace(/_/g, ' ')}` : 'Journey closed';
   }
 

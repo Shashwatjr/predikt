@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { Prisma, User } from '@prisma/client';
 import { UpdateActivePredictionsOrderDto } from './dto/update-active-predictions-order.dto';
 import { LifecycleService } from '../lifecycle/lifecycle.service';
+import { ClearActivePredictionsDto } from './dto/clear-active-predictions.dto';
 
 const DAILY_SPIN_REWARDS = [
   { rewardType: 'clout', rewardValue: 10, label: '+10 Clout' },
@@ -321,6 +322,53 @@ export class DashboardService {
     return { success: true, items: dto.items };
   }
 
+  async clearActivePredictions(user: User, dto: ClearActivePredictionsDto) {
+    const visibleRooms = await this.prisma.predictionRoom.findMany({
+      where: {
+        status: { in: ['predictions_open', 'predictions_locked', 'live', 'completed'] },
+        OR: [
+          { creatorUserId: user.userId },
+          { roomMemberships: { some: { userId: user.userId, status: 'joined' } } },
+        ],
+      },
+      select: { roomId: true },
+    });
+
+    if (!visibleRooms.length) {
+      return { success: true, clearedCount: 0 };
+    }
+
+    await this.prisma.$transaction(
+      visibleRooms.map((room, index) =>
+        this.prisma.userRoomPreference.upsert({
+          where: {
+            userId_roomId: {
+              userId: user.userId,
+              roomId: room.roomId,
+            },
+          },
+          create: {
+            userId: user.userId,
+            roomId: room.roomId,
+            displayOrder: index,
+            pinned: false,
+            hiddenFromDashboard: true,
+          },
+          update: {
+            pinned: false,
+            hiddenFromDashboard: true,
+          },
+        }),
+      ),
+    );
+
+    return {
+      success: true,
+      clearedCount: visibleRooms.length,
+      reason: dto.reason?.trim() || null,
+    };
+  }
+
   async dailyChallenge(user: User) {
     return {
       challengeId: 'daily-challenge-001',
@@ -588,6 +636,9 @@ export class DashboardService {
   private buildEtaVsPredictionLabel(etaDate: Date, predictionDate: Date) {
     const diffMinutes = Math.round((etaDate.getTime() - predictionDate.getTime()) / 60_000);
     if (Math.abs(diffMinutes) <= 2) return 'ETA is close to your prediction';
+    if (Math.abs(diffMinutes) > 720) {
+      return 'ETA and your guess are way apart';
+    }
     if (diffMinutes > 0) return `ETA is about ${diffMinutes} min later than your prediction`;
     return `ETA is about ${Math.abs(diffMinutes)} min earlier than your prediction`;
   }
@@ -621,7 +672,7 @@ export class DashboardService {
     if (room.journeyStatus === 'overdue') return 'Journey is overdue';
     if (room.journeyStatus === 'inactive') return 'Waiting for traveller update';
     if (room.journeyStatus === 'auto_closed') return 'Predictions neutralized after auto-close';
-    if (room.journeyStatus === 'abandoned') return 'No-Show closed neutrally';
+    if (room.journeyStatus === 'abandoned') return 'Plans changed — nobody counted as a loss';
     if (room.journeyStatus === 'plan_changed' || room.journeyStatus === 'cancelled_by_host') {
       return 'Journey closed fairly after a plan change';
     }

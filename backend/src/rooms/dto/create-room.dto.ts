@@ -254,6 +254,17 @@ export class CreateRoomDto {
   baselineSnapshot?: Record<string, unknown>;
 
   @IsOptional()
+  @IsString()
+  providerName?: string;
+
+  @IsOptional()
+  @IsString()
+  providerConfidence?: string;
+
+  @IsOptional()
+  hostPrediction?: unknown;
+
+  @IsOptional()
   oracleBotPrediction?: unknown;
 
   @IsOptional()

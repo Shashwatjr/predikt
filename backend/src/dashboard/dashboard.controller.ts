@@ -5,6 +5,7 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { User } from '@prisma/client';
 import { UpdateActivePredictionsOrderDto } from './dto/update-active-predictions-order.dto';
+import { ClearActivePredictionsDto } from './dto/clear-active-predictions.dto';
 
 @UseGuards(JwtAuthGuard)
 @Controller('dashboard')
@@ -42,6 +43,14 @@ export class DashboardController {
     @Body() dto: UpdateActivePredictionsOrderDto,
   ) {
     return this.dashboardService.updateActivePredictionsOrder(user, dto);
+  }
+
+  @Post('active-predictions/clear')
+  clearActivePredictions(
+    @CurrentUser() user: User,
+    @Body() dto: ClearActivePredictionsDto,
+  ) {
+    return this.dashboardService.clearActivePredictions(user, dto);
   }
 
   @Get('daily-challenge')

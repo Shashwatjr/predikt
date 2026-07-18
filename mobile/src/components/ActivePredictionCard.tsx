@@ -2,6 +2,7 @@ import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useTheme } from '../context/ThemeContext';
 import ProgressBar from './ProgressBar';
+import { botEtaTeaser } from '../utils/botVoice';
 import { palette, radius, spacing, typography } from '../theme/designSystem';
 
 type ActivePrediction = {
@@ -50,6 +51,12 @@ export default function ActivePredictionCard({
   disableMoveDown,
 }: Props) {
   const { colors } = useTheme();
+  // Live-Now cards speak in the bot's voice instead of dropping a bare ETA number,
+  // so a first-timer instantly reads it as "the mark to beat".
+  const botLine =
+    item.status === 'live'
+      ? botEtaTeaser(item.liveProgress.etaTime ?? item.liveProgress.etaLabel)
+      : null;
 
   return (
     <View style={[styles.card, { backgroundColor: palette.surface, borderColor: palette.border }]}>
@@ -84,8 +91,12 @@ export default function ActivePredictionCard({
         {item.liveProgress.etaVsMyPredictionLabel ?? (item.hasSubmittedPrediction ? 'Prediction submitted' : 'Needs your prediction')}
       </Text>
 
+      {botLine ? (
+        <Text style={styles.botLine}>🤖 {botLine}</Text>
+      ) : null}
+
       {item.liveProgress.lifecycleLabel ? (
-        <Text style={[styles.lifecycleLabel, { color: '#c4b5fd' }]}>{item.liveProgress.lifecycleLabel}</Text>
+        <Text style={[styles.lifecycleLabel, { color: '#A5F3FC' }]}>{item.liveProgress.lifecycleLabel}</Text>
       ) : null}
 
       <View style={styles.actions}>
@@ -123,6 +134,7 @@ const styles = StyleSheet.create({
   infoRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 10 },
   infoText: { fontSize: 11, flex: 1 },
   predictionLabel: { fontSize: 12, fontWeight: '800' },
+  botLine: { color: palette.violetLight, fontSize: 12, fontWeight: '800', fontStyle: 'italic' },
   lifecycleLabel: { fontSize: 11, lineHeight: 16 },
   actions: { flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginTop: 4 },
   primaryAction: { borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10 },

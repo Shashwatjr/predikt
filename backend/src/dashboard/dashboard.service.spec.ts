@@ -54,7 +54,9 @@ describe('DashboardService active predictions', () => {
         milestonePredictions: [
           {
             userId: 'user-1',
-            predictedReachedTime: new Date('2026-07-09T10:20:00.000Z'),
+            // ETA is derived from Date.now() + etaMinutes, so pin the prediction
+            // relative to now to keep the ETA-vs-prediction comparison meaningful.
+            predictedReachedTime: new Date(Date.now() + 40 * 60_000),
             revokedAt: null,
           },
         ],

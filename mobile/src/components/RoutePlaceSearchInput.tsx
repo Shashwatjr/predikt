@@ -68,9 +68,7 @@ export default function RoutePlaceSearchInput({
     };
   }, []);
 
-  const providerHint = mapsConfig?.olaConfigured
-    ? 'Type to search places'
-    : 'Type to search · add OLA_MAPS_API_KEY for Ola Maps or fall back to OpenStreetMap';
+  const providerHint = 'Type at least 2 letters to search places';
 
   useEffect(() => {
     let active = true;
@@ -105,7 +103,7 @@ export default function RoutePlaceSearchInput({
           setError(
             getApiErrorMessage(
               err,
-              'Place search timed out. Check that the backend is running on port 3000.',
+              "We couldn't load places right now. Please check your connection and try again.",
             ),
           );
           setSearchProvider(null);

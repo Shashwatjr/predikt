@@ -38,7 +38,7 @@ export default function JourneyMapPreview({ region, startLocation, destinationLo
         pitchEnabled={false}
       >
         {routeCoordinates.length === 2 ? (
-          <Polyline coordinates={routeCoordinates} strokeColor="#7c3aed" strokeWidth={4} />
+          <Polyline coordinates={routeCoordinates} strokeColor="#22D3EE" strokeWidth={4} />
         ) : null}
         {startLocation ? (
           <Marker
@@ -58,7 +58,7 @@ export default function JourneyMapPreview({ region, startLocation, destinationLo
             }}
             title="Destination"
             description={destinationLocation.label}
-            pinColor="#7c3aed"
+            pinColor="#22D3EE"
           />
         ) : null}
       </MapView>

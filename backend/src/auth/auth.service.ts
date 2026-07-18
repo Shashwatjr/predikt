@@ -20,6 +20,9 @@ import {
 import { safeSelfUser } from '../common/utils/safe-user-select';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { LogoutDto } from './dto/logout.dto';
+import { GuestDto } from './dto/guest.dto';
+import { GuestUpgradeDto } from './dto/guest-upgrade.dto';
+import { featureFlags } from '../config/feature-flags';
 
 interface RefreshTokenPayload {
   sub: string;
@@ -154,6 +157,138 @@ export class AuthService {
     return safeSelfUser(user);
   }
 
+  /**
+   * Mints (or, via a matching guestKey, reuses) a guest account so someone who
+   * tapped an invite link can predict without registering. Guests are real User
+   * rows (no email/password) so they stay first-class in all scoring joins.
+   */
+  async guest(dto: GuestDto) {
+    if (!featureFlags.guestJoin) {
+      throw new BadRequestException('Guest join is currently unavailable.');
+    }
+
+    const displayName = dto.handle.trim().replace(/^@+/, '').slice(0, 30);
+    if (!displayName) {
+      throw new BadRequestException('Enter a name to join.');
+    }
+
+    // Returning guest: recognised by the device-stored guestKey.
+    if (dto.guestKey) {
+      const existing = await this.prisma.user.findUnique({
+        where: { guestKey: dto.guestKey },
+      });
+      if (existing && existing.isGuest) {
+        const refreshed =
+          existing.name === displayName
+            ? existing
+            : await this.prisma.user.update({
+                where: { userId: existing.userId },
+                data: { name: displayName },
+              });
+        return { ...(await this.issueAuthResponse(refreshed)), guestKey: refreshed.guestKey };
+      }
+    }
+
+    const roomSafeName = dto.roomId
+      ? await this.deconflictRoomName(dto.roomId, displayName)
+      : displayName;
+
+    const guestKey = dto.guestKey?.trim() || cryptoRandomId();
+    const user = await this.prisma.user.create({
+      data: {
+        name: roomSafeName,
+        isGuest: true,
+        guestKey,
+        status: 'active',
+      },
+    });
+
+    return { ...(await this.issueAuthResponse(user)), guestKey: user.guestKey };
+  }
+
+  /**
+   * Converts the current guest into a full account, preserving their user row and
+   * all Aura/Clout/prediction history. Offered after their first Tea resolves.
+   */
+  async upgradeGuest(currentUser: User, dto: GuestUpgradeDto) {
+    const user = await this.prisma.user.findUnique({
+      where: { userId: currentUser.userId },
+    });
+    if (!user) throw new UnauthorizedException();
+    if (!user.isGuest) {
+      throw new BadRequestException('This account is already registered.');
+    }
+
+    const email = dto.email.trim().toLowerCase();
+    const existingEmail = await this.prisma.user.findUnique({ where: { email } });
+    if (existingEmail) throw new ConflictException('Email already registered');
+
+    const prediktHandle = sanitizePrediktHandle(dto.prediktHandle);
+    validatePrediktHandle(prediktHandle);
+    if (prediktHandle) {
+      const existingHandle = await this.prisma.user.findFirst({ where: { prediktHandle } });
+      assertHandleAvailable(!!existingHandle);
+    }
+
+    const hash = await bcrypt.hash(dto.password, 10);
+
+    const upgraded = await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.user.update({
+        where: { userId: user.userId },
+        data: {
+          email,
+          passwordHash: hash,
+          prediktHandle,
+          name: dto.name?.trim() || user.name,
+          isGuest: false,
+        },
+      });
+      const signupCredit = await tx.creditLedger.findUnique({
+        where: { idempotencyKey: `signup:${user.userId}` },
+      });
+      if (!signupCredit) {
+        const credited = await tx.user.update({
+          where: { userId: user.userId },
+          data: { creditBalance: { increment: 30 } },
+        });
+        await tx.creditLedger.create({
+          data: {
+            userId: user.userId,
+            eventType: 'signup',
+            delta: 30,
+            balanceAfter: credited.creditBalance,
+            sourceType: 'auth',
+            idempotencyKey: `signup:${user.userId}`,
+            metadata: { label: 'Signup credit bonus', source: 'guest_upgrade' },
+          },
+        });
+        return credited;
+      }
+      return updated;
+    });
+
+    return this.issueAuthResponse(upgraded);
+  }
+
+  /** Keeps a guest's display name unambiguous among a room's joined members. */
+  private async deconflictRoomName(roomId: string, displayName: string) {
+    const members = await this.prisma.roomMembership.findMany({
+      where: { roomId, status: 'joined' },
+      select: { user: { select: { name: true, prediktHandle: true } } },
+    });
+    const taken = new Set(
+      members
+        .map((m) => (m.user.prediktHandle ?? m.user.name ?? '').trim().toLowerCase())
+        .filter(Boolean),
+    );
+    if (!taken.has(displayName.toLowerCase())) return displayName;
+    for (let n = 2; n < 100; n += 1) {
+      const candidate = `${displayName} ${n}`;
+      if (!taken.has(candidate.toLowerCase())) return candidate;
+    }
+    return `${displayName} ${cryptoRandomId().slice(0, 4)}`;
+  }
+
   private async issueAuthResponse(user: User) {
     const accessTokenTtlSeconds =
       this.configService.get<number>('JWT_ACCESS_TTL_SECONDS') ?? 900;
@@ -186,7 +321,7 @@ export class AuthService {
     const accessToken = await this.jwt.signAsync(
       {
         sub: user.userId,
-        email: user.email!,
+        email: user.email ?? '',
         tokenType: 'access',
       },
       {

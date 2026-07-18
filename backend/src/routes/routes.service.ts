@@ -33,7 +33,11 @@ function routeSafetyDelay(body: Pick<RoutePreviewDto, 'roomCategory' | 'visibili
 }
 
 function journeyGracePeriodSeconds(expectedDurationSeconds: number) {
-  return Math.max(10 * 60, Math.min(45 * 60, Math.round(expectedDurationSeconds * 0.25)));
+  // Grace must absorb real-world traffic variance. Floor at 60 min, and give
+  // long trips a full duration's worth of slack. (This is a placeholder anchored
+  // to the scheduled start; lifecycle.start recomputes autoCloseAt against the
+  // real journeyStartedAt when the creator taps Start Journey.)
+  return Math.max(60 * 60, expectedDurationSeconds);
 }
 
 function syntheticPlaceIdForLocation(location: { latitude: number; longitude: number }) {
@@ -203,6 +207,82 @@ function buildNominatimQueries(clean: string) {
 
 function normalizeSearchText(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+function queryTokensFor(clean: string) {
+  return normalizeSearchText(clean)
+    .split(' ')
+    .filter((token) => token.length >= 3);
+}
+
+/**
+ * The leading part of a query is often an un-mapped POI (e.g. an apartment or
+ * building name that OpenStreetMap has never indexed), while the tail is a real
+ * locality. Drop the leading segment so the surrounding area can still resolve.
+ */
+function buildLocalityFallbackQuery(clean: string) {
+  const commaSegments = clean
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (commaSegments.length > 1) {
+    return commaSegments.slice(1).join(', ');
+  }
+
+  const tokens = clean.split(/\s+/).filter(Boolean);
+  if (tokens.length > 1) {
+    return tokens.slice(-2).join(' ');
+  }
+
+  return null;
+}
+
+/** True when at least one suggestion actually contains a query token. */
+function hasRelevantMatch(clean: string, suggestions: PlaceSuggestionResult[]) {
+  const tokens = queryTokensFor(clean);
+  if (!tokens.length) return suggestions.length > 0;
+  return suggestions.some((suggestion) => {
+    const label = normalizeSearchText(suggestion.label);
+    return tokens.some((token) => label.includes(token));
+  });
+}
+
+/** Merge suggestions from multiple providers, dedupe by location, and rank by
+ * how well each matches the query (token overlap first, then Bengaluru bias). */
+function rankMergedSuggestions(clean: string, suggestions: PlaceSuggestionResult[]) {
+  const normalizedQuery = normalizeSearchText(clean);
+  const tokens = queryTokensFor(clean);
+  const seen = new Map<string, { suggestion: PlaceSuggestionResult; score: number }>();
+
+  for (const suggestion of suggestions) {
+    const { latitude, longitude } = suggestion;
+    const hasCoords = Number.isFinite(latitude) && Number.isFinite(longitude);
+    const key = hasCoords
+      ? `${(latitude as number).toFixed(4)}:${(longitude as number).toFixed(4)}`
+      : normalizeSearchText(suggestion.label);
+    if (seen.has(key)) continue;
+
+    const normalizedLabel = normalizeSearchText(suggestion.label);
+    const normalizedMain = normalizeSearchText(suggestion.mainText);
+    const matchedTokens = tokens.filter((token) => normalizedLabel.includes(token)).length;
+    const inBengaluru = /bengaluru|bangalore/.test(normalizedLabel);
+    const distanceKm = hasCoords
+      ? distanceMetersFromBengaluru(latitude as number, longitude as number) / 1000
+      : Number.MAX_SAFE_INTEGER;
+
+    // Higher score wins. Token matches dominate; distance only breaks ties.
+    let score = matchedTokens * 100;
+    if (normalizedMain && normalizedQuery.includes(normalizedMain)) score += 60;
+    if (normalizedLabel.startsWith(normalizedQuery)) score += 40;
+    if (inBengaluru) score += 20;
+    score -= Math.min(distanceKm, 200);
+
+    seen.set(key, { suggestion, score });
+  }
+
+  return Array.from(seen.values())
+    .sort((a, b) => b.score - a.score)
+    .map((entry) => entry.suggestion);
 }
 
 async function fetchWithTimeout(url: string, init: RequestInit = {}, timeoutMs = 4000) {
@@ -780,19 +860,43 @@ export class RoutesService {
       }
     }
 
-    const photonSuggestions = await this.photonPlaceSearch(clean).catch(() => null);
-    if (photonSuggestions?.length) {
-      return {
-        suggestions: photonSuggestions,
-        searchProvider: 'openstreetmap',
-        googleConfigured,
-      };
+    // Query both free providers together and rank by relevance. Neither is
+    // reliable alone: Photon sometimes returns a single unrelated hit, and
+    // Nominatim misses fuzzy/partial names, so a first-non-empty-wins approach
+    // let a stray result hide the better matches.
+    const [photonSuggestions, nominatimSuggestions] = await Promise.all([
+      this.photonPlaceSearch(clean).catch(() => null),
+      this.nominatimPlaceSearch(clean).catch(() => null),
+    ]);
+
+    let merged = rankMergedSuggestions(clean, [
+      ...(photonSuggestions ?? []),
+      ...(nominatimSuggestions ?? []),
+    ]);
+
+    // If nothing actually matches the query (common when the query leads with an
+    // un-mapped building/apartment name), retry with just the locality tail so
+    // the surrounding area still surfaces instead of showing an unrelated hit.
+    if (!hasRelevantMatch(clean, merged)) {
+      const fallbackQuery = buildLocalityFallbackQuery(clean);
+      if (fallbackQuery && normalizeSearchText(fallbackQuery) !== normalizeSearchText(clean)) {
+        const [photonFallback, nominatimFallback] = await Promise.all([
+          this.photonPlaceSearch(fallbackQuery).catch(() => null),
+          this.nominatimPlaceSearch(fallbackQuery).catch(() => null),
+        ]);
+        const fallbackMerged = rankMergedSuggestions(fallbackQuery, [
+          ...(photonFallback ?? []),
+          ...(nominatimFallback ?? []),
+        ]);
+        if (fallbackMerged.length) {
+          merged = fallbackMerged;
+        }
+      }
     }
 
-    const nominatimSuggestions = await this.nominatimPlaceSearch(clean).catch(() => null);
-    if (nominatimSuggestions?.length) {
+    if (merged.length) {
       return {
-        suggestions: nominatimSuggestions,
+        suggestions: merged.slice(0, 5),
         searchProvider: 'openstreetmap',
         googleConfigured,
       };
@@ -903,9 +1007,15 @@ export class RoutesService {
       suggestedQuestion,
       suggestedLockTime,
       oracleBotPrediction: {
-        predictedDurationSeconds: routeEstimate.durationSeconds,
-        label: `Oracle Bot benchmark: ${routeEstimate.etaLabel}`,
-        source: routeEstimate.providerLabel,
+        // Oracle Bot's own take: the raw maps duration plus a small variance buffer
+        // (larger when the estimate is approximate). Deterministic and explainable —
+        // a distinct benchmark from the raw Maps ETA, not a copy of it.
+        predictedDurationSeconds:
+          routeEstimate.durationSeconds +
+          Math.round(routeEstimate.durationSeconds * (routeEstimate.isApproximate ? 0.1 : 0.06)),
+        label: 'Oracle Bot estimate',
+        reason: 'Oracle Bot adds a small traffic/variance buffer to the raw maps estimate.',
+        source: 'oracle_bot_v1',
       },
       suggestedPredictionOptions: [
         {
@@ -999,6 +1109,11 @@ export class RoutesService {
           warnings: preview.warnings,
           capturedAt: new Date().toISOString(),
         },
+        providerName: preview.provider,
+        providerConfidence: preview.confidenceLevel,
+        // Host's own call, captured once at creation as an immutable benchmark. Only
+        // present when the host explicitly predicted — never fabricated from Maps.
+        hostPrediction: body.hostPrediction ?? null,
         oracleBotPrediction: preview.oracleBotPrediction,
         roomType: body.roomType ?? 'single_target',
         mode: body.mode ?? 'friends',

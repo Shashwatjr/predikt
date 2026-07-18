@@ -94,8 +94,15 @@ export function getApiErrorMessage(error: unknown, fallback: string) {
     return 'Too many attempts. Please wait a moment and try again.';
   }
 
+  if (error.code === 'ECONNABORTED') {
+    return "That took too long to respond. Please check your connection and try again.";
+  }
+
   if (error.request && !error.response) {
-    return `Could not reach the API at ${API_BASE_URL}. Check that the backend is running and the API URL is reachable from this device.`;
+    // User-facing copy stays friendly; the raw endpoint is only useful to developers.
+    const friendly =
+      "We couldn't connect right now. Please check your internet connection and try again.";
+    return __DEV__ ? `${friendly}\n(dev: no response from ${API_BASE_URL})` : friendly;
   }
 
   return fallback;

@@ -45,6 +45,12 @@ class PrimaryPredictionDto {
   question: string;
 }
 
+/** The host's own arrival call, stored as an immutable benchmark. */
+class HostPredictionDto {
+  @IsDateString()
+  arrivalTime: string;
+}
+
 class RoutePointDto {
   @IsNumber()
   @Min(-90)
@@ -148,4 +154,9 @@ export class CreateRoomFromRouteDto {
   @ValidateNested()
   @Type(() => PrimaryPredictionDto)
   primaryPrediction?: PrimaryPredictionDto;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => HostPredictionDto)
+  hostPrediction?: HostPredictionDto;
 }

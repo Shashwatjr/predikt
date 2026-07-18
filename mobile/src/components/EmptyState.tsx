@@ -17,7 +17,7 @@ type Props = {
 export default function EmptyState({ title, body, primaryLabel, secondaryLabel, onPrimary, onSecondary, icon = '✨' }: Props) {
   return (
     <View style={styles.wrap}>
-      <LinearGradient colors={['rgba(139,92,246,0.12)', 'rgba(37,99,235,0.08)']} style={styles.card}>
+      <LinearGradient colors={['rgba(34,211,238,0.12)', 'rgba(37,99,235,0.08)']} style={styles.card}>
         <Text style={styles.icon}>{icon}</Text>
         <Text style={styles.title}>{title}</Text>
         <Text style={styles.body}>{body}</Text>

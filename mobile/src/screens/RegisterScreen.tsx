@@ -7,13 +7,15 @@ import TextInputField from '../components/TextInputField';
 import PrimaryButton from '../components/PrimaryButton';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
+import { getLandingPalette } from '../theme/landingPalette';
 import api, { getApiErrorMessage } from '../services/api';
 
 type Props = { navigation: NativeStackNavigationProp<RootStackParamList, 'Register'> };
 
 export default function RegisterScreen({ navigation }: Props) {
   const { login } = useAuth();
-  const { colors } = useTheme();
+  const { isDark } = useTheme();
+  const p = getLandingPalette(isDark);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [prediktHandle, setPrediktHandle] = useState('');
@@ -51,19 +53,19 @@ export default function RegisterScreen({ navigation }: Props) {
 
   return (
     <ScrollView
-      contentContainerStyle={[styles.container, { backgroundColor: colors.bg }]}
+      contentContainerStyle={[styles.container, { backgroundColor: p.bg }]}
       keyboardShouldPersistTaps="handled"
     >
-      <View style={[styles.glow, { backgroundColor: colors.purpleDim }]} />
+      <View style={[styles.glow, { backgroundColor: p.coralSoft }]} />
 
       <View style={styles.logoBlock}>
-        <LinearGradient colors={colors.gradPrimary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.logoGradient}>
-          <Text style={styles.logoText}>PREDIKT</Text>
+        <LinearGradient colors={p.gradPrimary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.logoGradient}>
+          <Text style={[styles.logoText, { color: p.onSurfaceDark }]}>PREDIKT</Text>
         </LinearGradient>
-        <Text style={[styles.tagline, { color: colors.textSecondary }]}>Create your account</Text>
+        <Text style={[styles.tagline, { color: p.textSoft }]}>Create your account</Text>
       </View>
 
-      <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+      <View style={[styles.card, { backgroundColor: p.surface, borderColor: p.border }]}>
         <TextInputField label="Your Name" value={name} onChangeText={setName} placeholder="Shashwat" />
         <TextInputField
           label="Email"
@@ -92,7 +94,13 @@ export default function RegisterScreen({ navigation }: Props) {
           onRightIconPress={() => setShowPw((v) => !v)}
         />
         <View style={{ height: 8 }} />
-        <PrimaryButton label="Create Account" onPress={handleRegister} loading={loading} />
+        <PrimaryButton
+          label="Create Account"
+          onPress={handleRegister}
+          loading={loading}
+          gradientColors={p.gradPrimary}
+          labelColor={p.onSurfaceDark}
+        />
       </View>
 
       <PrimaryButton

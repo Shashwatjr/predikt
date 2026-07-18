@@ -9,9 +9,16 @@ type Props = {
   selected?: boolean;
   onPress: () => void;
   compact?: boolean;
+  badge?: string;
+  /**
+   * Locked = the category exists in the theme but isn't selectable yet. It stays
+   * fully visible with a "Coming Soon" label; tapping calls onPress (the caller
+   * opens the vote prompt) instead of selecting it.
+   */
+  locked?: boolean;
 };
 
-export default function CategoryTile({ theme, selected, onPress, compact }: Props) {
+export default function CategoryTile({ theme, selected, onPress, compact, badge, locked }: Props) {
   const scale = useRef(new Animated.Value(1)).current;
 
   return (
@@ -21,17 +28,31 @@ export default function CategoryTile({ theme, selected, onPress, compact }: Prop
         onPressIn={() => Animated.spring(scale, { toValue: 0.96, useNativeDriver: true, ...motion.spring }).start()}
         onPressOut={() => Animated.spring(scale, { toValue: 1, useNativeDriver: true, ...motion.spring }).start()}
         accessibilityRole="button"
-        accessibilityLabel={`${theme.label} category`}
+        accessibilityState={{ disabled: locked, selected: !!selected }}
+        accessibilityLabel={locked ? `${theme.label} category, coming soon` : `${theme.label} category`}
       >
         <LinearGradient
           colors={selected ? theme.gradient : ['rgba(18,26,53,0.95)', 'rgba(10,16,40,0.95)']}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
-          style={[styles.tile, selected && styles.tileSelected, compact && styles.compact]}
+          style={[styles.tile, selected && styles.tileSelected, compact && styles.compact, locked && styles.tileLocked]}
         >
-          <Text style={styles.icon}>{theme.icon}</Text>
-          <Text style={styles.label}>{compact ? theme.quickStartLabel : theme.label}</Text>
-          {!compact ? <Text style={styles.hint} numberOfLines={2}>{theme.emptyStateCopy}</Text> : null}
+          {locked ? (
+            <View style={styles.comingSoonBadge}>
+              <Text style={styles.comingSoonText}>COMING SOON</Text>
+            </View>
+          ) : badge ? (
+            <View style={styles.badge}>
+              <Text style={styles.badgeText}>{badge}</Text>
+            </View>
+          ) : null}
+          <Text style={[styles.icon, locked && styles.dimmed]}>{theme.icon}</Text>
+          <Text style={[styles.label, locked && styles.dimmed]}>{compact ? theme.quickStartLabel : theme.label}</Text>
+          {!compact ? (
+            <Text style={[styles.hint, locked && styles.dimmed]} numberOfLines={2}>
+              {locked ? 'Coming soon — tap to vote for it.' : theme.emptyStateCopy}
+            </Text>
+          ) : null}
         </LinearGradient>
       </Pressable>
     </Animated.View>
@@ -48,8 +69,32 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   tileSelected: { borderColor: 'rgba(255,255,255,0.35)' },
+  tileLocked: { opacity: 0.72 },
   compact: { minHeight: 88, padding: spacing.md },
+  badge: {
+    position: 'absolute',
+    top: spacing.md,
+    right: spacing.md,
+    borderRadius: radius.pill,
+    backgroundColor: palette.amber,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+  },
+  badgeText: { color: '#1A1206', fontSize: 9, fontWeight: '900', letterSpacing: 0.6 },
+  comingSoonBadge: {
+    position: 'absolute',
+    top: spacing.md,
+    right: spacing.md,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: palette.border,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+  },
+  comingSoonText: { color: palette.textSecondary, fontSize: 9, fontWeight: '900', letterSpacing: 0.6 },
   icon: { fontSize: 28 },
   label: { color: palette.textPrimary, ...typography.bodyBold },
   hint: { color: palette.textSecondary, ...typography.caption },
+  dimmed: { opacity: 0.85 },
 });

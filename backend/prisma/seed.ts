@@ -2,6 +2,8 @@ import { PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
+const LOCAL_DEFAULT_ADMIN_EMAIL = 'admin@predikt.local';
+const LOCAL_DEFAULT_ADMIN_PASSWORD = 'Admin123!';
 
 async function seedPlans() {
   const plans = [
@@ -76,13 +78,59 @@ async function seedPlans() {
 }
 
 async function seedAdmin() {
-  const adminHash = await bcrypt.hash('Admin123!', 10);
+  const adminEmail = resolveSeedAdminEmail();
+  const adminPassword = resolveSeedAdminPassword();
+  if (!adminEmail || !adminPassword) {
+    return;
+  }
+
+  const adminHash = await bcrypt.hash(adminPassword, 10);
   const roles = [
     { roleName: 'super_admin', description: 'Full platform access', permissions: { all: true } },
-    { roleName: 'platform_ops', description: 'Operations access', permissions: { dashboard: true, users: true, drops: true } },
-    { roleName: 'campaign_manager', description: 'Campaign access', permissions: { campaigns: true, sponsors: true } },
-    { roleName: 'privacy_officer', description: 'Privacy access', permissions: { privacyRequests: true, auditLogs: true } },
-    { roleName: 'compliance_auditor', description: 'Compliance access', permissions: { auditLogs: true, aiSystems: true } },
+    {
+      roleName: 'platform_ops',
+      description: 'Operations access',
+      permissions: {
+        'admin.dashboard.read': true,
+        'admin.analytics.read': true,
+        'admin.rooms.read': true,
+        'admin.rooms.review': true,
+        'admin.users.read': true,
+        'admin.users.review': true,
+        'admin.system.health.read': true,
+        'admin.system.flags.read': true,
+        'admin.moderation.read': true,
+      },
+    },
+    {
+      roleName: 'campaign_manager',
+      description: 'Campaign access',
+      permissions: {},
+    },
+    {
+      roleName: 'privacy_officer',
+      description: 'Privacy access',
+      permissions: {
+        'admin.feedback.read': true,
+        'admin.feedback.update': true,
+        'admin.moderation.read': true,
+        'admin.moderation.resolve': true,
+        'admin.privacy.read': true,
+        'admin.privacy.action': true,
+        'admin.audit.read': true,
+      },
+    },
+    {
+      roleName: 'compliance_auditor',
+      description: 'Compliance access',
+      permissions: {
+        'admin.audit.read': true,
+        'admin.rooms.read': true,
+        'admin.users.read': true,
+        'admin.system.health.read': true,
+        'admin.system.flags.read': true,
+      },
+    },
   ] as const;
 
   for (const role of roles) {
@@ -100,15 +148,73 @@ async function seedAdmin() {
   if (!superAdminRole) return;
 
   await prisma.adminUser.upsert({
-    where: { email: 'admin@predikt.local' },
+    where: { email: adminEmail },
     update: { roleId: superAdminRole.roleId, passwordHash: adminHash },
     create: {
       name: 'PREDIKT Admin',
-      email: 'admin@predikt.local',
+      email: adminEmail,
       passwordHash: adminHash,
       roleId: superAdminRole.roleId,
     },
   });
+
+  console.log('admin seeded');
+  console.log(`admin email: ${adminEmail}`);
+  console.log(`environment: ${process.env.NODE_ENV ?? 'development'}`);
+}
+
+function resolveSeedAdminEmail() {
+  const env = process.env.NODE_ENV ?? 'development';
+  const explicitEmail = process.env.SEED_ADMIN_EMAIL?.trim().toLowerCase();
+  if (explicitEmail) {
+    return explicitEmail;
+  }
+  if (canUseLocalDefaultSeed(env)) {
+    return LOCAL_DEFAULT_ADMIN_EMAIL;
+  }
+  if (isProductionLike(env)) {
+    throw new Error('SEED_ADMIN_EMAIL is required outside explicit local development seeding');
+  }
+  return null;
+}
+
+function resolveSeedAdminPassword() {
+  const env = process.env.NODE_ENV ?? 'development';
+  const explicitPassword = process.env.SEED_ADMIN_PASSWORD;
+  if (explicitPassword) {
+    assertStrongSeedPassword(explicitPassword, env);
+    return explicitPassword;
+  }
+  if (canUseLocalDefaultSeed(env)) {
+    return LOCAL_DEFAULT_ADMIN_PASSWORD;
+  }
+  if (isProductionLike(env)) {
+    throw new Error('SEED_ADMIN_PASSWORD is required outside explicit local development seeding');
+  }
+  return null;
+}
+
+function canUseLocalDefaultSeed(env: string) {
+  return env === 'development' && process.env.ALLOW_LOCAL_DEFAULT_ADMIN_SEED === 'true';
+}
+
+function isProductionLike(env: string) {
+  return env === 'production' || env === 'staging' || env === 'preview';
+}
+
+function assertStrongSeedPassword(password: string, env: string) {
+  const strongEnough =
+    password.length >= 12 &&
+    /[A-Z]/.test(password) &&
+    /[a-z]/.test(password) &&
+    /\d/.test(password) &&
+    /[^A-Za-z0-9]/.test(password);
+  if (!strongEnough) {
+    throw new Error(`SEED_ADMIN_PASSWORD must be strong for ${env} seeding`);
+  }
+  if (isProductionLike(env) && password === LOCAL_DEFAULT_ADMIN_PASSWORD) {
+    throw new Error('Default local admin password is forbidden outside local development');
+  }
 }
 
 async function main() {
@@ -426,7 +532,9 @@ async function main() {
   console.log('Seed complete.');
   console.log('Users:', [creator, viewer1, viewer2, viewer3].map((user) => user.email));
   console.log('Room invite code: DEMO1');
-  console.log('Admin: admin@predikt.local / Admin123!');
+  console.log(
+    'Admin seeded from SEED_ADMIN_EMAIL / SEED_ADMIN_PASSWORD (local default only when ALLOW_LOCAL_DEFAULT_ADMIN_SEED=true in development).',
+  );
 }
 
 main()

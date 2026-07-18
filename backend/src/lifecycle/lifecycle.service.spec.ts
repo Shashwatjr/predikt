@@ -40,7 +40,9 @@ describe('LifecycleService journey fairness', () => {
 
     expect(update).toHaveBeenCalled();
     expect(update.mock.calls[0][0].data.expectedDurationSeconds).toBe(3600);
-    expect(update.mock.calls[0][0].data.gracePeriodSeconds).toBe(900);
+    // Grace is floored at max(60 min, expectedDuration) to absorb traffic variance,
+    // so a pre-baked 900s value is raised to the 3600s floor.
+    expect(update.mock.calls[0][0].data.gracePeriodSeconds).toBe(3600);
     expect(update.mock.calls[0][0].data.autoCloseAt).toBeInstanceOf(Date);
   });
 
@@ -91,7 +93,7 @@ describe('LifecycleService journey fairness', () => {
     expect(notificationsService.notifyRoomMembers).toHaveBeenCalledWith(
       expect.objectContaining({
         type: 'journey_abandoned',
-        title: 'No-Show closed',
+        title: 'Called it a draw',
       }),
     );
   });

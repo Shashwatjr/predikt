@@ -1,6 +1,7 @@
 import {
   Injectable,
   BadRequestException,
+  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -9,6 +10,11 @@ import { Prisma } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { AuditService } from '../audit/audit.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { safeAdminAuditItem } from './utils/safe-admin-projections';
+import {
+  safeAdminUserDetail,
+  safeAdminUserListItem,
+} from './utils/safe-admin-projections';
 import {
   AdminLoginDto,
   AdminStatusChangeDto,
@@ -26,17 +32,6 @@ import {
 } from './dto/admin.dto';
 import { AdminAuthenticatedUser } from '../common/types/admin-authenticated-user';
 import { RequestMeta } from '../common/types/http-request-context';
-
-function stripSensitiveUser(user: Record<string, unknown> | null | undefined) {
-  if (!user) return user;
-  const {
-    passwordHash: _passwordHash,
-    phone: _phone,
-    email: _email,
-    ...safe
-  } = user;
-  return safe;
-}
 
 @Injectable()
 export class AdminService {
@@ -60,6 +55,21 @@ export class AdminService {
         action: 'admin.login.failed',
         targetType: 'admin_user',
         reason: 'Unknown email',
+        ipAddress: meta.ipAddress,
+        userAgent: meta.userAgent,
+      });
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    if (admin.status !== 'active') {
+      await this.auditService.log({
+        actorType: 'admin',
+        actorId: admin.adminUserId,
+        actorRole: admin.role.roleName,
+        action: 'admin.login.failed',
+        targetType: 'admin_user',
+        targetId: admin.adminUserId,
+        reason: 'Account unavailable',
         ipAddress: meta.ipAddress,
         userAgent: meta.userAgent,
       });
@@ -163,34 +173,57 @@ export class AdminService {
       dropsUnlocked,
       activeCampaigns,
       pendingPrivacyRequests,
-      recentAdminActions,
+      recentAdminActions: recentAdminActions.map((row) =>
+        safeAdminAuditItem(row as unknown as Record<string, unknown>),
+      ),
     };
   }
 
   async users() {
-    const users = await this.prisma.user.findMany({ orderBy: { createdAt: 'desc' } });
-    return users.map(stripSensitiveUser);
+    const users = await this.prisma.user.findMany({
+      orderBy: { createdAt: 'desc' },
+      select: {
+        userId: true,
+        name: true,
+        prediktHandle: true,
+        isGuest: true,
+        status: true,
+        createdAt: true,
+        updatedAt: true,
+        roomsCreatedCount: true,
+        predictionsMadeCount: true,
+        totalAura: true,
+      },
+    });
+    return users.map((user) => safeAdminUserListItem(user as unknown as Record<string, unknown>));
   }
 
   async user(userId: string) {
-    return stripSensitiveUser(await this.prisma.user.findUnique({ where: { userId } }));
+    const user = await this.prisma.user.findUnique({ where: { userId } });
+    return safeAdminUserDetail(user as unknown as Record<string, unknown> | null);
   }
 
   async patchUserStatus(userId: string, body: AdminStatusChangeDto, adminUser: AdminAuthenticatedUser) {
     const before = await this.prisma.user.findUnique({ where: { userId } });
-    const after = before;
+    if (!before) {
+      throw new BadRequestException('User not found');
+    }
+    const after = await this.prisma.user.update({
+      where: { userId },
+      data: { status: body.status },
+    });
     await this.auditService.log({
       actorType: 'admin',
       actorId: adminUser.adminUserId,
       actorRole: adminUser.role.roleName,
-      action: 'user.status.reviewed',
+      action: 'user.status.updated',
       targetType: 'user',
       targetId: userId,
-      beforeValue: stripSensitiveUser(before),
-      afterValue: { ...stripSensitiveUser(after), requestedStatus: body.status },
+      beforeValue: safeAdminUserDetail(before as unknown as Record<string, unknown> | null),
+      afterValue: safeAdminUserDetail(after as unknown as Record<string, unknown> | null),
       reason: body.reason,
     });
-    return { userId, status: body.status, note: 'User status is documented only in MVP foundation' };
+    return safeAdminUserDetail(after as unknown as Record<string, unknown> | null);
   }
 
   async suspendUser(userId: string, body: AdminStatusChangeDto, adminUser: AdminAuthenticatedUser) {
@@ -206,18 +239,32 @@ export class AdminService {
       action: 'user.suspended',
       targetType: 'user',
       targetId: userId,
-      beforeValue: stripSensitiveUser(before),
-      afterValue: stripSensitiveUser(after),
+      beforeValue: safeAdminUserDetail(before as unknown as Record<string, unknown> | null),
+      afterValue: safeAdminUserDetail(after as unknown as Record<string, unknown> | null),
       reason: body.reason,
     });
-    return stripSensitiveUser(after);
+    return safeAdminUserDetail(after as unknown as Record<string, unknown> | null);
   }
 
   rooms() {
+    // Explicit select: never return raw room rows here — PredictionRoom carries
+    // exact start/destination coordinates and place labels, which must not leak
+    // through the admin surface (Ghost Mode applies to admins too).
     return this.prisma.predictionRoom.findMany({
       orderBy: { createdAt: 'desc' },
       take: 100,
-      include: {
+      select: {
+        roomId: true,
+        inviteCode: true,
+        roomTitle: true,
+        category: true,
+        eventType: true,
+        status: true,
+        journeyStatus: true,
+        createdAt: true,
+        lockTime: true,
+        actualEndTime: true,
+        rematchOfRoomId: true,
         creator: {
           select: {
             userId: true,
@@ -273,20 +320,64 @@ export class AdminService {
     if (!amount) {
       throw new BadRequestException('amount is required');
     }
-    const updatedUser = await this.prisma.user.update({
-      where: { userId: body.userId },
-      data: { creditBalance: { decrement: amount } },
-    });
-    const ledger = await this.prisma.creditLedger.create({
-      data: {
-        userId: body.userId,
-        eventType: 'admin_reverse',
-        delta: -amount,
-        balanceAfter: updatedUser.creditBalance,
-        sourceType: 'admin',
-        metadata: { reason: body.reason, adminUserId: adminUser.adminUserId },
-      },
-    });
+
+    // Namespaced so an admin key can never collide with signup/other ledger keys.
+    const idempotencyKey = body.idempotencyKey?.trim()
+      ? `admin_reverse:${body.idempotencyKey.trim()}`
+      : undefined;
+
+    // Idempotent replay: a repeated key returns the original entry, never re-decrements.
+    if (idempotencyKey) {
+      const existing = await this.prisma.creditLedger.findUnique({ where: { idempotencyKey } });
+      if (existing) return existing;
+    }
+
+    let ledger;
+    try {
+      // Single transaction: read balance, guard against negative, decrement, and
+      // write the ledger atomically so a partial reversal can never persist.
+      ledger = await this.prisma.$transaction(async (tx) => {
+        const user = await tx.user.findUnique({
+          where: { userId: body.userId },
+          select: { creditBalance: true },
+        });
+        if (!user) {
+          throw new NotFoundException('User not found');
+        }
+        if (amount > user.creditBalance) {
+          throw new BadRequestException(
+            `Reversal of ${amount} exceeds the user's current balance of ${user.creditBalance}. Balances cannot go negative.`,
+          );
+        }
+        const updatedUser = await tx.user.update({
+          where: { userId: body.userId },
+          data: { creditBalance: { decrement: amount } },
+        });
+        return tx.creditLedger.create({
+          data: {
+            userId: body.userId,
+            eventType: 'admin_reverse',
+            delta: -amount,
+            balanceAfter: updatedUser.creditBalance,
+            sourceType: 'admin',
+            ...(idempotencyKey ? { idempotencyKey } : {}),
+            metadata: { reason: body.reason, adminUserId: adminUser.adminUserId },
+          },
+        });
+      });
+    } catch (error) {
+      // Concurrent replay of the same key: the unique constraint tripped — return the winner.
+      if (
+        idempotencyKey &&
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        const existing = await this.prisma.creditLedger.findUnique({ where: { idempotencyKey } });
+        if (existing) return existing;
+      }
+      throw error;
+    }
+
     await this.auditService.log({
       actorType: 'admin',
       actorId: adminUser.adminUserId,
@@ -478,7 +569,50 @@ export class AdminService {
   }
 
   auditLogs() {
-    return this.prisma.auditLog.findMany({ orderBy: { createdAt: 'desc' }, take: 100 });
+    return this.prisma.auditLog
+      .findMany({ orderBy: { createdAt: 'desc' }, take: 100 })
+      .then((rows) => rows.map((row) => safeAdminAuditItem(row as unknown as Record<string, unknown>)));
+  }
+
+  async searchAuditLogs(query: {
+    actorId?: string;
+    action?: string;
+    targetId?: string;
+    targetType?: string;
+    dateFrom?: string;
+    dateTo?: string;
+    page?: number;
+    pageSize?: number;
+  }) {
+    const page = Math.max(1, Number(query.page ?? 1));
+    const pageSize = Math.min(100, Math.max(1, Number(query.pageSize ?? 25)));
+    const where: Record<string, unknown> = {};
+    if (query.actorId) where.actorId = query.actorId;
+    if (query.action) where.action = { contains: query.action };
+    if (query.targetId) where.targetId = query.targetId;
+    if (query.targetType) where.targetType = query.targetType;
+    if (query.dateFrom || query.dateTo) {
+      where.createdAt = {};
+      if (query.dateFrom) (where.createdAt as Record<string, Date>).gte = new Date(query.dateFrom);
+      if (query.dateTo) (where.createdAt as Record<string, Date>).lte = new Date(query.dateTo);
+    }
+
+    const [total, items] = await Promise.all([
+      this.prisma.auditLog.count({ where }),
+      this.prisma.auditLog.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+    ]);
+
+    return {
+      page,
+      pageSize,
+      total,
+      items: items.map((item) => safeAdminAuditItem(item as unknown as Record<string, unknown>)),
+    };
   }
 
   privacyRequests() {

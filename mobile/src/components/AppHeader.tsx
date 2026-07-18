@@ -74,9 +74,9 @@ const styles = StyleSheet.create({
   right: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   statPill: {
     borderRadius: 999,
-    backgroundColor: 'rgba(139,92,246,0.2)',
+    backgroundColor: 'rgba(34,211,238,0.2)',
     borderWidth: 1,
-    borderColor: 'rgba(139,92,246,0.35)',
+    borderColor: 'rgba(34,211,238,0.35)',
     paddingHorizontal: 8,
     paddingVertical: 4,
   },

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useState } from 'react';
 import { Platform, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { ThemeProvider } from './src/context/ThemeContext';
 import { AuthProvider } from './src/context/AuthContext';
@@ -7,6 +7,17 @@ import { useTheme } from './src/context/ThemeContext';
 import { useAuth } from './src/context/AuthContext';
 import StartupSpark from './src/components/StartupSpark';
 import { getStartupSparkPayload } from './src/services/startupSpark';
+import { featureFlags } from './src/config/featureFlags';
+
+const AdminApp = lazy(() => import('./src/admin/AdminApp'));
+
+function isAdminWebRoute() {
+  return (
+    Platform.OS === 'web' &&
+    typeof window !== 'undefined' &&
+    window.location.pathname.startsWith('/admin')
+  );
+}
 
 function AppShell() {
   const { colors } = useTheme();
@@ -42,7 +53,7 @@ function AppShell() {
   }
 
   const isLargeScreen = width >= 1024;
-  const webFrameWidth = isLargeScreen ? Math.min(width, 1200) : '100%';
+  const webFrameWidth = isLargeScreen ? Math.min(width, 1360) : '100%';
 
   return (
     <View style={[styles.webRoot, { backgroundColor: colors.bg }]}>
@@ -64,6 +75,14 @@ function AppShell() {
 }
 
 export default function App() {
+  if (featureFlags.adminPortalEnabled && isAdminWebRoute()) {
+    return (
+      <Suspense fallback={<View style={styles.adminLoading} />}>
+        <AdminApp />
+      </Suspense>
+    );
+  }
+
   return (
     <ThemeProvider>
       <AuthProvider>
@@ -83,5 +102,9 @@ const styles = StyleSheet.create({
     flex: 1,
     borderLeftWidth: 1,
     borderRightWidth: 1,
+  },
+  adminLoading: {
+    flex: 1,
+    backgroundColor: '#060816',
   },
 });

@@ -42,7 +42,7 @@ const styles = StyleSheet.create({
   },
   selected: {
     borderColor: palette.violet,
-    backgroundColor: 'rgba(139,92,246,0.15)',
+    backgroundColor: 'rgba(34,211,238,0.15)',
   },
   icon: { fontSize: 24 },
   label: { color: palette.textPrimary, ...typography.bodyBold },

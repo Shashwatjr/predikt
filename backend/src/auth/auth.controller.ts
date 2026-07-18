@@ -5,6 +5,8 @@ import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { LogoutDto } from './dto/logout.dto';
+import { GuestDto } from './dto/guest.dto';
+import { GuestUpgradeDto } from './dto/guest-upgrade.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { User } from '@prisma/client';
@@ -34,6 +36,19 @@ export class AuthController {
   @Post('logout')
   logout(@Body() dto: LogoutDto) {
     return this.authService.logout(dto);
+  }
+
+  @Post('guest')
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  guest(@Body() dto: GuestDto) {
+    return this.authService.guest(dto);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('guest/upgrade')
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  upgradeGuest(@Body() dto: GuestUpgradeDto, @CurrentUser() user: User) {
+    return this.authService.upgradeGuest(user, dto);
   }
 
   @UseGuards(JwtAuthGuard)

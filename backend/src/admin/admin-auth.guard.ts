@@ -1,6 +1,7 @@
 import {
   CanActivate,
   ExecutionContext,
+  ForbiddenException,
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -30,6 +31,9 @@ export class AdminAuthGuard implements CanActivate {
 
     try {
       const payload = await this.jwtService.verifyAsync(token, { secret });
+      if (payload.tokenType === 'access' || payload.tokenType === 'refresh') {
+        throw new ForbiddenException('Admin access required');
+      }
       if (payload.tokenType !== 'admin_access') {
         throw new UnauthorizedException('Invalid admin token');
       }
@@ -42,7 +46,21 @@ export class AdminAuthGuard implements CanActivate {
       }
       request.adminUser = admin as AdminAuthenticatedUser;
       return true;
-    } catch {
+    } catch (error) {
+      if (error instanceof ForbiddenException) {
+        throw error;
+      }
+      try {
+        const userSecret = this.configService.get<string>('JWT_SECRET');
+        const userPayload = await this.jwtService.verifyAsync(token, { secret: userSecret });
+        if (userPayload?.tokenType === 'access' || userPayload?.tokenType === 'refresh') {
+          throw new ForbiddenException('Admin access required');
+        }
+      } catch (userError) {
+        if (userError instanceof ForbiddenException) {
+          throw userError;
+        }
+      }
       throw new UnauthorizedException('Invalid admin token');
     }
   }

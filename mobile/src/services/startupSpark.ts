@@ -1,6 +1,4 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as SecureStore from 'expo-secure-store';
-import { Platform } from 'react-native';
+import { keyValueStore } from './keyValueStore';
 import { getSparkDateKey, getSparkForDate } from '../utils/sparkRotation';
 
 export type DailySparkState = {
@@ -15,30 +13,17 @@ export type DailySparkState = {
 const STARTUP_SPARK_STATE_KEY = 'predikt.startup-spark.state.v1';
 const STARTUP_SPARK_ENABLED_KEY = 'predikt.startup-spark.enabled.v1';
 
-async function getItem(key: string) {
-  return Platform.OS === 'web' ? AsyncStorage.getItem(key) : SecureStore.getItemAsync(key);
-}
-
-async function setItem(key: string, value: string) {
-  if (Platform.OS === 'web') {
-    await AsyncStorage.setItem(key, value);
-    return;
-  }
-
-  await SecureStore.setItemAsync(key, value);
-}
-
 export async function getStartupSparkEnabled() {
-  const value = await getItem(STARTUP_SPARK_ENABLED_KEY);
+  const value = await keyValueStore.getItem(STARTUP_SPARK_ENABLED_KEY);
   return value !== 'false';
 }
 
 export async function setStartupSparkEnabled(enabled: boolean) {
-  await setItem(STARTUP_SPARK_ENABLED_KEY, enabled ? 'true' : 'false');
+  await keyValueStore.setItem(STARTUP_SPARK_ENABLED_KEY, enabled ? 'true' : 'false');
 }
 
 export async function getDailySparkState() {
-  const raw = await getItem(STARTUP_SPARK_STATE_KEY);
+  const raw = await keyValueStore.getItem(STARTUP_SPARK_STATE_KEY);
   if (!raw) return null;
 
   try {
@@ -49,7 +34,7 @@ export async function getDailySparkState() {
 }
 
 async function saveDailySparkState(state: DailySparkState) {
-  await setItem(STARTUP_SPARK_STATE_KEY, JSON.stringify(state));
+  await keyValueStore.setItem(STARTUP_SPARK_STATE_KEY, JSON.stringify(state));
 }
 
 export async function getStartupSparkPayload() {

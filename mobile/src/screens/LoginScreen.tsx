@@ -7,6 +7,7 @@ import TextInputField from '../components/TextInputField';
 import PrimaryButton from '../components/PrimaryButton';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
+import { getLandingPalette } from '../theme/landingPalette';
 import api, { getApiErrorMessage } from '../services/api';
 
 type Props = { navigation: NativeStackNavigationProp<RootStackParamList, 'Login'> };
@@ -28,7 +29,8 @@ const DEV_ACCOUNTS = [
 
 export default function LoginScreen({ navigation }: Props) {
   const { login } = useAuth();
-  const { colors } = useTheme();
+  const { isDark } = useTheme();
+  const p = getLandingPalette(isDark);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPw, setShowPw] = useState(false);
@@ -63,22 +65,22 @@ export default function LoginScreen({ navigation }: Props) {
 
   return (
     <ScrollView
-      contentContainerStyle={[styles.container, { backgroundColor: colors.bg }]}
+      contentContainerStyle={[styles.container, { backgroundColor: p.bg }]}
       keyboardShouldPersistTaps="handled"
     >
       {/* Ambient glow */}
-      <View style={[styles.glow, { backgroundColor: colors.purpleDim }]} />
+      <View style={[styles.glow, { backgroundColor: p.coralSoft }]} />
 
       {/* Logo */}
       <View style={styles.logoBlock}>
-        <LinearGradient colors={colors.gradPrimary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.logoGradient}>
-          <Text style={styles.logoText}>PREDIKT</Text>
+        <LinearGradient colors={p.gradPrimary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.logoGradient}>
+          <Text style={[styles.logoText, { color: p.onSurfaceDark }]}>PREDIKT</Text>
         </LinearGradient>
-        <Text style={[styles.tagline, { color: colors.textSecondary }]}>Predict what's next.</Text>
+        <Text style={[styles.tagline, { color: p.textSoft }]}>Predict what's next.</Text>
       </View>
 
       {/* Card */}
-      <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+      <View style={[styles.card, { backgroundColor: p.surface, borderColor: p.border }]}>
         <TextInputField
           label="Email"
           value={email}
@@ -98,23 +100,29 @@ export default function LoginScreen({ navigation }: Props) {
         />
 
         <View style={styles.gap} />
-        <PrimaryButton label="Log In" onPress={handleLogin} loading={loading} />
+        <PrimaryButton
+          label="Log In"
+          onPress={handleLogin}
+          loading={loading}
+          gradientColors={p.gradPrimary}
+          labelColor={p.onSurfaceDark}
+        />
       </View>
 
       {__DEV__ ? (
-        <View style={[styles.devCard, { backgroundColor: colors.surfaceHigh, borderColor: colors.border }]}>
-          <Text style={[styles.devTitle, { color: colors.textSecondary }]}>Dev quick login</Text>
+        <View style={[styles.devCard, { backgroundColor: p.surfaceTint, borderColor: p.border }]}>
+          <Text style={[styles.devTitle, { color: p.textSoft }]}>Dev quick login</Text>
           <View style={styles.devRow}>
             {DEV_ACCOUNTS.map((account) => (
               <TouchableOpacity
                 key={account.key}
-                style={[styles.devChip, { borderColor: colors.border, backgroundColor: colors.surface }]}
+                style={[styles.devChip, { borderColor: p.border, backgroundColor: p.surface }]}
                 onPress={() => {
                   setEmail(account.email);
                   setPassword(account.password);
                 }}
               >
-                <Text style={[styles.devChipLabel, { color: colors.textPrimary }]}>{account.label}</Text>
+                <Text style={[styles.devChipLabel, { color: p.text }]}>{account.label}</Text>
               </TouchableOpacity>
             ))}
           </View>

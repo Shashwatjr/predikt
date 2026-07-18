@@ -11,6 +11,7 @@ import { User } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { safePublicUser, SAFE_PUBLIC_USER_SELECT } from '../common/utils/safe-user-select';
 import { RoomsService } from '../rooms/rooms.service';
+import { isLatePredictionWindowOpen } from '../common/utils/late-prediction';
 
 @Injectable()
 export class PredictionsService {
@@ -71,13 +72,23 @@ export class PredictionsService {
   ) {
     const room = await this.prisma.predictionRoom.findUnique({
       where: { roomId },
-      include: { milestones: { orderBy: { milestoneOrder: 'asc' } } },
+      include: {
+        milestones: { orderBy: { milestoneOrder: 'asc' } },
+        // Newest progress sample feeds the live pace-projected arrival cutoff.
+        locationEvents: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          select: { progressPercentage: true, createdAt: true },
+        },
+      },
     });
     if (!room) throw new NotFoundException('Room not found');
 
     await this.roomsService?.ensureJoinedMembership(roomId, user);
 
-    if (room.status !== 'predictions_open') {
+    const lateJoinWindowOpen = isLatePredictionWindowOpen(room);
+
+    if (room.status !== 'predictions_open' && !lateJoinWindowOpen) {
       throw new BadRequestException('Predictions are not open for this room');
     }
 
@@ -94,7 +105,7 @@ export class PredictionsService {
         throw new BadRequestException(`Milestone ${entry.milestoneId} does not belong to this room`);
       }
       const closeTime = milestone.predictionCloseTime ?? room.predictionCloseTime;
-      if (new Date() > closeTime) {
+      if (!lateJoinWindowOpen && new Date() > closeTime) {
         throw new BadRequestException(`Prediction window has closed for ${milestone.milestoneName}`);
       }
     }
@@ -398,4 +409,5 @@ export class PredictionsService {
       predictedReachedTime: predictedArrivalTime,
     }));
   }
+
 }

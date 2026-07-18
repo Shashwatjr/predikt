@@ -39,7 +39,7 @@ export const elevation = {
     default: {},
   }),
   raised: Platform.select<ViewStyle>({
-    ios: { shadowColor: '#7c3aed', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.35, shadowRadius: 16 },
+    ios: { shadowColor: '#22D3EE', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.35, shadowRadius: 16 },
     android: { elevation: 8 },
     default: {},
   }),
@@ -67,26 +67,30 @@ export const iconSize = {
   xl: 40,
 } as const;
 
+// Primary brand accent is cyan/teal. `violet`/`violetLight` keep their long-standing
+// names (referenced across screens) but now carry the cyan brand so the whole app is
+// one scheme; purple lives on only as a small secondary accent (statusColors.completed,
+// landingPalette.berry).
 export const palette = {
-  bg: '#030816',
-  bgElevated: '#0a1028',
-  surface: '#121a35',
-  surfaceHigh: '#1a2347',
-  border: 'rgba(96,165,250,0.18)',
-  borderFocus: '#8b5cf6',
-  violet: '#8b5cf6',
-  violetLight: '#c4b5fd',
-  cyan: '#22d3ee',
+  bg: '#060816',
+  bgElevated: '#0F1527',
+  surface: '#0F1527',
+  surfaceHigh: '#171F36',
+  border: '#283252',
+  borderFocus: '#22D3EE',
+  violet: '#22D3EE',
+  violetLight: '#67E8F9',
+  cyan: '#22D3EE',
   green: '#22c55e',
   orange: '#fb923c',
   pink: '#f472b6',
   amber: '#fbbf24',
-  textPrimary: '#f8fafc',
-  textSecondary: 'rgba(255,255,255,0.68)',
-  textMuted: 'rgba(255,255,255,0.45)',
-  gradHero: ['#6d28d9', '#2563eb', '#06b6d4'] as [string, string, string],
-  gradPrimary: ['#7c3aed', '#4f46e5'] as [string, string],
-  gradCta: ['#1da1ff', '#9333ea'] as [string, string],
+  textPrimary: '#FFFFFF',
+  textSecondary: '#9BA7C2',
+  textMuted: '#64748B',
+  gradHero: ['#22D3EE', '#06B6D4', '#14B8A6'] as [string, string, string],
+  gradPrimary: ['#22D3EE', '#14B8A6'] as [string, string],
+  gradCta: ['#22D3EE', '#06B6D4'] as [string, string],
   gradGold: ['#fbbf24', '#f59e0b'] as [string, string],
 } as const;
 
@@ -138,7 +142,7 @@ export const screenStyles = StyleSheet.create({
     width: 280,
     height: 280,
     borderRadius: 140,
-    backgroundColor: 'rgba(124,58,237,0.35)',
+    backgroundColor: 'rgba(34,211,238,0.22)',
     pointerEvents: 'none',
   },
   glowBottom: {

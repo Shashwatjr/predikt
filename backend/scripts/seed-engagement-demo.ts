@@ -872,7 +872,7 @@ async function main() {
         roomId: scenarios[6].room.roomId,
         type: 'journey_auto_closed',
         title: 'Journey auto-closed',
-        body: 'No verified arrival was recorded, so this PREDIKT was closed neutrally. Your prediction was not counted as a loss.',
+        body: 'Nobody ever confirmed arrival, so we called this one a draw. Your guess stays off the record — no loss counted.',
         status: 'read',
         severity: 'warning',
         actionLabel: 'View result',

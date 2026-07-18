@@ -13,7 +13,7 @@ export default function SponsoredPlacementCard({ placement }: Props) {
 
   return (
     <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-      <LinearGradient colors={['rgba(124,58,237,0.22)', 'rgba(14,165,233,0.08)']} style={styles.glow} />
+      <LinearGradient colors={['rgba(34,211,238,0.22)', 'rgba(14,165,233,0.08)']} style={styles.glow} />
       <Text style={[styles.label, { color: colors.purpleLight }]}>{placement.label}</Text>
       <Text style={[styles.title, { color: colors.textPrimary }]}>{placement.title}</Text>
       <Text style={[styles.description, { color: colors.textSecondary }]}>{placement.description}</Text>

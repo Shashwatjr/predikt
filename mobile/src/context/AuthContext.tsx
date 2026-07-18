@@ -19,6 +19,7 @@ export interface AuthUser {
   userId: string;
   name: string;
   email?: string | null;
+  isGuest?: boolean;
   prediktHandle?: string | null;
   profileImage?: string | null;
   totalAura: number;
@@ -198,6 +199,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           refreshExpiryMs <= Date.now()
         ) {
           await refreshSession();
+        }
+      } catch (error) {
+        if (__DEV__) {
+          console.warn('[PREDIKT_AUTH] failed to restore session', error);
+        }
+        if (mountedRef.current) {
+          await clearSessionState();
         }
       } finally {
         if (mountedRef.current) {

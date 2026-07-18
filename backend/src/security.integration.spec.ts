@@ -6,6 +6,7 @@ import * as bcrypt from 'bcrypt';
 import request from 'supertest';
 import { AppModule } from './app.module';
 import { configureApp } from './app.bootstrap';
+import { featureFlags } from './config/feature-flags';
 
 type AuthPayload = {
   accessToken: string;
@@ -28,7 +29,12 @@ describe('Security And Enterprise Hardening (integration)', () => {
   const runId = `hardening-${Date.now()}`;
   const handleSuffix = `${Date.now()}`.slice(-8);
 
+  const originalAdminPortalEnabled = featureFlags.adminPortalEnabled;
+
   beforeAll(async () => {
+    // The admin portal ships default-OFF; this suite exercises admin endpoints, so
+    // enable the flag for the duration of the run (the guard reads it per-request).
+    (featureFlags as { adminPortalEnabled: boolean }).adminPortalEnabled = true;
     process.env.NODE_ENV = 'test';
     process.env.PORT = process.env.PORT ?? '3000';
     process.env.JWT_SECRET = process.env.JWT_SECRET ?? 'test-jwt-secret-1234567890';
@@ -78,6 +84,7 @@ describe('Security And Enterprise Hardening (integration)', () => {
   });
 
   afterAll(async () => {
+    (featureFlags as { adminPortalEnabled: boolean }).adminPortalEnabled = originalAdminPortalEnabled;
     if (createdRoomIds.length) {
       await prisma.userNotification.deleteMany({ where: { roomId: { in: createdRoomIds } } });
       await prisma.roomMembership.deleteMany({ where: { roomId: { in: createdRoomIds } } });
@@ -487,7 +494,7 @@ describe('Security And Enterprise Hardening (integration)', () => {
     await request(app.getHttpServer())
       .get('/admin/users')
       .set('Authorization', `Bearer ${participantAuth.accessToken}`)
-      .expect(401);
+      .expect(403);
 
     const adminUsers = await request(app.getHttpServer())
       .get('/admin/users')

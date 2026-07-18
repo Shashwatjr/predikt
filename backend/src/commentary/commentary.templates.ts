@@ -5,47 +5,60 @@ const PERSONALITY_TEMPLATES: Record<
   { headline: (input: CommentaryInput) => string; punchline: (input: CommentaryInput) => string; supportingLine: (input: CommentaryInput) => string }
 > = {
   Oracle: {
-    headline: (input) => `Oracle Bot predicted ${input.oracleBotLabel ?? input.baselineLabel ?? 'the benchmark'}`,
-    punchline: (input) => `${input.winnerHandle ?? 'Closest guess'} beat the benchmark with a ${input.differenceLabel ?? 'close'} finish.`,
-    supportingLine: (input) => `Actual result: ${input.actualOutcomeLabel ?? 'recorded'}. ${input.badgeLabel ? `${input.badgeLabel} unlocked.` : ''}`.trim(),
+    headline: (input) => `Oracle Bot did the math. ${input.winnerHandle ?? 'The room'} did it sharper.`,
+    punchline: (input) =>
+      `${input.winnerHandle ?? 'The closest guess'} beat the benchmark. Oracle Bot is requesting a recount.`,
+    supportingLine: (input) =>
+      `The math was close. The instinct was closer.${input.badgeLabel ? ` ${input.badgeLabel} unlocked.` : ''}`,
   },
   Chaos: {
-    headline: () => 'The room kept the drama alive',
+    headline: () => 'A simple prediction. An unnecessarily dramatic result.',
     punchline: (input) =>
       input.oracleBotLabel
         ? `Oracle Bot brought spreadsheets. ${input.winnerHandle ?? 'The winner'} brought instinct.`
-        : `${input.winnerHandle ?? 'The winner'} turned a normal moment into group-chat material.`,
-    supportingLine: (input) => `${input.actualOutcomeLabel ?? 'The result'} arrived with extra spice. ${input.comebackEligible ? 'Comeback energy is officially live.' : ''}`.trim(),
+        : `${input.winnerHandle ?? 'The winner'} called it and the group chat has not recovered.`,
+    supportingLine: (input) =>
+      `The result showed up fashionably late to its own reveal.${input.comebackEligible ? ' A comeback is basically inevitable now.' : ''}`,
   },
   'Best Friend': {
-    headline: () => 'That was a very solid call',
-    punchline: (input) => `${input.winnerHandle ?? 'You'} really trusted the read and it worked.`,
-    supportingLine: (input) => `${input.biggestNearMissLabel ? `Even the near miss was close: ${input.biggestNearMissLabel}.` : 'The room stayed playful and fair.'}`,
+    headline: () => 'I never doubted you. Out loud, anyway.',
+    punchline: (input) =>
+      `${input.winnerHandle ?? 'You'} trusted a hunch harder than most people trust GPS.`,
+    supportingLine: (input) =>
+      input.biggestNearMissLabel
+        ? `Even the near miss (${input.biggestNearMissLabel}) deserves a hug.`
+        : 'Nobody lost. Some people just won louder.',
   },
   'Gen Z': {
-    headline: () => 'Low-key iconic',
-    punchline: (input) => `${input.winnerHandle ?? 'That guess'} was kind of a flex, not gonna lie.`,
-    supportingLine: () => 'Rematch energy is still extremely available.',
+    headline: () => 'Not to be dramatic, but this was iconic behavior.',
+    punchline: (input) =>
+      `${input.winnerHandle ?? 'That guess'} really said "trust me" and then was correct. Rude.`,
+    supportingLine: () => 'The rematch button is right there, making direct eye contact.',
   },
   'Indian Mom': {
     headline: () => 'I told you to leave earlier',
-    punchline: () => 'See? Timing matters, but at least this became a good story.',
-    supportingLine: (input) => `${input.winnerHandle ?? 'Closest guess'} got it closest and nobody had to fight about it.`,
+    punchline: () => "See? Ten minutes early never hurt anyone. Now it's a whole story.",
+    supportingLine: (input) =>
+      `${input.winnerHandle ?? 'The closest guess'} was closest. Everyone else, drink water and try again.`,
   },
   'Corporate Manager': {
-    headline: () => 'Let’s circle back to the result',
-    punchline: () => 'Strong execution from the winner, mixed learnings for the rest of the room.',
-    supportingLine: (input) => `The closest guess still won the day${input.oracleBotLabel ? `, ahead of the ${input.oracleBotLabel} benchmark` : ''}.`,
+    headline: () => 'Quick sync on why the winner had the sharper read.',
+    punchline: () => 'Great energy from everyone. Measurable results from exactly one person.',
+    supportingLine: () => "Let's take the learnings offline. The win is going in the deck.",
   },
   'Traffic Cop': {
-    headline: () => 'The route stayed unreasonably dramatic',
+    headline: () => 'The route had three plot twists and a monologue.',
     punchline: () => 'The ETA took the scenic route and still had people acting confident.',
-    supportingLine: (input) => `${input.differenceLabel ? `Winning margin: ${input.differenceLabel}.` : 'Everyone walked away with a story.'}`,
+    supportingLine: (input) =>
+      input.differenceLabel
+        ? `Winning margin: ${input.differenceLabel}. The rest is paperwork.`
+        : 'Everyone gave a statement. Exactly one was accurate.',
   },
   'Bangalore Guru': {
     headline: () => 'Outer Ring Road never forgets',
     punchline: () => 'Traffic had opinions and the room had receipts.',
-    supportingLine: (input) => `${input.badgeLabel ? `${input.badgeLabel} energy detected.` : 'That was the kind of result that gets shared.'}`,
+    supportingLine: (input) =>
+      `${input.badgeLabel ? `${input.badgeLabel} unlocked. ` : ''}Silk Board decides who's humble today.`,
   },
 };
 
@@ -54,9 +67,9 @@ export function renderTemplate(personality: CommentaryPersonality | string, inpu
   const template = PERSONALITY_TEMPLATES[resolved];
   if (!template) {
     return {
-      headline: 'The room had a story',
-      punchline: 'The closest guess still earned the moment.',
-      supportingLine: 'The result stayed fair and playful.',
+      headline: 'Somebody was right and will not stop mentioning it.',
+      punchline: 'Closest guess wins. The rest of us are "building character."',
+      supportingLine: 'No money, no drama — just bragging rights and gentle gloating.',
     };
   }
 

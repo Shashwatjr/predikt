@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useCallback, useEffect } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { NavigationContainer, useNavigationContainerRef } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -21,7 +21,8 @@ import NotificationsScreen from '../screens/NotificationsScreen';
 import LegalScreen from '../screens/LegalScreen';
 import HelpScreen from '../screens/HelpScreen';
 import { RootStackParamList } from './types';
-import { consumePendingJoinCode } from '../utils/inviteIntent';
+import { resolveInviteJoinCode } from '../utils/inviteIntent';
+import { consumePostAuthIntent } from '../utils/postAuthIntent';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -30,22 +31,35 @@ export default function AppNavigator() {
   const { colors } = useTheme();
   const navigationRef = useNavigationContainerRef<RootStackParamList>();
 
+  // A tapped invite link opens straight into the join/predict flow — for guests
+  // (unauthenticated) and signed-in users alike — instead of the landing page.
+  // Anchored to the navigator being ready (via onReady + a post-login tick)
+  // rather than a one-shot timer, so a cold-start invite is never silently dropped.
+  const runInitialRouting = useCallback(() => {
+    if (!navigationRef.isReady()) return;
+    // A guest who just logged in mid-flow lands on their intended screen here.
+    const intent = consumePostAuthIntent();
+    if (intent) {
+      (navigationRef.navigate as (screen: string, params?: object) => void)(
+        intent.screen,
+        intent.params,
+      );
+      return;
+    }
+    void resolveInviteJoinCode().then((joinCode) => {
+      if (!joinCode || !navigationRef.isReady()) return;
+      navigationRef.navigate('JoinRoom', { joinCode });
+    });
+  }, [navigationRef]);
+
+  // The navigator remounts (key changes) when auth flips after a mid-flow login;
+  // give the fresh stack one frame to settle, then route the pending intent. On the
+  // very first mount this no-ops until ready — NavigationContainer.onReady drives that.
   useEffect(() => {
-    if (!isAuthenticated || isLoading) return;
-
-    let cancelled = false;
-    const timeout = setTimeout(() => {
-      void consumePendingJoinCode().then((joinCode) => {
-        if (!joinCode || cancelled || !navigationRef.isReady()) return;
-        navigationRef.navigate('JoinRoom', { joinCode });
-      });
-    }, 0);
-
-    return () => {
-      cancelled = true;
-      clearTimeout(timeout);
-    };
-  }, [isAuthenticated, isLoading, navigationRef]);
+    if (isLoading) return;
+    const frame = requestAnimationFrame(() => runInitialRouting());
+    return () => cancelAnimationFrame(frame);
+  }, [isAuthenticated, isLoading, runInitialRouting]);
 
   if (isLoading) {
     return (
@@ -63,7 +77,7 @@ export default function AppNavigator() {
   }
 
   return (
-    <NavigationContainer ref={navigationRef}>
+    <NavigationContainer ref={navigationRef} onReady={runInitialRouting}>
       <Stack.Navigator
         key={isAuthenticated ? 'authenticated' : 'unauthenticated'}
         initialRouteName={isAuthenticated ? 'Home' : 'Landing'}

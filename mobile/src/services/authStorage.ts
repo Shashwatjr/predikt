@@ -95,9 +95,15 @@ async function readNativeSession(): Promise<StoredSession | null> {
 
   const legacySession = parseStoredSession(await SecureStore.getItemAsync(SESSION_STORAGE_KEY));
   if (legacySession) {
-    await writeNativeSession(legacySession);
-    await SecureStore.deleteItemAsync(SESSION_STORAGE_KEY);
-    return legacySession;
+    try {
+      await writeNativeSession(legacySession);
+      await SecureStore.deleteItemAsync(SESSION_STORAGE_KEY);
+      return legacySession;
+    } catch {
+      // Migration failed (e.g. keychain write error); fall back to the legacy
+      // session as-is rather than losing the user's sign-in state.
+      return legacySession;
+    }
   }
 
   if (metadataRaw || accessToken || refreshToken) {

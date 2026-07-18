@@ -104,14 +104,14 @@ export function shouldForceNeutralMode(input: CommentaryInput) {
 export function fallbackCategoryLine(category: string | undefined | null) {
   switch (category) {
     case 'weather_rain':
-      return 'Forecast energy stayed playful and fair.';
+      return 'The forecast got a vote, not the final word.';
     case 'food_eta':
-      return 'Delivery drama created a story, not a loss.';
+      return 'The delivery ran late enough to become a story, not a loss.';
     case 'whos_late':
-      return 'Group chaos stayed friendly.';
+      return 'Group chaos, kept strictly friendly.';
     case 'gym_habit':
-      return 'Progress still counts, even when the room gets messy.';
+      return 'Progress counts, even when the room gets loud about it.';
     default:
-      return 'Closest guess still earned the moment.';
+      return 'Closest guess earned the moment — no money, just bragging rights.';
   }
 }

@@ -35,6 +35,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
   },
-  reactionSelected: { borderColor: palette.violet, backgroundColor: 'rgba(139,92,246,0.2)' },
+  reactionSelected: { borderColor: palette.violet, backgroundColor: 'rgba(34,211,238,0.2)' },
   emoji: { fontSize: 20 },
 });

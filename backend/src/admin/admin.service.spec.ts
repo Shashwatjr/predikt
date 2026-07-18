@@ -12,6 +12,7 @@ describe('AdminService', () => {
           adminUserId: 'admin-1',
           name: 'Admin',
           email: 'admin@predikt.local',
+          status: 'active',
           passwordHash,
           role: { roleName: 'super_admin' },
         }),
@@ -45,5 +46,32 @@ describe('AdminService', () => {
     expect(auditService.log).toHaveBeenCalledWith(
       expect.objectContaining({ action: 'admin.login.success' }),
     );
+  });
+
+  it('rejects disabled admins with a generic credentials error', async () => {
+    const passwordHash = await bcrypt.hash('Admin123!', 1);
+    const prisma = {
+      adminUser: {
+        findUnique: jest.fn().mockResolvedValue({
+          adminUserId: 'admin-1',
+          name: 'Admin',
+          email: 'admin@predikt.local',
+          status: 'disabled',
+          passwordHash,
+          role: { roleName: 'super_admin' },
+        }),
+      },
+    } as any;
+
+    const service = new AdminService(
+      prisma,
+      { signAsync: jest.fn() } as unknown as JwtService,
+      { log: jest.fn() } as any,
+      { get: jest.fn().mockReturnValue('test-admin-secret-1234567890') } as unknown as ConfigService,
+    );
+
+    await expect(
+      service.login({ email: 'admin@predikt.local', password: 'Admin123!' }, {}),
+    ).rejects.toThrow('Invalid credentials');
   });
 });

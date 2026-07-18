@@ -160,7 +160,7 @@ const styles = StyleSheet.create({
     height: 120,
     borderRadius: 28,
     borderWidth: 2,
-    backgroundColor: 'rgba(124, 58, 237, 0.12)',
+    backgroundColor: 'rgba(34,211,238,0.12)',
   },
   card: {
     width: '100%',

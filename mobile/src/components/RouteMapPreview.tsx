@@ -16,25 +16,27 @@ export default function RouteMapPreview({
   emptyCopy = 'Select both locations to see the route preview.',
 }: Props) {
   const { colors } = useTheme();
-
-  if (Platform.OS === 'web') {
-    const WebRouteMap = require('./WebRouteMap').default;
-    return <WebRouteMap preview={preview} loading={loading} />;
-  }
+  const previewTitle = preview ? `${preview.startLabel} -> ${preview.destinationLabel}` : emptyLabel;
+  const previewCopy = preview
+    ? 'Route preview stays lightweight for MVP. Ghost Mode is still on and the summary below carries the key details.'
+    : emptyCopy;
 
   return (
     <View style={[styles.fallback, { backgroundColor: colors.surfaceHigh, borderColor: colors.border }]}>
       <Text style={[styles.fallbackTitle, { color: colors.textPrimary }]}>
-        {preview ? `${preview.startLabel} -> ${preview.destinationLabel}` : emptyLabel}
+        {previewTitle}
       </Text>
       <Text style={[styles.fallbackCopy, { color: colors.textSecondary }]}>
-        {preview
-          ? 'Native map can fall back to a route summary for now. Web uses the full visual route preview.'
-          : emptyCopy}
+        {loading ? 'Loading route summary…' : previewCopy}
       </Text>
       {preview?.etaLabel ? (
         <Text style={[styles.fallbackCopy, { color: colors.green }]}>
           {preview.travelModeLabel} · {preview.etaLabel} · Accuracy wins. Speed does not.
+        </Text>
+      ) : null}
+      {Platform.OS === 'web' && preview ? (
+        <Text style={[styles.fallbackCopy, { color: colors.textMuted }]}>
+          First load stays fast on mobile data. Full map rendering is intentionally off for this MVP pass.
         </Text>
       ) : null}
     </View>

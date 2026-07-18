@@ -1,19 +1,21 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Alert, TouchableOpacity } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { RootStackParamList } from '../navigation/types';
 import TextInputField from '../components/TextInputField';
 import PrimaryButton from '../components/PrimaryButton';
-import RoomCard from '../components/RoomCard';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
-import api, { getApiErrorMessage } from '../services/api';
+import api, { getApiErrorMessage, setAuthToken } from '../services/api';
 import { savePendingJoinCode } from '../utils/inviteIntent';
+import { setPostAuthIntent } from '../utils/postAuthIntent';
+import { createGuestSession } from '../services/guestSession';
 import { getCategoryTheme } from '../config/categoryTheme';
 import SectionHeader from '../components/SectionHeader';
-import StatusPill from '../components/StatusPill';
-import { cardStyle, layout, palette, spacing } from '../theme/designSystem';
+import { deriveArrivalBenchmarks, formatClock } from '../utils/benchmarks';
+import { cardStyle, layout, palette, radius, spacing } from '../theme/designSystem';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'JoinRoom'>;
@@ -22,10 +24,11 @@ type Props = {
 
 export default function JoinRoomScreen({ navigation, route }: Props) {
   const { colors } = useTheme();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, login } = useAuth();
   const [code, setCode] = useState('');
   const [room, setRoom] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const [guestHandle, setGuestHandle] = useState('');
 
   async function handleFind(nextCode?: string) {
     const inviteCode = (nextCode ?? code).trim().toUpperCase();
@@ -49,32 +52,59 @@ export default function JoinRoomScreen({ navigation, route }: Props) {
     void handleFind(routeCode);
   }, [route.params?.joinCode]);
 
+  // Resolves which screen the join should land on, from the join response + status.
+  function resolveTarget(nextAction?: string) {
+    const normalizedStatus = room.status === 'prediction_open' ? 'predictions_open' : room.status;
+    const predictionRoom = { ...room, ...(room?.safePreview ?? {}) };
+    const toPrediction = { screen: 'Prediction' as const, params: { roomId: room.roomId, room: predictionRoom } };
+    const toLive = { screen: 'LiveRoom' as const, params: { roomId: room.roomId, isCreator: false } };
+
+    // nextAction from the join response is user-aware (it already accounts for
+    // whether this user has predicted and whether the late window is open), so it
+    // wins. canLateJoinPredict is only a fallback when nextAction is absent
+    // (e.g. the guest best-effort join failed) — it's user-agnostic and would
+    // otherwise send an already-predicted joiner back to re-predict.
+    if (nextAction === 'prediction') return toPrediction;
+    if (nextAction === 'live') return toLive;
+
+    if (normalizedStatus === 'predictions_open' || room?.canLateJoinPredict) return toPrediction;
+    if (normalizedStatus === 'live' || normalizedStatus === 'predictions_locked') return toLive;
+    return { screen: 'Result' as const, params: { roomId: room.roomId } };
+  }
+
   async function handleAction() {
     if (!room) return;
-    if (!isAuthenticated) {
-      await savePendingJoinCode(room.inviteCode ?? code);
-      Alert.alert(
-        'Login to join',
-        'Preview now. Login to join and make your prediction.',
-        [
-          { text: 'Keep previewing', style: 'cancel' },
-          { text: 'Login', onPress: () => navigation.navigate('Login') },
-        ],
-      );
-      return;
-    }
     setLoading(true);
     try {
-      const joinResponse = await api.post(`/rooms/${room.roomId}/join`);
-      const nextAction = joinResponse.data?.nextAction;
-      const normalizedStatus = room.status === 'prediction_open' ? 'predictions_open' : room.status;
-      if (nextAction === 'prediction' || normalizedStatus === 'predictions_open') {
-        navigation.navigate('Prediction', { roomId: room.roomId, room });
-      } else if (nextAction === 'live' || normalizedStatus === 'live' || normalizedStatus === 'predictions_locked') {
-        navigation.navigate('LiveRoom', { roomId: room.roomId, isCreator: false });
-      } else {
-        navigation.navigate('Result', { roomId: room.roomId });
+      if (!isAuthenticated) {
+        // Guests join first-class: mint a lightweight guest session inline, no account.
+        const handle = guestHandle.trim();
+        if (!handle) {
+          setLoading(false);
+          Alert.alert('Add a name', 'Enter a name so friends can see your guess.');
+          return;
+        }
+        const session = await createGuestSession(handle, room.roomId);
+        // Authorize the join before login() remounts the navigator to the auth stack.
+        setAuthToken(session.accessToken);
+        let nextAction: string | undefined;
+        try {
+          const joinResponse = await api.post(`/rooms/${room.roomId}/join`);
+          nextAction = joinResponse.data?.nextAction;
+        } catch {
+          // Best-effort: prediction submission ensures membership server-side anyway.
+        }
+        // Hand the landing to the authenticated navigator — navigating across the
+        // auth-stack remount from this (unmounting) screen would be dropped.
+        const target = resolveTarget(nextAction);
+        setPostAuthIntent(target);
+        await login(session);
+        return;
       }
+
+      const joinResponse = await api.post(`/rooms/${room.roomId}/join`);
+      const target = resolveTarget(joinResponse.data?.nextAction);
+      navigation.navigate(target.screen, target.params as never);
     } catch (error: unknown) {
       Alert.alert('Could not join', getApiErrorMessage(error, 'Please try again.'));
     } finally {
@@ -82,118 +112,185 @@ export default function JoinRoomScreen({ navigation, route }: Props) {
     }
   }
 
-  const actionLabel: Record<string, string> = {
-    predictions_open: 'Join and Predict',
-    predictions_locked: 'Join Live',
-    live: 'Join Live',
-    completed: 'View Result',
+  const normalizedStatus = room?.status === 'prediction_open' ? 'predictions_open' : room?.status;
+  const canPredictNow = normalizedStatus === 'predictions_open' || !!room?.canLateJoinPredict;
+  const ctaLabel: Record<string, string> = {
+    predictions_open: 'Make my prediction',
+    predictions_locked: 'Watch it live',
+    live: 'Watch it live',
+    completed: 'See the Tea',
   };
+  const isJoinable = canPredictNow || !!(normalizedStatus && ctaLabel[normalizedStatus]);
 
+  const benchmarks = deriveArrivalBenchmarks(room);
   const categoryTheme = getCategoryTheme(room?.category ?? room?.templateKey);
-  const lockLabel = room?.lockTime || room?.predictionCloseTime
-    ? `Locks ${new Date(room.lockTime ?? room.predictionCloseTime).toLocaleString()}`
-    : 'Lock time TBD';
+  const roomTitle = room?.title ?? room?.roomTitle ?? 'A PREDIKT challenge';
+  const lockLabel = room?.canLateJoinPredict && room?.lateJoinPredictionWindowEndsAt
+    ? `Late-join guesses stay open until ${new Date(room.lateJoinPredictionWindowEndsAt).toLocaleString()}`
+    : room?.lockTime || room?.predictionCloseTime
+    ? `Guesses lock ${new Date(room.lockTime ?? room.predictionCloseTime).toLocaleString()}`
+    : 'Lock time set by the host';
+  const participantCount = Number(room?.participantCount ?? 0);
+  const formatPeopleInRoom = (count: number) => `${count} ${count === 1 ? 'person' : 'people'} in this room`;
+  // participantCount is everyone in the room (joined members + anyone who has
+  // predicted), which includes the host — so "already predicted" would overcount.
+  // Phrase it as room presence instead.
+  const socialProof =
+    participantCount > 0
+      ? formatPeopleInRoom(participantCount)
+      : 'Be the first to call it';
 
   return (
     <ScrollView
       contentContainerStyle={[styles.container, { backgroundColor: palette.bg, maxWidth: layout.maxContentWidth, alignSelf: 'center', width: '100%' }]}
       keyboardShouldPersistTaps="handled"
     >
-      <SectionHeader title="Join the Challenge" subtitle="Think they're wrong? Prove it." />
+      {room ? (
+        <>
+          {/* Category color wash — the striking first impression for a tapped invite. */}
+          <LinearGradient
+            colors={categoryTheme.gradient}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.heroWash}
+          >
+            <View style={styles.heroBadgeRow}>
+              <Text style={styles.heroIcon}>{categoryTheme.icon}</Text>
+              <Text style={styles.heroCategory}>{categoryTheme.label}</Text>
+            </View>
+            <Text style={styles.heroEyebrow}>You're invited to predict</Text>
+            <Text style={styles.heroTitle}>{roomTitle}</Text>
+            {room.question ? <Text style={styles.heroQuestion}>{room.question}</Text> : null}
+            <View style={styles.socialProofPill}>
+              <Text style={styles.socialProofText}>👥 {socialProof}</Text>
+            </View>
+            <Text style={styles.heroLock}>🔒 {lockLabel}</Text>
+          </LinearGradient>
 
-      <View style={[cardStyle('elevated'), { borderColor: `${categoryTheme.primaryColor}33`, gap: spacing.sm }]}>
-        <Text style={{ fontSize: 28 }}>{categoryTheme.icon}</Text>
-        <Text style={{ color: palette.textPrimary, fontWeight: '800', fontSize: 18 }}>{categoryTheme.label}</Text>
-        <Text style={{ color: palette.textSecondary, fontSize: 13 }}>Closest guess wins Aura. No real-money play.</Text>
-      </View>
+          {benchmarks?.ordered.length ? (
+            <View style={styles.benchCard}>
+              {benchmarks.ordered.map((b) => (
+                <View key={b.key} style={styles.benchRow}>
+                  <Text style={styles.benchLabel}>
+                    {b.key === 'maps' ? (b.verified ? b.label : 'Route estimate') : b.key === 'host' ? 'Host predicts' : 'Oracle Bot'}
+                  </Text>
+                  <Text style={styles.benchTime}>{formatClock(b.date, false)}</Text>
+                </View>
+              ))}
+              {isJoinable ? <Text style={styles.beatLine}>Think you can beat them?</Text> : null}
+            </View>
+          ) : null}
 
-      <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-        <TextInputField
-          label="Invite Code"
-          value={code}
-          onChangeText={(v) => setCode(v.toUpperCase())}
-          placeholder="e.g. DEMO1"
-          autoCapitalize="characters"
-          maxLength={5}
-        />
-        <View style={{ height: 6 }} />
-        <PrimaryButton label="Find Room" onPress={handleFind} loading={loading} icon="🔍" />
-      </View>
-
-      {room && (
-        <View style={styles.result}>
-          <View style={[styles.foundPill, { backgroundColor: colors.greenDim }]}>
-            <Text style={[styles.foundText, { color: colors.green }]}>Room preview ready</Text>
-          </View>
-          {!isAuthenticated ? (
-            <View style={[styles.previewNotice, { backgroundColor: colors.purpleDim, borderColor: colors.border }]}>
-              <Text style={[styles.previewTitle, { color: colors.textPrimary }]}>Preview before login</Text>
-              <Text style={[styles.previewCopy, { color: colors.textSecondary }]}>
-                Room labels are visible. Predictions stay hidden until lock.
+          {isJoinable && !isAuthenticated ? (
+            <View style={[cardStyle('elevated'), { gap: spacing.sm }]}>
+              <TextInputField
+                label="Your name"
+                value={guestHandle}
+                onChangeText={setGuestHandle}
+                placeholder="e.g. Sam"
+                maxLength={30}
+              />
+              <Text style={styles.guestPromise}>
+                No account needed to play. Your guess is saved right away — claim your Aura later if you want.
               </Text>
             </View>
           ) : null}
-          <RoomCard
-            roomTitle={room.title ?? room.roomTitle}
-            status={room.status}
-            startingPointLabel={room.routeSummary?.startLabel ?? room.safePreview?.startingPointLabel ?? 'Start hidden'}
-            destinationLabel={room.routeSummary?.destinationLabel ?? room.safePreview?.destinationLabel ?? 'Destination hidden'}
-            inviteCode={room.inviteCode}
-            predictionCloseTime={room.lockTime ?? room.safePreview?.predictionCloseTime}
-          />
-          <View style={[styles.previewNotice, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Text style={[styles.previewTitle, { color: colors.textPrimary }]}>Room snapshot</Text>
-            <Text style={[styles.previewCopy, { color: colors.textSecondary }]}>
-              {room.question} {room.participantCount ? `${room.participantCount} participants so far.` : 'Be the first to join.'}
-            </Text>
-            <StatusPill label={lockLabel} tone="warning" />
-            <Text style={[styles.funLine, { color: palette.violetLight }]}>Think they're wrong? Prove it.</Text>
-          </View>
-          {actionLabel[room.status === 'prediction_open' ? 'predictions_open' : room.status] && (
-            <PrimaryButton label={actionLabel[room.status === 'prediction_open' ? 'predictions_open' : room.status]} onPress={handleAction} loading={loading} />
-          )}
-          {!isAuthenticated && actionLabel[room.status === 'prediction_open' ? 'predictions_open' : room.status] ? (
+
+          {isJoinable ? (
             <PrimaryButton
-              label="Login to Submit Prediction"
+              label={canPredictNow ? 'Make my prediction' : ctaLabel[normalizedStatus as string]}
+              onPress={handleAction}
+              loading={loading}
+              icon="🎯"
+            />
+          ) : (
+            <Text style={[styles.statusMsg, { color: colors.textMuted }]}>
+              This room is {String(room.status).replace(/_/g, ' ')}.
+            </Text>
+          )}
+
+          {!isAuthenticated ? (
+            <TouchableOpacity
               onPress={async () => {
                 await savePendingJoinCode(room.inviteCode ?? code);
                 navigation.navigate('Login');
               }}
-              variant="secondary"
-            />
+              style={{ paddingVertical: spacing.md, alignItems: 'center' }}
+            >
+              <Text style={{ color: colors.textSecondary, fontSize: 13 }}>
+                Already have an account? <Text style={{ color: palette.violetLight, fontWeight: '800' }}>Log in</Text>
+              </Text>
+            </TouchableOpacity>
           ) : null}
-          {!isAuthenticated ? (
-            <PrimaryButton
-              label="Create Account"
-              onPress={async () => {
-                await savePendingJoinCode(room.inviteCode ?? code);
-                navigation.navigate('Register');
-              }}
-              variant="ghost"
+
+          <TouchableOpacity onPress={() => { setRoom(null); setCode(''); }} style={{ paddingVertical: spacing.sm, alignItems: 'center' }}>
+            <Text style={{ color: colors.textMuted, fontSize: 12 }}>Enter a different code</Text>
+          </TouchableOpacity>
+        </>
+      ) : (
+        <>
+          <SectionHeader title="Join the Challenge" subtitle="Got a room code? Drop it in and prove them wrong." />
+          <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <TextInputField
+              label="Invite Code"
+              value={code}
+              onChangeText={(v) => setCode(v.toUpperCase())}
+              placeholder="e.g. DEMO1"
+              autoCapitalize="characters"
+              maxLength={5}
             />
-          ) : null}
-          {!actionLabel[room.status === 'prediction_open' ? 'predictions_open' : room.status] && (
-            <Text style={[styles.statusMsg, { color: colors.textMuted }]}>
-              This room is {room.status.replace(/_/g, ' ')}.
-            </Text>
-          )}
-        </View>
+            <View style={{ height: 6 }} />
+            <PrimaryButton label="Find Room" onPress={() => handleFind()} loading={loading} icon="🔍" />
+          </View>
+          <Text style={styles.finderNote}>No account needed to play. Your guess is saved, and you can claim your Aura later.</Text>
+        </>
       )}
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flexGrow: 1, width: '100%', maxWidth: 720, alignSelf: 'center', padding: 24 },
-  heading: { fontSize: 26, fontWeight: '800', marginBottom: 6 },
-  sub: { fontSize: 14, marginBottom: 24, lineHeight: 20 },
-  card: { borderRadius: 18, padding: 18, borderWidth: 1, marginBottom: 24 },
-  result: { marginTop: 4 },
-  foundPill: { borderRadius: 8, paddingHorizontal: 12, paddingVertical: 5, alignSelf: 'flex-start', marginBottom: 10 },
-  foundText: { fontWeight: '700', fontSize: 13 },
-  previewNotice: { borderRadius: 16, borderWidth: 1, padding: 14, marginBottom: 12 },
-  previewTitle: { fontSize: 15, fontWeight: '900', marginBottom: 4 },
-  previewCopy: { fontSize: 13, lineHeight: 19 },
-  funLine: { fontSize: 13, fontWeight: '800', marginTop: 8 },
-  statusMsg: { textAlign: 'center', marginTop: 12, fontSize: 14 },
+  container: { flexGrow: 1, width: '100%', maxWidth: 720, alignSelf: 'center', padding: 24, gap: 16 },
+  card: { borderRadius: 18, padding: 18, borderWidth: 1 },
+  heroWash: { borderRadius: radius.xl, padding: 22, gap: 8, overflow: 'hidden' },
+  heroBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 8,
+    backgroundColor: 'rgba(0,0,0,0.22)',
+    borderRadius: radius.pill,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  heroIcon: { fontSize: 20 },
+  heroCategory: { color: '#fff', fontSize: 12, fontWeight: '900', letterSpacing: 0.5 },
+  heroEyebrow: { color: 'rgba(255,255,255,0.85)', fontSize: 12, fontWeight: '800', letterSpacing: 0.4, marginTop: 4, textTransform: 'uppercase' },
+  heroTitle: { color: '#fff', fontSize: 28, fontWeight: '900', lineHeight: 33, letterSpacing: -0.4 },
+  heroQuestion: { color: 'rgba(255,255,255,0.92)', fontSize: 15, lineHeight: 21, fontWeight: '600' },
+  socialProofPill: {
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: radius.pill,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    marginTop: 4,
+  },
+  socialProofText: { color: '#fff', fontSize: 13, fontWeight: '800' },
+  heroLock: { color: 'rgba(255,255,255,0.8)', fontSize: 12, fontWeight: '700', marginTop: 2 },
+  guestPromise: { color: palette.textSecondary, fontSize: 13, lineHeight: 19 },
+  benchCard: {
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: palette.border,
+    backgroundColor: palette.surface,
+    padding: spacing.lg,
+    gap: spacing.sm,
+  },
+  benchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  benchLabel: { color: palette.textSecondary, fontSize: 13, fontWeight: '700' },
+  benchTime: { color: palette.textPrimary, fontSize: 22, fontWeight: '900' },
+  beatLine: { color: palette.violetLight, fontSize: 14, fontWeight: '900', marginTop: spacing.xs },
+  finderNote: { color: palette.textMuted, fontSize: 12, lineHeight: 18, textAlign: 'center' },
+  statusMsg: { textAlign: 'center', fontSize: 14 },
 });

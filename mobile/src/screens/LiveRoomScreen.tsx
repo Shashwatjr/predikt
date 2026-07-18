@@ -3,14 +3,22 @@ import { Animated, ScrollView, StyleSheet, Text, View, Alert } from 'react-nativ
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as Location from 'expo-location';
 import { RootStackParamList } from '../navigation/types';
-import ProgressBar from '../components/ProgressBar';
 import PrimaryButton from '../components/PrimaryButton';
-import TextInputField from '../components/TextInputField';
+import ArrivalJourneyViz from '../components/ArrivalJourneyViz';
+import FoodEtaViz from '../components/FoodEtaViz';
 import { useTheme } from '../context/ThemeContext';
+import { useAuth } from '../context/AuthContext';
 import api, { getApiErrorMessage } from '../services/api';
 import { getCategoryTheme } from '../config/categoryTheme';
 import LiveStatusCard from '../components/LiveStatusCard';
+import CoachMark from '../components/CoachMark';
+import ArrivalWaitingRoom from '../components/ArrivalWaitingRoom';
+import RoomPredictionList, { RoomPredictionEntry } from '../components/RoomPredictionList';
+import CheckpointLeaderboard, { CheckpointBoard } from '../components/CheckpointLeaderboard';
+import { deriveArrivalBenchmarks, formatClock } from '../utils/benchmarks';
+import { botGuessTeaser, botEtaTeaser } from '../utils/botVoice';
 import { layout, palette } from '../theme/designSystem';
 
 type Props = {
@@ -36,24 +44,35 @@ interface LiveState {
   etaMinutes: number | null;
   locationDisplayMode: string;
   safetyMessage: string;
+  waitingForDelayedStart?: boolean;
+  milestoneBanner?: { checkpoint: number; message: string } | null;
 }
 
 const startDelayOptions = [3, 5, 10, 15] as const;
 
 export default function LiveRoomScreen({ navigation, route }: Props) {
   const { colors } = useTheme();
-  const { roomId, isCreator } = route.params;
+  const { user } = useAuth();
+  const { roomId, isCreator, justPredicted } = route.params;
+  const [showLockedReassurance, setShowLockedReassurance] = useState(!!justPredicted);
   const [liveState, setLiveState] = useState<LiveState | null>(null);
   const [room, setRoom] = useState<any | null>(null);
-  const [progressInput, setProgressInput] = useState('');
-  const [etaInput, setEtaInput] = useState('');
   const [actualOptionKey, setActualOptionKey] = useState<string | null>(null);
   const [startDelayMinutes, setStartDelayMinutes] = useState(3);
   const [starting, setStarting] = useState(false);
-  const [updating, setUpdating] = useState(false);
   const [ending, setEnding] = useState(false);
   const [confirmingArrival, setConfirmingArrival] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [guessSummary, setGuessSummary] = useState<string | null>(null);
+  const [predictions, setPredictions] = useState<RoomPredictionEntry[]>([]);
+  const [checkpointBoards, setCheckpointBoards] = useState<{ 50?: CheckpointBoard; 80?: CheckpointBoard }>({});
+  const [myPredictionDate, setMyPredictionDate] = useState<Date | null>(null);
+  const [milestoneBanner, setMilestoneBanner] = useState<string | null>(null);
+  const [viewerCountdownSeconds, setViewerCountdownSeconds] = useState<number | null>(null);
+  const [lockCountdownSeconds, setLockCountdownSeconds] = useState<number | null>(null);
+  const sampledCheckpoints = useRef<Set<number>>(new Set());
+  const firedMilestones = useRef<Set<number>>(new Set());
+  const viewerCountdownInterval = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Pulsing LIVE dot animation
   const pulse = useRef(new Animated.Value(1)).current;
@@ -69,9 +88,113 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
   useEffect(() => {
     fetchLiveState();
     fetchRoom();
-    const interval = setInterval(fetchLiveState, 5000);
+    fetchPredictions();
+    fetchCheckpointBoards();
+    const interval = setInterval(() => {
+      fetchLiveState();
+      fetchPredictions();
+      fetchCheckpointBoards();
+    }, 5000);
     return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    if (viewerCountdownInterval.current) {
+      clearInterval(viewerCountdownInterval.current);
+      viewerCountdownInterval.current = null;
+    }
+
+    if (
+      isCreator ||
+      !liveState?.waitingForDelayedStart ||
+      !liveState.visibleMovementStartTime
+    ) {
+      setViewerCountdownSeconds(null);
+      return;
+    }
+
+    const updateCountdown = () => {
+      const remaining = Math.max(
+        0,
+        Math.ceil((new Date(liveState.visibleMovementStartTime as string).getTime() - Date.now()) / 1000),
+      );
+      setViewerCountdownSeconds(remaining);
+
+      if (remaining <= 0) {
+        if (viewerCountdownInterval.current) {
+          clearInterval(viewerCountdownInterval.current);
+          viewerCountdownInterval.current = null;
+        }
+        void fetchLiveState();
+      }
+    };
+
+    updateCountdown();
+    viewerCountdownInterval.current = setInterval(updateCountdown, 1000);
+
+    return () => {
+      if (viewerCountdownInterval.current) {
+        clearInterval(viewerCountdownInterval.current);
+        viewerCountdownInterval.current = null;
+      }
+    };
+  }, [isCreator, liveState?.waitingForDelayedStart, liveState?.visibleMovementStartTime]);
+
+  useEffect(() => {
+    if (!isCreator || !liveState?.startTime || !liveState?.expectedDurationSeconds) return;
+    const checkpoints = [50, 80];
+    const timers = checkpoints.map((checkpoint) => {
+      if (sampledCheckpoints.current.has(checkpoint)) return null;
+      const targetMs =
+        new Date(liveState.startTime as string).getTime() +
+        (liveState.expectedDurationSeconds ?? 0) * 1000 * (checkpoint / 100);
+      const delay = Math.max(0, targetMs - Date.now());
+      return setTimeout(async () => {
+        try {
+          const permission = await Location.requestForegroundPermissionsAsync();
+          if (permission.status !== 'granted') return;
+          const coords = await Location.getCurrentPositionAsync({});
+          await api.post(`/rooms/${roomId}/location-update`, {
+            rawLat: coords.coords.latitude,
+            rawLng: coords.coords.longitude,
+            progressPercentage: checkpoint,
+          });
+          sampledCheckpoints.current.add(checkpoint);
+        } catch {
+          // silent degradation
+        }
+      }, delay);
+    });
+
+    return () => {
+      timers.forEach((timer) => {
+        if (timer) clearTimeout(timer);
+      });
+    };
+  }, [isCreator, liveState?.startTime, liveState?.expectedDurationSeconds, roomId]);
+
+  // Countdown to the prediction lock, shown only while guessing is still OPEN so the
+  // "closes in mm:ss" moment is unmistakable. Presentation only — the server still
+  // owns when predictions actually lock.
+  useEffect(() => {
+    const rawStatus = liveState?.status ?? room?.status;
+    const normStatus = rawStatus === 'prediction_open' ? 'predictions_open' : rawStatus;
+    const isOpen = normStatus === 'predictions_open' || normStatus === 'created';
+    const lockAtRaw = room?.predictionCloseTime ?? room?.lockTime;
+    if (!isOpen || !lockAtRaw) {
+      setLockCountdownSeconds(null);
+      return;
+    }
+    const target = new Date(lockAtRaw).getTime();
+    if (Number.isNaN(target)) {
+      setLockCountdownSeconds(null);
+      return;
+    }
+    const tick = () => setLockCountdownSeconds(Math.max(0, Math.ceil((target - Date.now()) / 1000)));
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [liveState?.status, room?.status, room?.predictionCloseTime, room?.lockTime]);
 
   async function fetchRoom() {
     try {
@@ -89,13 +212,54 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
       if (!res.data.startTime && res.data.defaultStartDelayMinutes) {
         setStartDelayMinutes(res.data.defaultStartDelayMinutes);
       }
+      const milestone = res.data.milestoneBanner;
+      if (milestone?.message && !firedMilestones.current.has(milestone.checkpoint)) {
+        firedMilestones.current.add(milestone.checkpoint);
+        setMilestoneBanner(milestone.message);
+        setTimeout(() => setMilestoneBanner(null), 6000);
+      }
     } catch { /* silently retry */ }
+  }
+
+  async function fetchCheckpointBoards() {
+    try {
+      const res = await api.get(`/rooms/${roomId}/checkpoint-leaderboards`);
+      setCheckpointBoards({ 50: res.data?.['50'], 80: res.data?.['80'] });
+    } catch {
+      // provisional standings are best-effort
+    }
+  }
+
+  async function fetchPredictions() {
+    try {
+      const res = await api.get(`/rooms/${roomId}/predictions`);
+      setPredictions((res.data ?? []) as RoomPredictionEntry[]);
+      const visible = (res.data ?? []).filter((entry: any) => entry.predictedReachedTime);
+      if (!visible.length) return;
+      const times = visible.map((entry: any) => new Date(entry.predictedReachedTime).getTime()).sort((a: number, b: number) => a - b);
+      const mine = visible.find((entry: any) => entry.isCurrentUser);
+      setMyPredictionDate(mine ? new Date(mine.predictedReachedTime) : null);
+      const format = (value: number) =>
+        new Date(value).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+      setGuessSummary(
+        `Guesses so far: ${format(times[0])} to ${format(times[times.length - 1])}${mine ? ` · your guess: ${format(new Date(mine.predictedReachedTime).getTime())}` : ''}`,
+      );
+    } catch {
+      // optional UI
+    }
   }
 
   async function handleStartRoom() {
     setStarting(true);
     try {
-      await api.post(`/rooms/${roomId}/journey/start`, { startDelayMinutes });
+      const permission = await Location.requestForegroundPermissionsAsync();
+      const coords = permission.status === 'granted' ? await Location.getCurrentPositionAsync({}) : null;
+      await api.post(`/rooms/${roomId}/journey/start`, {
+        startDelayMinutes,
+        location: coords
+          ? { lat: coords.coords.latitude, lng: coords.coords.longitude }
+          : undefined,
+      });
       fetchLiveState();
     } catch (err: unknown) {
       Alert.alert('Start failed', getApiErrorMessage(err, 'Could not start this room.'));
@@ -107,7 +271,37 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
   async function handleConfirmArrival() {
     setConfirmingArrival(true);
     try {
-      const res = await api.post(`/rooms/${roomId}/journey/confirm-arrival`);
+      const permission = await Location.requestForegroundPermissionsAsync();
+      const coords = permission.status === 'granted' ? await Location.getCurrentPositionAsync({}) : null;
+      const res = await api.post(`/rooms/${roomId}/journey/confirm-arrival`, {
+        location: coords
+          ? { lat: coords.coords.latitude, lng: coords.coords.longitude }
+          : undefined,
+      });
+      if (res.data?.requiresConfirmation) {
+        setConfirmingArrival(false);
+        return Alert.alert(
+          'Almost there?',
+          res.data.prompt,
+          [
+            { text: 'Not yet', style: 'cancel' },
+            {
+              text: "Yes, I've arrived",
+              onPress: async () => {
+                setConfirmingArrival(true);
+                const finalRes = await api.post(`/rooms/${roomId}/journey/confirm-arrival`, {
+                  location: coords
+                    ? { lat: coords.coords.latitude, lng: coords.coords.longitude }
+                    : undefined,
+                  confirmAnyway: true,
+                });
+                navigation.navigate('Result', { roomId, result: finalRes.data });
+                setConfirmingArrival(false);
+              },
+            },
+          ],
+        );
+      }
       navigation.navigate('Result', { roomId, result: res.data });
     } catch (err: unknown) {
       Alert.alert('Arrival not confirmed', getApiErrorMessage(err, 'Could not confirm arrival.'));
@@ -128,21 +322,11 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
     }
   }
 
-  async function handleProgressUpdate() {
-    const pct = parseFloat(progressInput);
-    if (isNaN(pct)) return Alert.alert('Error', 'Enter a valid 0–100 percentage.');
-    setUpdating(true);
-    try {
-      await api.post(`/rooms/${roomId}/location-update`, {
-        progressPercentage: pct,
-        etaMinutes: etaInput ? parseInt(etaInput, 10) : undefined,
-      });
-      fetchLiveState();
-    } catch (err: unknown) {
-      Alert.alert('Failed', getApiErrorMessage(err, 'Could not send this privacy-safe progress update.'));
-    } finally {
-      setUpdating(false);
-    }
+  function handleInviteFriends() {
+    if (!room) return;
+    // Route to the full share screen (code, invite link, WhatsApp, native share, …)
+    // rather than firing a single bare share sheet.
+    navigation.navigate('RoomCreated', { room });
   }
 
   async function handleEndRoom() {
@@ -187,9 +371,20 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
   }
 
   const pct = liveState?.progressPercentage ?? 0;
-  const secondsUntilStart = liveState?.secondsUntilStart ?? 0;
+  const secondsUntilStart = !isCreator && viewerCountdownSeconds != null
+    ? viewerCountdownSeconds
+    : isCreator && liveState?.startTime
+    ? Math.max(0, Math.ceil((new Date(liveState.startTime).getTime() - Date.now()) / 1000))
+    : liveState?.secondsUntilStart ?? 0;
   const minutesUntilStart = Math.ceil(secondsUntilStart / 60);
-  const canSendUpdates = liveState?.status === 'live' && secondsUntilStart === 0;
+  const trackingCountdownLabel = secondsUntilStart > 0
+    ? `⏱ Tracking starts in ${Math.floor(secondsUntilStart / 60)}:${String(secondsUntilStart % 60).padStart(2, '0')}.`
+    : null;
+  // Friendly, in-voice reassurance for the host near the confirm actions — replaces
+  // the raw "Auto-close" timestamp. Uses the viewer's local time.
+  const staysOpenUntilLabel = liveState?.autoCloseAt
+    ? `Room stays open until ~${new Date(liveState.autoCloseAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} — no rush.`
+    : null;
   const creationMeta = room?.scoringRule?.creationMeta ?? room?.creationMeta ?? {};
   const category = room?.category ?? creationMeta.category ?? room?.templateKey;
   const multipleChoiceOptions =
@@ -205,8 +400,222 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
 
   const categoryTheme = getCategoryTheme(category);
 
+  // ---- The three unmistakable phases: predictions OPEN → LOCKED → journey STARTED ----
+  const rawStatus = liveState?.status ?? room?.status ?? 'live';
+  const normStatus = rawStatus === 'prediction_open' ? 'predictions_open' : rawStatus;
+  const isTerminal = ['completed', 'cancelled'].includes(normStatus);
+  const journeyStarted =
+    normStatus === 'live' ||
+    ['started', 'live', 'inactive', 'overdue', 'arrived_verified', 'completed'].includes(
+      liveState?.journeyStatus ?? '',
+    );
+  const phase: 'open' | 'locked' | 'started' | 'ended' = isTerminal
+    ? 'ended'
+    : journeyStarted
+      ? 'started'
+      : normStatus === 'predictions_locked'
+        ? 'locked'
+        : 'open';
+  const isDraw = ['cancelled', 'auto_closed', 'abandoned', 'plan_changed', 'cancelled_by_host'].includes(
+    liveState?.journeyStatus ?? normStatus,
+  );
+  const lockCountdownLabel =
+    lockCountdownSeconds != null && lockCountdownSeconds > 0
+      ? `Locks in ${Math.floor(lockCountdownSeconds / 60)}:${String(lockCountdownSeconds % 60).padStart(2, '0')}`
+      : lockCountdownSeconds === 0
+        ? 'Locking now…'
+        : null;
+
+  // During the visibility-delay window (or any moment progress hasn't landed yet), the
+  // raw 0% reads as broken. Show plain "it has begun" copy instead. This changes only
+  // the presentation of the waiting state — never the delay logic itself.
+  const liveProgressPending =
+    phase === 'started' &&
+    category !== 'weather_rain' &&
+    (liveState?.progressPercentage == null || pct <= 0) &&
+    liveState?.etaMinutes == null;
+
+  // Live bot voice teaser (a line, not just a number) — existing benchmark/ETA data only.
+  const liveOracle = deriveArrivalBenchmarks(room)?.oracle;
+  const liveBotTeaser =
+    category === 'weather_rain'
+      ? null
+      : liveState?.etaMinutes != null
+        ? botEtaTeaser(`${liveState.etaMinutes} min`)
+        : liveOracle
+          ? botGuessTeaser(formatClock(liveOracle.date, false))
+          : room?.oracleBotPrediction?.label
+            ? botEtaTeaser(room.oracleBotPrediction.label)
+            : null;
+
+  // ---- Pre-tracking "you're all set" waiting room (arrival only) ----
+  const isArrivalCategory = category !== 'weather_rain' && category !== 'food_eta';
+  const trackingCountdownActive =
+    secondsUntilStart > 0 && (liveState?.status === 'live' || !!liveState?.waitingForDelayedStart);
+  const showArrivalWaitingRoom =
+    isArrivalCategory &&
+    !!liveState &&
+    trackingCountdownActive &&
+    !['completed', 'cancelled'].includes(liveState.status);
+
+  const waitingBenchmarks = showArrivalWaitingRoom ? deriveArrivalBenchmarks(room) : null;
+  const waitingTargetTime = showArrivalWaitingRoom
+    ? !isCreator && liveState?.visibleMovementStartTime
+      ? new Date(liveState.visibleMovementStartTime)
+      : liveState?.startTime
+      ? new Date(liveState.startTime)
+      : new Date(Date.now() + secondsUntilStart * 1000)
+    : null;
+  const waitingCards = showArrivalWaitingRoom
+    ? [
+        // "You" leads — it's the guess that matters. Maps is the neutral baseline and
+        // the bot is flavor, so both sit after it.
+        myPredictionDate && {
+          key: 'you',
+          icon: '',
+          name: 'Your guess',
+          nameColor: palette.green,
+          date: myPredictionDate,
+          chipLabel: 'Locked in',
+          chipColor: palette.green,
+          highlight: true,
+        },
+        waitingBenchmarks?.maps && {
+          key: 'maps',
+          icon: '🌍',
+          name: 'Google Maps',
+          nameColor: palette.cyan,
+          date: waitingBenchmarks.maps.date,
+          chipLabel: waitingBenchmarks.maps.verified ? 'Neutral baseline' : 'Baseline estimate',
+          chipColor: palette.cyan,
+        },
+        waitingBenchmarks?.oracle && {
+          key: 'oracle',
+          icon: '🤖',
+          name: 'The bot',
+          nameColor: palette.violetLight,
+          date: waitingBenchmarks.oracle.date,
+          chipLabel: 'Just for fun',
+          chipColor: palette.violetLight,
+        },
+        waitingBenchmarks?.host && {
+          key: 'host',
+          icon: '👑',
+          name: 'Host guess',
+          nameColor: palette.amber,
+          date: waitingBenchmarks.host.date,
+          chipLabel: 'Host call',
+          chipColor: palette.amber,
+        },
+      ].filter(Boolean)
+    : [];
+
+  if (showArrivalWaitingRoom) {
+    return (
+      <ScrollView
+        contentContainerStyle={[
+          styles.container,
+          { backgroundColor: palette.bg, maxWidth: layout.maxContentWidth, alignSelf: 'center', width: '100%' },
+        ]}
+      >
+        <ArrivalWaitingRoom
+          title={room?.roomTitle ?? 'Arrival PREDIKT'}
+          statusLabel="Started"
+          targetTime={waitingTargetTime}
+          startLabel={room?.startingPointLabel ?? room?.routeSummary?.startLabel ?? 'Start'}
+          destinationLabel={room?.destinationLabel ?? room?.routeSummary?.destinationLabel ?? 'Destination'}
+          expectedDurationMinutes={Math.round(
+            (liveState?.expectedDurationSeconds ??
+              room?.route?.estimatedDurationSeconds ??
+              room?.routeSummary?.estimatedDurationSeconds ??
+              3600) / 60,
+          )}
+          modeLabel="Car"
+          modeIcon="🚗"
+          safetyMessage={liveState?.safetyMessage ?? 'Movement is delayed for safety.'}
+          cards={waitingCards as any}
+          onHowItWorks={() => navigation.navigate('Help')}
+          onGhostModeDetails={() => navigation.navigate('Help')}
+          onEnableNotifications={() =>
+            Alert.alert(
+              'Notifications',
+              "You're all set — we'll surface the reveal here the moment tracking begins.",
+            )
+          }
+        />
+      </ScrollView>
+    );
+  }
+
   return (
     <ScrollView contentContainerStyle={[styles.container, { backgroundColor: palette.bg, maxWidth: layout.maxContentWidth, alignSelf: 'center', width: '100%' }]}>
+
+      {phase === 'ended' ? (
+        <View style={styles.terminalBanner}>
+          <Text style={styles.terminalTitle}>{isDraw ? '🏁 Called a draw' : "🏁 It's a wrap!"}</Text>
+          <Text style={styles.terminalCopy}>
+            {isDraw
+              ? 'This PREDIKT closed neutrally — nobody counted as a loss. Here’s the recap.'
+              : 'Predictions are in and the result is ready. See who made the closest guess.'}
+          </Text>
+          <PrimaryButton
+            label={isDraw ? 'See the recap' : 'See who won'}
+            onPress={() => navigation.navigate('Result', { roomId })}
+            icon="🏆"
+          />
+        </View>
+      ) : (
+        <View
+          style={[
+            styles.phaseBanner,
+            phase === 'open' ? styles.phaseOpen : phase === 'locked' ? styles.phaseLocked : styles.phaseStarted,
+          ]}
+        >
+          <Text style={styles.phaseTitle}>
+            {phase === 'open' ? '⏳ Predictions open' : phase === 'locked' ? '🔒 Predictions closed' : '🚦 Journey started'}
+          </Text>
+          <Text style={styles.phaseCopy}>
+            {phase === 'open'
+              ? lockCountdownLabel
+                ? `${lockCountdownLabel} — get your guess in before it closes.`
+                : 'Lock in your guess before predictions close.'
+              : phase === 'locked'
+                ? 'Guesses are locked in — no more changes. Now we watch.'
+                : 'Guesses are locked. Live progress is rolling in below.'}
+          </Text>
+        </View>
+      )}
+
+      {isCreator && room && phase !== 'ended' ? (
+        <View style={styles.inviteRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.inviteTitle}>Invite more friends</Text>
+            <Text style={styles.inviteCopy}>
+              {phase === 'started'
+                ? 'The journey is live — friends can still watch it unfold in real time.'
+                : 'Send the room around — the more guesses, the better the reveal.'}
+            </Text>
+          </View>
+          <PrimaryButton label="Invite" onPress={handleInviteFriends} icon="📨" variant="secondary" fullWidth={false} />
+        </View>
+      ) : null}
+
+      {showLockedReassurance ? (
+        <View style={styles.lockedBanner}>
+          <Text style={styles.lockedBannerIcon}>🔒</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.lockedBannerTitle}>Nice — you're in.</Text>
+            <Text style={styles.lockedBannerCopy}>
+              {user?.isGuest
+                ? "Now let's see who's closest. We'll show you the Tea the moment the result lands — no account needed, and you can claim your Aura anytime."
+                : "Now let's see who's closest. We'll show you the Tea the moment the result lands."}
+            </Text>
+          </View>
+          <Text onPress={() => setShowLockedReassurance(false)} style={styles.lockedBannerDismiss}>
+            ✕
+          </Text>
+        </View>
+      ) : null}
 
       <LiveStatusCard
         theme={categoryTheme}
@@ -214,10 +623,16 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
         statusLabel={(liveState?.journeyStatus ?? liveState?.status ?? 'live').replace(/_/g, ' ')}
         statusTone="live"
         progress={category !== 'weather_rain' ? pct : undefined}
-        etaLabel={liveState?.etaMinutes != null ? `${liveState.etaMinutes} min` : minutesUntilStart > 0 ? `Starts in ${minutesUntilStart} min` : undefined}
+        etaLabel={liveState?.etaMinutes != null ? `${liveState.etaMinutes} min` : trackingCountdownLabel ?? (minutesUntilStart > 0 ? `Starts in ${minutesUntilStart} min` : undefined)}
         oracleLabel={room?.baselineLabel ?? room?.oracleBotPrediction?.label}
-        lifecycleNote={liveState?.lifecycleMessage ?? liveState?.safetyMessage}
+        lifecycleNote={liveState?.waitingForDelayedStart && !isCreator ? (trackingCountdownLabel ?? 'Waiting to start.') : (liveState?.lifecycleMessage ?? liveState?.safetyMessage)}
       />
+
+      {milestoneBanner ? (
+        <View style={[styles.milestoneBanner, { borderColor: colors.amber, backgroundColor: colors.surfaceHigh }]}>
+          <Text style={[styles.milestoneBannerText, { color: colors.textPrimary }]}>{milestoneBanner}</Text>
+        </View>
+      ) : null}
 
       {/* Privacy notice */}
       <View style={[styles.privacyPill, { backgroundColor: colors.purpleDim }]}>
@@ -228,6 +643,11 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
 
       {liveState ? (
         <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <CoachMark
+            storageKey="coachmark:live:route_oracle"
+            title="Route Oracle"
+            body="A neutral estimate to guess against. Not the winner — that's whoever's closest."
+          />
           <Text style={[styles.creatorTitle, { color: colors.textPrimary }]}>
             {category === 'weather_rain' ? 'Weather Room Status' : 'Journey Status'}
           </Text>
@@ -235,25 +655,34 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
           <Text style={[styles.startDelayCopy, { color: colors.textSecondary }]}>
             {category === 'weather_rain'
               ? 'Declare the actual rain outcome when the time window ends. Oracle Bot is a benchmark, not a guarantee.'
-              : liveState.lifecycleMessage ?? 'Approx. journey progress is shown with privacy-safe timing.'}
+              : (!isCreator && liveState.waitingForDelayedStart && trackingCountdownLabel)
+                ? trackingCountdownLabel
+                : liveState.lifecycleMessage ?? 'Approx. journey progress is shown with privacy-safe timing.'}
           </Text>
           {category !== 'weather_rain' ? (
             <>
+              {guessSummary ? <Text style={[styles.statusMeta, { color: colors.textPrimary }]}>{guessSummary}</Text> : null}
+              {liveBotTeaser ? <Text style={styles.botTeaser}>🤖 {liveBotTeaser}</Text> : null}
               <Text style={[styles.statusMeta, { color: colors.textSecondary }]}>
                 Expected duration: {Math.round((liveState.expectedDurationSeconds ?? 3600) / 60)} min
               </Text>
-              <Text style={[styles.statusMeta, { color: colors.textSecondary }]}>
-                Auto-close: {liveState.autoCloseAt ? new Date(liveState.autoCloseAt).toLocaleString() : 'Pending start'}
-              </Text>
-              <Text style={[styles.statusMeta, { color: colors.textSecondary }]}>
-                Grace buffer: {Math.round((liveState.gracePeriodSeconds ?? 600) / 60)} min
-              </Text>
+              {/* Auto-close time and grace buffer are internal lifecycle accounting —
+                  not user-facing. The host sees a friendly "stays open until" line near
+                  the confirm actions instead. */}
             </>
           ) : null}
         </View>
       ) : null}
 
-      {isCreator && liveState && category !== 'weather_rain' && (!canSendUpdates || liveState.status !== 'live') ? (
+      {liveState && (predictions.length || checkpointBoards[50]?.available || checkpointBoards[80]?.available) ? (
+        <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <RoomPredictionList data={predictions} />
+          <CheckpointLeaderboard board={checkpointBoards[50]} />
+          <CheckpointLeaderboard board={checkpointBoards[80]} />
+        </View>
+      ) : null}
+
+      {isCreator && liveState && category !== 'weather_rain' && (secondsUntilStart > 0 || liveState.status !== 'live') ? (
         <View style={[styles.creatorCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <LinearGradient colors={[colors.purple + '30', 'transparent']} style={styles.creatorHeader}>
             <Text style={[styles.creatorTitle, { color: colors.textPrimary }]}>Start Journey</Text>
@@ -261,7 +690,7 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
           <View style={styles.creatorBody}>
             {liveState.status === 'live' && secondsUntilStart > 0 ? (
               <Text style={[styles.startDelayCopy, { color: colors.textSecondary }]}>
-                Journey timer starts in {minutesUntilStart} min. Progress updates unlock when the timer starts.
+                {isCreator ? `Journey timer starts in ${minutesUntilStart} min.` : `Friends will see this flip live in about ${minutesUntilStart} min.`}
               </Text>
             ) : (
               <>
@@ -293,29 +722,45 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
         </View>
       ) : null}
 
-      {/* Progress card */}
-      {liveState && category !== 'weather_rain' ? (
-        <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          {/* ETA hero */}
-          {liveState.etaMinutes !== null && (
-            <View style={styles.etaBlock}>
-              <Text style={[styles.etaNum, { color: colors.textPrimary }]}>{liveState.etaMinutes}</Text>
-              <Text style={[styles.etaUnit, { color: colors.textSecondary }]}>min estimated</Text>
-            </View>
-          )}
-
-          <ProgressBar percentage={pct} label="Journey Progress" />
-
-          {/* Visual track */}
-          <View style={styles.track}>
-            <Text style={[styles.trackLabel, { color: colors.textMuted }]}>📍 Start</Text>
-            <View style={[styles.trackLine, { backgroundColor: colors.border }]}>
-              <View style={[styles.trackFill, { width: `${pct}%`, backgroundColor: colors.purple }]} />
-              <Text style={[styles.trackDot, { left: `${Math.max(0, pct - 4)}%` }]}>🚗</Text>
-            </View>
-            <Text style={[styles.trackLabel, { color: colors.textMuted }]}>🏁 End</Text>
+      {!isCreator && liveState?.waitingForDelayedStart && trackingCountdownLabel && category !== 'weather_rain' ? (
+        <View style={[styles.creatorCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <LinearGradient colors={[colors.purple + '30', 'transparent']} style={styles.creatorHeader}>
+            <Text style={[styles.creatorTitle, { color: colors.textPrimary }]}>Start Journey</Text>
+          </LinearGradient>
+          <View style={styles.creatorBody}>
+            <Text style={[styles.startDelayCopy, { color: colors.textSecondary }]}>
+              {trackingCountdownLabel}
+            </Text>
           </View>
         </View>
+      ) : null}
+
+      {/* Live visualization — SVG only, never a map */}
+      {liveProgressPending ? (
+        <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <Text style={[styles.creatorTitle, { color: colors.textPrimary }]}>🚦 The journey has begun</Text>
+          <Text style={[styles.startDelayCopy, { color: colors.textSecondary, marginBottom: 0 }]}>
+            Live progress will appear here shortly — hang tight. Guesses are already locked, so
+            there's nothing to do but watch.
+          </Text>
+        </View>
+      ) : liveState && category === 'food_eta' ? (
+        <FoodEtaViz
+          progressPercentage={pct}
+          etaMinutes={liveState.etaMinutes}
+          status={liveState.journeyStatus ?? liveState.status}
+        />
+      ) : liveState && category !== 'weather_rain' ? (
+        <ArrivalJourneyViz
+          progressPercentage={pct}
+          etaMinutes={liveState.etaMinutes}
+          status={liveState.journeyStatus ?? liveState.status}
+          startLabel={room?.startingPointLabel ?? room?.routeSummary?.startLabel ?? 'Start'}
+          destinationLabel={room?.destinationLabel ?? room?.routeSummary?.destinationLabel ?? 'Destination'}
+          safetyMessage={liveState.safetyMessage}
+          primaryColor={categoryTheme.primaryColor}
+          secondaryColor={categoryTheme.secondaryColor}
+        />
       ) : (
         <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <Text style={[styles.waiting, { color: colors.textMuted }]}>Waiting for live updates…</Text>
@@ -353,27 +798,12 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
             <Text style={[styles.creatorTitle, { color: colors.textPrimary }]}>⚙️  Creator Controls</Text>
           </LinearGradient>
           <View style={styles.creatorBody}>
-            <TextInputField
-              label="Privacy-safe progress % (0 – 100)"
-              value={progressInput}
-              onChangeText={setProgressInput}
-              keyboardType="numeric"
-              placeholder="e.g. 60"
-            />
-            <TextInputField
-              label="ETA in minutes"
-              value={etaInput}
-              onChangeText={setEtaInput}
-              keyboardType="numeric"
-              placeholder="e.g. 20"
-            />
-            <PrimaryButton
-              label={canSendUpdates ? 'Send Update' : 'Waiting for timer'}
-              onPress={handleProgressUpdate}
-              loading={updating}
-              disabled={!canSendUpdates}
-              icon="📡"
-            />
+            <Text style={[styles.startDelayCopy, { color: colors.textSecondary }]}>
+              Progress now runs on the route timer with private checkpoints at 0%, 50%, 80%, and arrival.
+            </Text>
+            {staysOpenUntilLabel ? (
+              <Text style={[styles.startDelayCopy, { color: colors.purpleLight }]}>{staysOpenUntilLabel}</Text>
+            ) : null}
             <PrimaryButton label="Confirm Arrival" onPress={handleConfirmArrival} loading={confirmingArrival} icon="✅" />
             <PrimaryButton label="Cancel / Plan Changed" onPress={handleCancelJourney} loading={cancelling} variant="secondary" icon="🛑" />
             <PrimaryButton label="End Room & See Results" onPress={handleEndRoom} loading={ending} variant="danger" icon="🏁" />
@@ -381,12 +811,14 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
         </View>
       ) : null}
 
-      <PrimaryButton
-        label="View Results"
-        onPress={() => navigation.navigate('Result', { roomId })}
-        variant="secondary"
-        icon="🏆"
-      />
+      {['completed', 'cancelled'].includes(liveState?.status ?? room?.status ?? 'live') ? (
+        <PrimaryButton
+          label="View Results"
+          onPress={() => navigation.navigate('Result', { roomId })}
+          variant="secondary"
+          icon="🏆"
+        />
+      ) : null}
     </ScrollView>
   );
 }
@@ -397,8 +829,56 @@ const styles = StyleSheet.create({
   liveDot: { width: 10, height: 10, borderRadius: 5, marginRight: 6 },
   liveText: { fontWeight: '900', fontSize: 14, letterSpacing: 2 },
   heading: { fontWeight: '700', fontSize: 18 },
+  lockedBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(34,197,94,0.4)',
+    backgroundColor: 'rgba(34,197,94,0.12)',
+    padding: 14,
+    marginBottom: 16,
+  },
+  lockedBannerIcon: { fontSize: 20, marginTop: 1 },
+  lockedBannerTitle: { color: '#86efac', fontSize: 15, fontWeight: '900', marginBottom: 3 },
+  lockedBannerCopy: { color: 'rgba(255,255,255,0.82)', fontSize: 13, lineHeight: 19 },
+  lockedBannerDismiss: { color: 'rgba(255,255,255,0.5)', fontSize: 15, fontWeight: '800', paddingHorizontal: 4 },
   privacyPill: { borderRadius: 10, paddingHorizontal: 12, paddingVertical: 7, marginBottom: 16, alignSelf: 'flex-start' },
   privacyText: { fontSize: 12, fontWeight: '600' },
+  phaseBanner: { borderRadius: 14, borderWidth: 1, padding: 14, marginBottom: 16, gap: 4 },
+  phaseOpen: { borderColor: 'rgba(34,211,238,0.45)', backgroundColor: 'rgba(34,211,238,0.10)' },
+  phaseLocked: { borderColor: 'rgba(251,191,36,0.45)', backgroundColor: 'rgba(251,191,36,0.10)' },
+  phaseStarted: { borderColor: 'rgba(34,211,238,0.5)', backgroundColor: 'rgba(34,211,238,0.12)' },
+  phaseTitle: { color: '#fff', fontSize: 16, fontWeight: '900' },
+  phaseCopy: { color: 'rgba(255,255,255,0.82)', fontSize: 13, lineHeight: 19, fontWeight: '600' },
+  terminalBanner: {
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(34,197,94,0.45)',
+    backgroundColor: 'rgba(34,197,94,0.12)',
+    padding: 16,
+    marginBottom: 16,
+    gap: 8,
+  },
+  terminalTitle: { color: '#fff', fontSize: 18, fontWeight: '900' },
+  terminalCopy: { color: 'rgba(255,255,255,0.82)', fontSize: 13, lineHeight: 19 },
+  inviteRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(34,211,238,0.35)',
+    backgroundColor: 'rgba(34,211,238,0.08)',
+    padding: 14,
+    marginBottom: 16,
+  },
+  inviteTitle: { color: '#fff', fontSize: 14, fontWeight: '900', marginBottom: 2 },
+  inviteCopy: { color: 'rgba(255,255,255,0.72)', fontSize: 12, lineHeight: 17 },
+  botTeaser: { color: palette.violetLight, fontSize: 13, fontWeight: '800', fontStyle: 'italic', lineHeight: 18 },
+  milestoneBanner: { borderRadius: 14, borderWidth: 1, padding: 14, marginBottom: 16 },
+  milestoneBannerText: { fontSize: 14, fontWeight: '800', lineHeight: 20 },
   card: { borderRadius: 18, padding: 20, borderWidth: 1, marginBottom: 16 },
   etaBlock: { alignItems: 'center', marginBottom: 16 },
   etaNum: { fontSize: 68, fontWeight: '900', lineHeight: 72 },

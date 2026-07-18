@@ -48,8 +48,12 @@ export class LifecycleController {
   }
 
   @Post('journey/confirm-arrival')
-  confirmArrival(@Param('roomId') roomId: string, @CurrentUser() user: User) {
-    return this.lifecycleService.confirmArrival(roomId, user);
+  confirmArrival(
+    @Param('roomId') roomId: string,
+    @Body() dto: EndRoomDto,
+    @CurrentUser() user: User,
+  ) {
+    return this.lifecycleService.previewArrivalConfirmation(roomId, user, dto);
   }
 
   @Post('milestones/:milestoneId/reached')

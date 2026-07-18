@@ -8,6 +8,7 @@ export type NavTab = 'Home' | 'Create' | 'Activity' | 'Profile';
 type Props = {
   active: NavTab;
   onChange: (tab: NavTab) => void;
+  hiddenTabs?: NavTab[];
 };
 
 const TABS: Array<{ key: NavTab; label: string; icon: string }> = [
@@ -17,16 +18,16 @@ const TABS: Array<{ key: NavTab; label: string; icon: string }> = [
   { key: 'Profile', label: 'Profile', icon: '♙' },
 ];
 
-export default function BottomNav({ active, onChange }: Props) {
+export default function BottomNav({ active, onChange, hiddenTabs = [] }: Props) {
   return (
     <View style={styles.nav}>
-      {TABS.map((tab) => {
+      {TABS.filter((tab) => !hiddenTabs.includes(tab.key)).map((tab) => {
         const isActive = active === tab.key;
         const isCreate = tab.key === 'Create';
         return (
           <TouchableOpacity key={tab.key} style={styles.item} onPress={() => onChange(tab.key)} accessibilityRole="tab" accessibilityState={{ selected: isActive }}>
             {isCreate ? (
-              <LinearGradient colors={['#38bdf8', '#7c3aed']} style={styles.createIcon}>
+              <LinearGradient colors={['#38bdf8', '#22D3EE']} style={styles.createIcon}>
                 <Text style={styles.createPlus}>+</Text>
               </LinearGradient>
             ) : (

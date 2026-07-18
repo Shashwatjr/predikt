@@ -18,6 +18,10 @@ interface Props {
   variant?: 'primary' | 'danger' | 'secondary' | 'ghost';
   icon?: string;
   fullWidth?: boolean;
+  /** Override the primary-variant gradient (e.g. to match a surface palette). */
+  gradientColors?: readonly [string, string];
+  /** Override the label color (pairs with gradientColors for contrast). */
+  labelColor?: string;
 }
 
 export default function PrimaryButton({
@@ -28,6 +32,8 @@ export default function PrimaryButton({
   variant = 'primary',
   icon,
   fullWidth = true,
+  gradientColors,
+  labelColor,
 }: Props) {
   const { colors } = useTheme();
   const scale = useRef(new Animated.Value(1)).current;
@@ -42,9 +48,16 @@ export default function PrimaryButton({
   const isDisabled = disabled || loading;
 
   const content = loading ? (
-    <ActivityIndicator color="#fff" size="small" />
+    <ActivityIndicator color={labelColor ?? '#fff'} size="small" />
   ) : (
-    <Text style={[styles.label, variant === 'secondary' && { color: colors.purple }, variant === 'ghost' && { color: colors.textSecondary }]}>
+    <Text
+      style={[
+        styles.label,
+        variant === 'primary' && labelColor ? { color: labelColor } : null,
+        variant === 'secondary' && { color: colors.purple },
+        variant === 'ghost' && { color: colors.textSecondary },
+      ]}
+    >
       {icon ? `${icon}  ${label}` : label}
     </Text>
   );
@@ -60,7 +73,7 @@ export default function PrimaryButton({
       >
         {variant === 'primary' && (
           <LinearGradient
-            colors={isDisabled ? ['#6b7280', '#4b5563'] : colors.gradPrimary}
+            colors={isDisabled ? ['#6b7280', '#4b5563'] : gradientColors ?? colors.gradPrimary}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 0 }}
             style={styles.btn}

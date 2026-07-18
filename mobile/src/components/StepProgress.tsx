@@ -5,7 +5,7 @@ import { palette, spacing, typography } from '../theme/designSystem';
 type Props = {
   current: number;
   total: number;
-  labels?: [string, string, string];
+  labels?: string[];
 };
 
 export default function StepProgress({ current, total, labels }: Props) {
@@ -45,7 +45,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: palette.border,
   },
-  dotActive: { backgroundColor: 'rgba(139,92,246,0.5)' },
+  dotActive: { backgroundColor: 'rgba(34,211,238,0.5)' },
   dotCurrent: { backgroundColor: palette.violet, borderColor: palette.violetLight },
   label: { color: palette.textMuted, ...typography.micro, textAlign: 'center' },
   labelActive: { color: palette.textSecondary },

@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -24,6 +25,12 @@ import { POLICY_BLOCK_MESSAGE } from '../common/constants/policy.constants';
 import { safePublicUser } from '../common/utils/safe-user-select';
 import { ShareRoomEventDto } from './dto/share-room-event.dto';
 import { NotificationsService } from '../notifications/notifications.service';
+import { featureFlags } from '../config/feature-flags';
+import {
+  buildPredictionWindow,
+  getLatePredictionDeadline,
+  isLatePredictionWindowOpen,
+} from '../common/utils/late-prediction';
 
 interface RoomCreatorIdentity {
   userId: string;
@@ -43,6 +50,22 @@ const ROOM_CREATOR_SELECT = {
   userFlexes: { include: { flex: true } },
   creatorProfile: true,
 } as const;
+
+// Rooms whose creator physically travels and streams live GPS. The creator can
+// only be in one place at a time, so at most one of these may be active at once.
+// Everything else (delivery/food ETA tracked via an external app, weather,
+// custom, brand, ai_vs_human) consumes no exclusive resource and runs unlimited
+// in parallel — and skips the movement start-delay.
+const GPS_TRACKED_ROOM_CATEGORIES = new Set<string>([
+  'journey',
+  'milestone_journey',
+  'travel',
+  'fitness',
+]);
+
+export function usesExclusiveLocationResource(roomCategory?: string | null): boolean {
+  return !!roomCategory && GPS_TRACKED_ROOM_CATEGORIES.has(roomCategory);
+}
 
 function generateInviteCode(): string {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -182,6 +205,88 @@ function buildInviteQuestion(room: any) {
     : 'When will this journey finish?';
 }
 
+function toFiniteNumber(value: unknown): number | null {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Normalizes an Arrival Time room's benchmark hierarchy for the client:
+ * Maps ETA (primary) → Host prediction → Oracle Bot, each as an absolute arrival
+ * time so the UI can anchor the picker and show live diffs.
+ *
+ * Values are immutable snapshots captured at creation. Provenance is honest: a
+ * provider label (e.g. "Google Maps") is only emitted for provider-verified
+ * estimates; heuristic/approximate estimates surface as "Route estimate".
+ */
+export function buildArrivalBenchmarks(room: any) {
+  const category = room.category ?? room.templateKey ?? room.roomCategory;
+  const isArrival =
+    category === 'arrival_time' ||
+    room.templateKey === 'arrival_time' ||
+    (room.roomCategory === 'journey' && room.answerType === 'exact_time');
+  if (!isArrival) return null;
+
+  const snapshot = (room.baselineSnapshot ?? {}) as Record<string, any>;
+  const route = room.journeyRoute ?? room.route ?? null;
+
+  // Anchor: when the journey is expected to begin. arrival = anchor + eta.
+  const anchorStart =
+    room.journeyScheduledStartAt ?? room.predictionCloseTime ?? room.baselineCapturedAt ?? null;
+  const anchorMs = anchorStart ? new Date(anchorStart).getTime() : null;
+
+  const etaSeconds =
+    toFiniteNumber(room.baselineValue) ??
+    toFiniteNumber(snapshot.durationSeconds) ??
+    toFiniteNumber(room.expectedDurationSeconds) ??
+    (route ? toFiniteNumber(route.estimatedDurationSeconds) : null);
+
+  const provider = room.providerName ?? room.baselineSource ?? snapshot.provider ?? null;
+  const providerLabel = room.baselineLabel ?? snapshot.providerLabel ?? null;
+  const isApproximate =
+    snapshot.isApproximate === true || provider === 'approximate' || provider === 'manual' || !provider;
+  const verifiedProviders = ['google', 'openstreetmap', 'ola', 'mapbox'];
+  const verified = !isApproximate && verifiedProviders.includes(String(provider));
+
+  const arrivalFrom = (seconds: number | null) =>
+    seconds != null && anchorMs != null ? new Date(anchorMs + seconds * 1000).toISOString() : null;
+
+  const mapsArrival = arrivalFrom(etaSeconds);
+  const mapsEta = mapsArrival
+    ? {
+        label: verified ? providerLabel ?? 'Maps' : 'Route estimate',
+        provider: verified ? provider : null,
+        verified,
+        arrivalTime: mapsArrival,
+        etaSeconds,
+        confidence: room.providerConfidence ?? snapshot.confidenceLevel ?? null,
+      }
+    : null;
+
+  const oracleSeconds = toFiniteNumber(room.oracleBotPrediction?.predictedDurationSeconds);
+  const oracleArrival = arrivalFrom(oracleSeconds);
+  const oracle = oracleArrival
+    ? {
+        label: 'Oracle Bot',
+        arrivalTime: oracleArrival,
+        reason: room.oracleBotPrediction?.reason ?? room.oracleBotPrediction?.label ?? null,
+      }
+    : null;
+
+  const hostArrival = room.hostPrediction?.arrivalTime;
+  const hostPrediction = hostArrival ? { arrivalTime: new Date(hostArrival).toISOString() } : null;
+
+  return {
+    category: 'arrival_time',
+    anchorStartAt: anchorStart ? new Date(anchorStart).toISOString() : null,
+    hasBenchmark: !!(mapsEta || oracle || hostPrediction),
+    mapsEta,
+    hostPrediction,
+    oracle,
+    capturedAt: room.baselineCapturedAt ?? snapshot.capturedAt ?? null,
+  };
+}
+
 function buildSafeInvitePreview(room: any) {
   const participantIds = new Set<string>();
   (room.roomMemberships ?? [])
@@ -203,6 +308,11 @@ function buildSafeInvitePreview(room: any) {
     participantCount: participantIds.size,
     creatorDisplayName: room.creator?.name ?? null,
     creatorHandle: room.creator?.prediktHandle ?? null,
+    benchmarks: buildArrivalBenchmarks(room),
+    canLateJoinPredict: canUserStillPredictAfterJourneyStart(room),
+    predictionWindow: buildPredictionWindow(room),
+    lateJoinPredictionWindowEndsAt: getLateJoinPredictionWindowEndsAt(room)?.toISOString() ?? null,
+    lateJoinPredictionArrivalCutoffAt: getLateJoinPredictionArrivalCutoffAt(room)?.toISOString() ?? null,
     selectedBackgroundKey: room.selectedBackground ?? null,
     selectedRoomTheme: room.selectedRoomTheme ?? null,
     routeSummary: room.journeyRoute
@@ -214,6 +324,22 @@ function buildSafeInvitePreview(room: any) {
       : null,
     safePreview: safeRoomProjection(room, { includeInviteCode: true }),
   };
+}
+
+// Late-join prediction timing now lives in a shared util keyed off a live
+// pace-projected arrival (no fixed 10-min window). `lateJoinPredictionWindowEndsAt`
+// and `lateJoinPredictionArrivalCutoffAt` both map to that single deadline for
+// backward-compatible payloads. Requires `locationEvents` (newest first, take 1).
+function getLateJoinPredictionWindowEndsAt(room: any): Date | null {
+  return getLatePredictionDeadline(room);
+}
+
+function getLateJoinPredictionArrivalCutoffAt(room: any): Date | null {
+  return getLatePredictionDeadline(room);
+}
+
+function canUserStillPredictAfterJourneyStart(room: any): boolean {
+  return isLatePredictionWindowOpen(room);
 }
 
 function buildInviteUrl(inviteCode: string, configuredBaseUrl?: string | null) {
@@ -314,6 +440,27 @@ export class RoomsService {
     const visibility = dto.visibility ?? 'invite_only';
     const roomCategory = dto.roomCategory ?? 'journey';
     const category = normalizeCategory(dto);
+
+    // Exclusive-resource rule: a location-tracked room ties up the creator's live
+    // GPS (they can't be on two journeys at once), so only one may be active at a
+    // time. Non-GPS rooms (delivery, weather, custom, …) run unlimited in parallel.
+    if (usesExclusiveLocationResource(roomCategory)) {
+      const activeTracked = await this.prisma.predictionRoom.findFirst({
+        where: {
+          creatorUserId: creator.userId,
+          status: { notIn: ['completed', 'cancelled'] },
+          roomCategory: { in: [...GPS_TRACKED_ROOM_CATEGORIES] as never },
+        },
+        select: { roomId: true, roomTitle: true },
+      });
+      if (activeTracked) {
+        throw new ConflictException(
+          `You're already tracking a live journey ("${activeTracked.roomTitle}"). ` +
+            'Finish or cancel it before starting another location-tracked room — non-GPS rooms (delivery, weather, custom) can run in parallel.',
+        );
+      }
+    }
+
     const oracleBotPrediction = buildOracleBotPrediction(dto);
     const isSponsored = dto.isSponsored ?? false;
     const safetyDelayMinutes =
@@ -424,6 +571,11 @@ export class RoomsService {
         baselineLabel: dto.baselineLabel,
         baselineValue: dto.baselineValue as never,
         baselineSnapshot: dto.baselineSnapshot as never,
+        // Immutable benchmark snapshot — captured once at creation, never overwritten.
+        baselineCapturedAt: dto.baselineValue != null ? new Date() : undefined,
+        providerName: dto.providerName ?? null,
+        providerConfidence: dto.providerConfidence ?? null,
+        hostPrediction: dto.hostPrediction as never,
         oracleBotPrediction: oracleBotPrediction as never,
         options: dto.options as never,
         roomType: dto.roomType ?? 'journey',
@@ -599,6 +751,112 @@ export class RoomsService {
     };
   }
 
+  /**
+   * Starts a fresh room with the same structure as a completed one. Clones shape
+   * only — title, category, mode, milestone layout, privacy settings — never state:
+   * no predictions, results, coordinates, route geometry, or provider snapshots
+   * carry over. Any joined member (including guests) may rematch; they become the
+   * creator of the new room, which gets its own invite code and links back via
+   * rematchOfRoomId.
+   */
+  async rematch(sourceRoomId: string, requestingUser: RoomCreatorIdentity) {
+    if (!featureFlags.rematch) {
+      throw new BadRequestException('Rematch is currently unavailable.');
+    }
+
+    const source = await this.prisma.predictionRoom.findUnique({
+      where: { roomId: sourceRoomId },
+      include: { milestones: { orderBy: { milestoneOrder: 'asc' } } },
+    });
+    if (!source) throw new NotFoundException('Room not found');
+
+    if (source.status !== 'completed') {
+      throw new BadRequestException('You can only rematch a completed room.');
+    }
+
+    const membership = await this.prisma.roomMembership.findUnique({
+      where: { roomId_userId: { roomId: sourceRoomId, userId: requestingUser.userId } },
+    });
+    const isMember =
+      source.creatorUserId === requestingUser.userId ||
+      (membership?.status === 'joined');
+    if (!isMember) {
+      throw new ForbiddenException('Only members of the room can start a rematch.');
+    }
+
+    // Preserve the *length* of the original prediction window (structure), applied
+    // from now — never the original absolute close time (state, and now in the past).
+    const originalWindowMs =
+      source.predictionCloseTime.getTime() - source.createdAt.getTime();
+    const windowMs = Math.min(
+      Math.max(Number.isFinite(originalWindowMs) ? originalWindowMs : 0, 15 * 60_000),
+      24 * 60 * 60_000,
+    );
+    const predictionCloseTime = new Date(Date.now() + windowMs).toISOString();
+
+    const creationMeta = (source.scoringRule as Record<string, unknown> | null)?.creationMeta as
+      | Record<string, unknown>
+      | undefined;
+    const question =
+      typeof creationMeta?.question === 'string' ? creationMeta.question : source.eventType;
+
+    const clonedMilestones = source.milestones.map((milestone) => ({
+      milestoneName: milestone.milestoneName,
+      locationLabel: milestone.locationLabel ?? milestone.milestoneName,
+      auraMultiplier: Number(milestone.auraMultiplier),
+      isFinalDestination: milestone.milestoneType === 'final_destination',
+      milestoneOrder: milestone.milestoneOrder,
+      // intentionally no lat/lng and no per-milestone close time — structure only
+    }));
+
+    const dto: CreateRoomDto = {
+      roomTitle: source.roomTitle,
+      eventType: source.eventType,
+      question,
+      roomType: source.roomType,
+      answerType: source.answerType,
+      mode: source.mode ?? 'friends',
+      category: source.category ?? undefined,
+      templateKey: source.templateKey ?? undefined,
+      predictionVisibilityMode: source.predictionVisibilityMode,
+      startingPointLabel: source.startingPointLabel,
+      destinationLabel: source.destinationLabel,
+      predictionCloseTime,
+      visibility: source.visibility,
+      locationDisplayMode: source.locationDisplayMode,
+      safetyDelayMinutes: source.safetyDelayMinutes,
+      disableRouteReplay: source.disableRouteReplay,
+      hideExactStart: source.hideExactStart,
+      hideExactDestination: source.hideExactDestination,
+      autoPauseNearDestination: source.autoPauseNearDestination,
+      socialMode: source.socialMode,
+      roomCategory: source.roomCategory,
+      movementAvatarType: source.movementAvatarType,
+      selectedBackground: source.selectedBackground ?? undefined,
+      selectedRoomTheme: source.selectedRoomTheme ?? undefined,
+      options: Array.isArray(source.options) ? (source.options as string[]) : undefined,
+      milestones: clonedMilestones,
+    };
+
+    const created = await this.create(dto, requestingUser);
+
+    await this.prisma.predictionRoom.update({
+      where: { roomId: created.roomId },
+      data: { rematchOfRoomId: sourceRoomId },
+    });
+
+    await this.auditService.log({
+      actorType: 'user',
+      actorId: requestingUser.userId,
+      action: 'room.rematch_created',
+      targetType: 'room',
+      targetId: created.roomId,
+      afterValue: { rematchOfRoomId: sourceRoomId, category: created.category },
+    });
+
+    return { ...created, rematchOfRoomId: sourceRoomId };
+  }
+
   async findById(roomId: string, requestingUser: User) {
     const room = await this.prisma.predictionRoom.findUnique({
       where: { roomId },
@@ -608,6 +866,11 @@ export class RoomsService {
         journeyRoute: true,
         roomMemberships: {
           where: { userId: requestingUser.userId, status: 'joined' },
+        },
+        locationEvents: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          select: { progressPercentage: true, createdAt: true },
         },
       },
     });
@@ -620,13 +883,27 @@ export class RoomsService {
       throw new ForbiddenException('Join this room to view details.');
     }
 
+    // Has the viewer already locked in a (non-revoked) prediction? Drives whether
+    // the app should still route them to the prediction screen while live.
+    const viewerHasPredicted =
+      (await this.prisma.milestonePrediction.count({
+        where: { roomId, userId: requestingUser.userId, revokedAt: null },
+      })) > 0;
+    const predictionWindow = buildPredictionWindow(room);
+
     if (isCreator) {
       return {
         ...room,
         creator: safePublicUser(room.creator),
         milestones: safeMilestones(room.milestones),
         route: room.journeyRoute,
+        benchmarks: buildArrivalBenchmarks(room),
         shareKit: buildShareKit(room),
+        viewerHasPredicted,
+        predictionWindow,
+        canLateJoinPredict: canUserStillPredictAfterJourneyStart(room),
+        lateJoinPredictionWindowEndsAt: getLateJoinPredictionWindowEndsAt(room)?.toISOString() ?? null,
+        lateJoinPredictionArrivalCutoffAt: getLateJoinPredictionArrivalCutoffAt(room)?.toISOString() ?? null,
       };
     }
 
@@ -649,8 +926,14 @@ export class RoomsService {
       ...safeRoomProjection({ ...safe, journeyRoute }, { includeInviteCode: true }),
       milestones: safeMilestones(milestones),
       creator: safePublicUser(room.creator),
+      benchmarks: buildArrivalBenchmarks({ ...safe, journeyRoute }),
       shareKit: buildShareKit(room),
       membershipStatus: isMember ? 'joined' : null,
+      viewerHasPredicted,
+      predictionWindow,
+      canLateJoinPredict: canUserStillPredictAfterJourneyStart(room),
+      lateJoinPredictionWindowEndsAt: getLateJoinPredictionWindowEndsAt(room)?.toISOString() ?? null,
+      lateJoinPredictionArrivalCutoffAt: getLateJoinPredictionArrivalCutoffAt(room)?.toISOString() ?? null,
     };
   }
 
@@ -664,6 +947,15 @@ export class RoomsService {
         status: true,
         visibility: true,
         journeyStatus: true,
+        journeyStartedAt: true,
+        startTime: true,
+        plannedStartTime: true,
+        expectedDurationSeconds: true,
+        locationEvents: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          select: { progressPercentage: true, createdAt: true },
+        },
       },
     });
     if (!room) throw new NotFoundException('Room not found');
@@ -679,6 +971,15 @@ export class RoomsService {
     }
 
     const role = room.creatorUserId === requestingUser.userId ? 'creator' : 'participant';
+    const existingPredictions = await this.prisma.milestonePrediction.count({
+      where: {
+        roomId,
+        userId: requestingUser.userId,
+        revokedAt: null,
+      },
+    });
+    const hasSubmittedPrediction = existingPredictions > 0;
+    const canLateJoinPredict = canUserStillPredictAfterJourneyStart(room);
     const now = new Date();
     const membership = await this.prisma.roomMembership.upsert({
       where: { roomId_userId: { roomId, userId: requestingUser.userId } },
@@ -746,7 +1047,17 @@ export class RoomsService {
       role: membership.role,
       status: membership.status,
       joinedAt: membership.joinedAt,
-      nextAction: this.nextAction(room.status, room.journeyStatus),
+      nextAction: this.nextAction(
+        room.status,
+        room.journeyStatus,
+        hasSubmittedPrediction,
+        canLateJoinPredict,
+      ),
+      hasSubmittedPrediction,
+      canLateJoinPredict,
+      predictionWindow: buildPredictionWindow(room),
+      lateJoinPredictionWindowEndsAt: getLateJoinPredictionWindowEndsAt(room)?.toISOString() ?? null,
+      lateJoinPredictionArrivalCutoffAt: getLateJoinPredictionArrivalCutoffAt(room)?.toISOString() ?? null,
     };
   }
 
@@ -810,6 +1121,11 @@ export class RoomsService {
         journeyRoute: true,
         milestonePredictions: { select: { userId: true } },
         roomMemberships: { select: { userId: true, status: true } },
+        locationEvents: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          select: { progressPercentage: true, createdAt: true },
+        },
       },
     });
     if (!room) throw new NotFoundException('Room not found');
@@ -907,8 +1223,8 @@ export class RoomsService {
     });
   }
 
-  private nextAction(status: string, journeyStatus?: string | null) {
-    if (status === 'predictions_open') return 'prediction';
+  private nextAction(status: string, journeyStatus?: string | null, hasSubmittedPrediction = false, canLateJoinPredict = false) {
+    if (!hasSubmittedPrediction && (status === 'predictions_open' || canLateJoinPredict)) return 'prediction';
     if (['live', 'predictions_locked'].includes(status) || journeyStatus === 'overdue') return 'live';
     return 'result';
   }

@@ -374,29 +374,31 @@ export class CommentaryService {
 
     if (personality === 'Oracle') {
       return {
-        headline: `${input.winnerHandle ?? 'Closest guess'} stayed closest`,
-        punchline: `Oracle Bot predicted ${input.oracleBotLabel ?? input.baselineLabel ?? 'the benchmark'} and the room still found a sharper read.`,
-        supportingLine: `Actual result: ${input.actualOutcomeLabel ?? 'recorded'}. ${input.badgeLabel ? `${input.badgeLabel} unlocked.` : ''}`.trim(),
+        headline: 'The benchmark had a theory. The room had the receipts.',
+        punchline: `${input.winnerHandle ?? 'The closest guess'} beat ${input.oracleBotLabel ?? input.baselineLabel ?? 'the benchmark'}. Oracle Bot is requesting a recount.`,
+        supportingLine: input.badgeLabel
+          ? `${input.badgeLabel} unlocked. The spreadsheet is taking it well.`
+          : 'The math was respectable. The instinct was better.',
       };
     }
 
     if (personality === 'Chaos') {
       return {
-        headline: 'The story got a little extra spice',
+        headline: 'A normal prediction. An unnecessary amount of drama.',
         punchline: input.oracleBotLabel
-          ? `Oracle Bot brought spreadsheets. ${input.winnerHandle ?? 'Closest guess'} brought instinct.`
-          : `${input.winnerHandle ?? 'Closest guess'} won the room with a calm, sharp call.`,
+          ? `${input.winnerHandle ?? 'The winner'} trusted instinct over ${input.oracleBotLabel}. Rude. Correct, but rude.`
+          : `${input.winnerHandle ?? 'The winner'} called it clean and now gets to be unbearable about it.`,
         supportingLine: input.comebackEligible
-          ? 'Comeback energy is officially live.'
-          : 'The result stayed fair and playful.',
+          ? 'A rematch is basically inevitable now.'
+          : 'No scandal. Just one person being right a little too loudly.',
       };
     }
 
     return {
-      headline: 'Closest guess wins the moment',
-      punchline: `${input.winnerHandle ?? 'Closest guess'} took the win with a smart call.`,
+      headline: 'Somebody was right and will not let it go.',
+      punchline: `${input.winnerHandle ?? 'The closest guess'} made the sharper call. The rest of the room is calling it character development.`,
       supportingLine: input.comebackEligible
-        ? 'The room stayed fair and the result is ready to share.'
+        ? 'Fair result, mild chaos, strong case for a rematch.'
         : fallbackCategoryLine(input.category),
     };
   }

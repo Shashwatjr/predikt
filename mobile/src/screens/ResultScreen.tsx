@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Alert, Animated, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { AccessibilityInfo, Alert, Animated, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -8,7 +8,7 @@ import LeaderboardList from '../components/LeaderboardList';
 import PrimaryButton from '../components/PrimaryButton';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
-import api from '../services/api';
+import api, { getApiErrorMessage } from '../services/api';
 import WebSideWingLayout from '../components/WebSideWingLayout';
 import MomentCard from '../components/MomentCard';
 import { shareMoment } from '../utils/shareMoment';
@@ -17,8 +17,12 @@ import TeaCard from '../components/TeaCard';
 import CommentaryBubble from '../components/CommentaryBubble';
 import ReactionStrip from '../components/ReactionStrip';
 import SectionHeader from '../components/SectionHeader';
+import GuestUpgradePrompt from '../components/GuestUpgradePrompt';
 import { getCategoryTheme } from '../config/categoryTheme';
+import { featureFlags } from '../config/featureFlags';
+import { copyToClipboard, formatLineForShare } from '../utils/shareLine';
 import { layout, palette } from '../theme/designSystem';
+import CoachMark from '../components/CoachMark';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Result'>;
@@ -37,17 +41,37 @@ export default function ResultScreen({ navigation, route }: Props) {
   const [commentary, setCommentary] = useState<CommentaryResponse | null>(null);
   const [badges, setBadges] = useState<RoomBadge[]>([]);
   const [selectedReaction, setSelectedReaction] = useState<string | null>(null);
+  const [isRematching, setIsRematching] = useState(false);
+  const [lineCopied, setLineCopied] = useState(false);
+
+  const [reduceMotion, setReduceMotion] = useState(false);
 
   const floatY = useRef(new Animated.Value(0)).current;
   const floatOpacity = useRef(new Animated.Value(0)).current;
+  const winnerScale = useRef(new Animated.Value(0.94)).current;
+  const winnerGlow = useRef(new Animated.Value(0)).current;
+  const commentaryRise = useRef(new Animated.Value(8)).current;
+  const commentaryOpacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    if (!initialResult) {
-      void fetchLeaderboard();
-    } else {
-      animateAura();
-    }
+    let active = true;
+    // Resolve the reduce-motion setting before running the entrance so the
+    // async lookup can't race the animation into playing when it shouldn't.
+    AccessibilityInfo.isReduceMotionEnabled()
+      .catch(() => false)
+      .then((rm) => {
+        if (!active) return;
+        setReduceMotion(rm);
+        if (!initialResult) {
+          void fetchLeaderboard(rm);
+        } else {
+          animateAura(rm);
+        }
+      });
     void fetchRoomAndCommentary();
+    return () => {
+      active = false;
+    };
   }, []);
 
   async function fetchRoomAndCommentary() {
@@ -72,23 +96,39 @@ export default function ResultScreen({ navigation, route }: Props) {
     }
   }
 
-  function animateAura() {
+  function animateAura(rm = reduceMotion) {
+    if (rm) {
+      // Reduced motion: snap to the final state, no animation.
+      floatOpacity.setValue(0);
+      floatY.setValue(0);
+      winnerScale.setValue(1);
+      winnerGlow.setValue(1);
+      commentaryRise.setValue(0);
+      commentaryOpacity.setValue(1);
+      return;
+    }
     floatOpacity.setValue(1);
     floatY.setValue(0);
     Animated.parallel([
       Animated.timing(floatY, { toValue: -60, duration: 1400, useNativeDriver: true }),
       Animated.timing(floatOpacity, { toValue: 0, duration: 1400, useNativeDriver: true }),
+      Animated.timing(winnerScale, { toValue: 1, duration: 400, useNativeDriver: true }),
+      Animated.timing(winnerGlow, { toValue: 1, duration: 400, useNativeDriver: true }),
+      Animated.parallel([
+        Animated.timing(commentaryRise, { toValue: 0, duration: 300, useNativeDriver: true }),
+        Animated.timing(commentaryOpacity, { toValue: 1, duration: 300, useNativeDriver: true }),
+      ]),
     ]).start();
   }
 
-  async function fetchLeaderboard() {
+  async function fetchLeaderboard(rm = reduceMotion) {
     try {
       const res = await api.get(`/rooms/${roomId}/leaderboard`);
       setData(res.data);
       const top = res.data[0];
       if ((top?.rankInRoom ?? top?.overallRank) === 1) {
         setWinner(top);
-        animateAura();
+        animateAura(rm);
       }
     } catch {
       // ignore
@@ -165,8 +205,38 @@ export default function ResultScreen({ navigation, route }: Props) {
     await api.post('/events', { eventType: 'moment_card_shared', metadata: { roomId, category: categoryKey } }).catch(() => undefined);
   }
 
+  async function shareCommentaryLine() {
+    const line = commentary?.punchline;
+    if (!line) return;
+    const text = formatLineForShare(line, commentary?.personality);
+    const ok = await copyToClipboard(text);
+    if (ok) {
+      setLineCopied(true);
+      setTimeout(() => setLineCopied(false), 2000);
+    } else {
+      // Native/no-clipboard fallback: surface the exact text to copy by hand.
+      Alert.alert('Copy this line', text);
+    }
+  }
+
   async function handleRematch() {
-    await api.post('/events', { eventType: 'rematch_created', metadata: { sourceRoomId: roomId, category: categoryKey } }).catch(() => undefined);
+    if (isRematching) return;
+
+    setIsRematching(true);
+    try {
+      const res = await api.post(`/rooms/${roomId}/rematch`);
+      const createdRoom = res.data;
+      await api.post('/events', { eventType: 'rematch_created', metadata: { sourceRoomId: roomId, category: categoryKey, targetRoomId: createdRoom?.roomId } }).catch(() => undefined);
+      navigation.navigate('Prediction', { roomId: createdRoom?.roomId ?? roomId, room: createdRoom ?? { roomId } });
+    } catch (error) {
+      Alert.alert('Rematch unavailable', getApiErrorMessage(error, 'This room cannot be rematched right now.'));
+    } finally {
+      setIsRematching(false);
+    }
+  }
+
+  async function handleComeback() {
+    await api.post('/events', { eventType: 'comeback_started', metadata: { sourceRoomId: roomId, category: categoryKey } }).catch(() => undefined);
     navigation.navigate('CreateRoom');
   }
 
@@ -176,6 +246,33 @@ export default function ResultScreen({ navigation, route }: Props) {
     <WebSideWingLayout rightPlacement="result_side">
       <ScrollView contentContainerStyle={[styles.container, { backgroundColor: palette.bg, maxWidth: layout.maxContentWidth, alignSelf: 'center', width: '100%' }]}>
         <SectionHeader title="☕ The Tea" subtitle={isNeutralClosure ? 'Fair reset — nobody counted as a loss' : categoryTheme.resultTitle} />
+        <CoachMark
+          storageKey="coachmark:result:the_tea"
+          title="The Tea"
+          body="The reveal. See who nailed it and what Chaos Bot said."
+        />
+
+        {/* The reward: the Chaos Bot punchline leads, oversized, with the copy/share
+            affordance attached — above the shareable screenshot below. */}
+        {commentary ? (
+          <Animated.View style={{ opacity: commentaryOpacity, transform: [{ translateY: commentaryRise }] }}>
+            <CommentaryBubble
+              hero
+              personality={commentary.personality}
+              headline={commentary.headline}
+              punchline={commentary.punchline}
+              onShareLine={shareCommentaryLine}
+              shareCopied={lineCopied}
+            />
+            <PrimaryButton
+              label={commentary?.canRegenerate === false ? 'Commentary Locked' : 'Refresh Commentary'}
+              onPress={regenerateCommentary}
+              variant="secondary"
+              icon="🌀"
+              disabled={commentary?.canRegenerate === false}
+            />
+          </Animated.View>
+        ) : null}
 
         <TeaCard
           roomTitle={room?.roomTitle ?? 'PREDIKT Moment'}
@@ -199,24 +296,6 @@ export default function ResultScreen({ navigation, route }: Props) {
           <Text style={[styles.dotBonus, { color: colors.green }]}>Dot Bonus unlocked: {dotBonus}</Text>
         ) : null}
 
-        {commentary ? (
-          <>
-            <CommentaryBubble
-              personality={commentary.personality}
-              headline={commentary.headline}
-              punchline={commentary.punchline}
-              supportingLine={commentary.supportingLine}
-            />
-            <PrimaryButton
-              label={commentary?.canRegenerate === false ? 'Commentary Locked' : 'Refresh Commentary'}
-              onPress={regenerateCommentary}
-              variant="secondary"
-              icon="🌀"
-              disabled={commentary?.canRegenerate === false}
-            />
-          </>
-        ) : null}
-
         <MomentCard
           title={room?.roomTitle ?? 'PREDIKT Moment'}
           subtitle={momentCard.subtitle}
@@ -233,14 +312,27 @@ export default function ResultScreen({ navigation, route }: Props) {
 
         {winningRow ? (
           <View style={styles.winnerWrapper}>
-            <LinearGradient colors={colors.gradGold} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.winnerCard}>
-              <Text style={styles.winnerEmoji}>🏆</Text>
-              <Text style={styles.winnerName}>{winnerName}</Text>
-              <Text style={styles.winnerDiff}>Closest Guess. Off by {differenceLabel}</Text>
-              <View style={styles.xpBadge}>
-                <Text style={styles.xpBadgeText}>+{auraEarned} Aura</Text>
-              </View>
-            </LinearGradient>
+            <Animated.View style={{ transform: [{ scale: winnerScale }] }}>
+              <Animated.View
+                pointerEvents="none"
+                style={[
+                  styles.winnerGlow,
+                  {
+                    backgroundColor: colors.amber,
+                    shadowColor: colors.amber,
+                    opacity: winnerGlow.interpolate({ inputRange: [0, 1], outputRange: [0, 0.55] }),
+                  },
+                ]}
+              />
+              <LinearGradient colors={colors.gradGold} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.winnerCard}>
+                <Text style={styles.winnerEmoji}>🏆</Text>
+                <Text style={styles.winnerName}>{winnerName}</Text>
+                <Text style={styles.winnerDiff}>Closest Guess. Off by {differenceLabel}</Text>
+                <View style={styles.xpBadge}>
+                  <Text style={styles.xpBadgeText}>+{auraEarned} Aura</Text>
+                </View>
+              </LinearGradient>
+            </Animated.View>
             <Animated.Text style={[styles.floatXp, { transform: [{ translateY: floatY }], opacity: floatOpacity, color: colors.amber }]}>
               +{auraEarned} Aura
             </Animated.Text>
@@ -275,29 +367,38 @@ export default function ResultScreen({ navigation, route }: Props) {
           </View>
         ) : null}
 
+        {/* Guest's Tea has resolved — offer to keep their Aura before they bounce. */}
+        <GuestUpgradePrompt variant="result" />
+
         <SectionHeader title="React + Rematch" subtitle={comebackCopy} />
         <ReactionStrip reactions={REACTIONS} onReact={sendReaction} selected={selectedReaction} />
 
-        <Text style={[styles.section, { color: colors.textSecondary }]}>All Rankings</Text>
-        <LeaderboardList
-          data={data.map((r: any) => ({
-            userId: r.userId ?? r.user?.userId,
-            name: r.name ?? r.user?.name,
-            weeklyAura: r.totalRoomAura ?? r.pointsAwarded,
-            winsCount: (r.rankInRoom ?? r.overallRank) === 1 ? 1 : 0,
-            rankInRoom: r.rankInRoom ?? r.overallRank,
-            differenceFromActualMinutes: r.differenceFromActualMinutes,
-            pointsAwarded: r.pointsAwarded,
-            totalRoomAura: r.totalRoomAura,
-          }))}
-          showRoomStats
-          currentUserId={user?.userId}
-        />
+        {data.length ? (
+          <>
+            <Text style={[styles.section, { color: colors.textSecondary }]}>All Rankings</Text>
+            <LeaderboardList
+              data={data.map((r: any) => ({
+                userId: r.userId ?? r.user?.userId,
+                name: r.name ?? r.user?.name,
+                weeklyAura: r.totalRoomAura ?? r.pointsAwarded,
+                winsCount: (r.rankInRoom ?? r.overallRank) === 1 ? 1 : 0,
+                rankInRoom: r.rankInRoom ?? r.overallRank,
+                differenceFromActualMinutes: r.differenceFromActualMinutes,
+                pointsAwarded: r.pointsAwarded,
+                totalRoomAura: r.totalRoomAura,
+              }))}
+              showRoomStats
+              currentUserId={user?.userId}
+            />
+          </>
+        ) : null}
 
         <View style={styles.ctaStack}>
-          <PrimaryButton label="Rematch" onPress={handleRematch} icon="🔁" />
-          <PrimaryButton label="Start a Comeback" onPress={handleRematch} variant="secondary" icon="⚡" />
-          <PrimaryButton label="Share Moment Card" onPress={shareMomentCard} variant="secondary" icon="✨" />
+          <PrimaryButton label={isRematching ? 'Running it back…' : 'Run it back'} onPress={handleRematch} icon="🔁" disabled={isRematching} />
+          <PrimaryButton label="Start a Comeback" onPress={handleComeback} variant="secondary" icon="⚡" />
+          {featureFlags.momentCardExport ? (
+            <PrimaryButton label="Share Moment Card" onPress={shareMomentCard} variant="secondary" icon="✨" />
+          ) : null}
           <PrimaryButton label="Back to Home" onPress={() => navigation.navigate('Home')} variant="secondary" icon="🏠" />
         </View>
       </ScrollView>
@@ -411,6 +512,18 @@ const styles = StyleSheet.create({
   storyQuote: { fontSize: 14, lineHeight: 20, fontStyle: 'italic' },
   storySupport: { fontSize: 13, lineHeight: 19 },
   winnerWrapper: { position: 'relative' },
+  winnerGlow: {
+    position: 'absolute',
+    top: -8,
+    left: -8,
+    right: -8,
+    bottom: -8,
+    borderRadius: 28,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.9,
+    shadowRadius: 24,
+    elevation: 12,
+  },
   winnerCard: { borderRadius: 20, padding: 24, alignItems: 'center' },
   winnerEmoji: { fontSize: 52, marginBottom: 8 },
   winnerName: { color: '#fff', fontWeight: '900', fontSize: 24, marginBottom: 4, textAlign: 'center' },

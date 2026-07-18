@@ -45,11 +45,93 @@ export class AdminStatusChangeDto {
   reason?: string;
 }
 
+export class AdminReasonDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  reason?: string;
+}
+
 export class RemoveRoomDto {
   @IsOptional()
   @IsString()
   @MaxLength(500)
   reason?: string;
+}
+
+export class AdminFeedbackUpdateDto {
+  @IsOptional()
+  @IsIn(['new', 'reviewing', 'planned', 'fixed', 'closed'])
+  status?: string;
+
+  @IsOptional()
+  @IsIn(['low', 'normal', 'high', 'urgent'])
+  priority?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  internalNotes?: string;
+
+  @IsOptional()
+  @IsUUID()
+  assignedAdminId?: string;
+}
+
+export class AdminModerationUpdateDto {
+  @IsOptional()
+  @IsIn(['submitted', 'in_review', 'resolved', 'dismissed'])
+  status?: string;
+
+  @IsOptional()
+  @IsIn(['low', 'normal', 'high', 'urgent'])
+  priority?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  resolution?: string;
+}
+
+export class AdminAuditQueryDto {
+  @IsOptional()
+  @IsString()
+  actorId?: string;
+
+  @IsOptional()
+  @IsString()
+  action?: string;
+
+  @IsOptional()
+  @IsString()
+  targetId?: string;
+
+  @IsOptional()
+  @IsString()
+  targetType?: string;
+
+  @IsOptional()
+  @IsDateString()
+  dateFrom?: string;
+
+  @IsOptional()
+  @IsDateString()
+  dateTo?: string;
+
+  @IsOptional()
+  @IsIn(['success', 'failure', 'recorded'])
+  result?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  page?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  pageSize?: number;
 }
 
 export class ReverseCreditsDto {
@@ -65,6 +147,15 @@ export class ReverseCreditsDto {
   @IsString()
   @MaxLength(500)
   reason?: string;
+
+  /**
+   * Optional client-supplied key that makes the reversal idempotent: replaying the
+   * same key returns the original ledger entry instead of decrementing again.
+   */
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  idempotencyKey?: string;
 }
 
 export class ResolveDisputeDto {

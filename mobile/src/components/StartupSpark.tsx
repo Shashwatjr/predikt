@@ -315,7 +315,7 @@ const styles = StyleSheet.create({
     width: 320,
     height: 320,
     borderRadius: 160,
-    backgroundColor: 'rgba(139,92,246,0.18)',
+    backgroundColor: 'rgba(34,211,238,0.18)',
   },
   particle: {
     position: 'absolute',
@@ -339,7 +339,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.08)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.18)',
-    shadowColor: '#8b5cf6',
+    shadowColor: '#22D3EE',
     shadowOffset: { width: 0, height: 12 },
     shadowOpacity: 0.22,
     shadowRadius: 24,

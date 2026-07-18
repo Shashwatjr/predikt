@@ -25,6 +25,7 @@ import { NotificationsModule } from './notifications/notifications.module';
 import { EventsModule } from './events/events.module';
 import { CommentaryModule } from './commentary/commentary.module';
 import { BadgeModule } from './badges/badge.module';
+import { FeedbackModule } from './feedback/feedback.module';
 
 @Module({
   imports: [
@@ -61,6 +62,7 @@ import { BadgeModule } from './badges/badge.module';
     EventsModule,
     CommentaryModule,
     BadgeModule,
+    FeedbackModule,
   ],
   providers: [
     {

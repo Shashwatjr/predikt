@@ -6,4 +6,10 @@ export class StartRoomDto {
   @Min(3)
   @Max(15)
   startDelayMinutes?: number;
+
+  @IsOptional()
+  location?: {
+    lat: number;
+    lng: number;
+  };
 }

@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Alert, Platform, View, Text, StyleSheet, ScrollView, Share, Linking } from 'react-native';
+import { Alert, Platform, View, Text, StyleSheet, ScrollView, Share, Linking, TouchableOpacity } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -21,6 +21,8 @@ export default function RoomCreatedScreen({ navigation, route }: Props) {
   const inviteCode = room.inviteCode ?? room.code ?? '';
   const isGroupJourney = room.roomType === 'group_journey';
   const [manualPhone, setManualPhone] = useState('');
+  const [showManualShare, setShowManualShare] = useState(false);
+  const [showRoomDetails, setShowRoomDetails] = useState(false);
   const sharePayload = useMemo(() => buildSharePayload({ ...room, inviteCode }), [room, inviteCode]);
   const creationMeta = room.scoringRule?.creationMeta ?? room.creationMeta ?? {};
   const category = room.category ?? creationMeta.category ?? room.templateKey;
@@ -114,7 +116,7 @@ export default function RoomCreatedScreen({ navigation, route }: Props) {
             <Text style={[styles.sub, { color: colors.textSecondary }]}>
               {isGroupJourney
                 ? 'Invite friends to join, opt in as travellers, and predict each other’s arrival time.'
-                : 'Share the code below. Closest Guess earns Aura.'}
+                : 'Share the code below. Friends can join from the link and predict right away.'}
             </Text>
           </View>
         </View>
@@ -145,7 +147,9 @@ export default function RoomCreatedScreen({ navigation, route }: Props) {
         <Text style={styles.codeLabel}>Invite Code</Text>
         <Text style={styles.roomTitleHero}>{sharePayload.shareTitle}</Text>
         <Text style={styles.code}>{inviteCode}</Text>
-        <Text style={styles.codeHint}>Anyone with this code can preview the room. Login is needed to submit a prediction.</Text>
+        <Text style={styles.codeHint}>
+          Anyone with this code can open the room and predict. No account needed for the first round.
+        </Text>
       </LinearGradient>
 
       <View style={styles.copyGrid}>
@@ -159,42 +163,66 @@ export default function RoomCreatedScreen({ navigation, route }: Props) {
 
       <View style={[styles.shareCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         <Text style={[styles.shareTitle, { color: colors.textPrimary }]}>Invite friends</Text>
-        <Text style={[styles.shareCopy, { color: colors.textSecondary }]}>{sharePayload.shareText}</Text>
-        <View style={styles.shareActions}>
-          <View style={styles.shareAction}><PrimaryButton label="WhatsApp" onPress={openWhatsAppShare} icon="💬" /></View>
-          <View style={styles.shareAction}><PrimaryButton label="Copy Instagram Caption" onPress={copyInstagramCaption} variant="secondary" icon="📸" /></View>
-        </View>
-        <View style={styles.shareActions}>
-          <View style={styles.shareAction}><PrimaryButton label="Native Share" onPress={invitePeople} variant="secondary" icon="📨" /></View>
-          <View style={styles.shareAction}><PrimaryButton label="Open Room" onPress={() => navigation.navigate('LiveRoom', { roomId: room.roomId, isCreator: true })} icon="▶️" /></View>
-        </View>
-      </View>
-
-      <View style={[styles.shareCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-        <Text style={[styles.shareTitle, { color: colors.textPrimary }]}>Manual WhatsApp invite</Text>
         <Text style={[styles.shareCopy, { color: colors.textSecondary }]}>
-          PREDIKT does not upload your contacts. This opens WhatsApp on your device.
+          Send the link once. Friends land straight in the join flow, pick a name, and make their guess.
         </Text>
-        <TextInputField
-          label="Phone number"
-          value={manualPhone}
-          onChangeText={setManualPhone}
-          placeholder="+919876543210"
-          keyboardType="phone-pad"
-        />
-        <PrimaryButton label="Create WhatsApp Invite" onPress={openManualWhatsAppInvite} variant="secondary" icon="📱" />
+        <View style={styles.shareActions}>
+          <View style={styles.shareAction}>
+            <PrimaryButton label="WhatsApp" onPress={openWhatsAppShare} icon="💬" />
+          </View>
+          <View style={styles.shareAction}>
+            <PrimaryButton label="Native Share" onPress={invitePeople} variant="secondary" icon="📨" />
+          </View>
+        </View>
+        <View style={styles.shareActions}>
+          <View style={styles.shareAction}>
+            <PrimaryButton label="Open Room" onPress={() => navigation.navigate('LiveRoom', { roomId: room.roomId, isCreator: true })} icon="▶️" />
+          </View>
+          <View style={styles.shareAction}>
+            <PrimaryButton label="Copy Instagram Caption" onPress={copyInstagramCaption} variant="secondary" icon="📸" />
+          </View>
+        </View>
+        <TouchableOpacity style={styles.secondaryToggle} onPress={() => setShowManualShare((value) => !value)}>
+          <Text style={[styles.secondaryToggleText, { color: colors.purpleLight }]}>
+            {showManualShare ? 'Hide extra share options' : 'More ways to share'}
+          </Text>
+        </TouchableOpacity>
       </View>
 
-      {/* Room details */}
-      <View style={[styles.detailCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-        {detailRows.map(({ icon, label, value }: any) => (
-          <View key={label} style={[styles.detailRow, { borderBottomColor: colors.border }]}>
-            <Text style={styles.detailIcon}>{icon}</Text>
-            <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>{label}</Text>
-            <Text style={[styles.detailValue, { color: colors.textPrimary }]}>{value}</Text>
-          </View>
-        ))}
-      </View>
+      {showManualShare ? (
+        <View style={[styles.shareCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <Text style={[styles.shareTitle, { color: colors.textPrimary }]}>Manual WhatsApp invite</Text>
+          <Text style={[styles.shareCopy, { color: colors.textSecondary }]}>
+            PREDIKT does not upload your contacts. This opens WhatsApp on your device.
+          </Text>
+          <TextInputField
+            label="Phone number"
+            value={manualPhone}
+            onChangeText={setManualPhone}
+            placeholder="+919876543210"
+            keyboardType="phone-pad"
+          />
+          <PrimaryButton label="Create WhatsApp Invite" onPress={openManualWhatsAppInvite} variant="secondary" icon="📱" />
+        </View>
+      ) : null}
+
+      <TouchableOpacity style={styles.secondaryToggle} onPress={() => setShowRoomDetails((value) => !value)}>
+        <Text style={[styles.secondaryToggleText, { color: colors.purpleLight }]}>
+          {showRoomDetails ? 'Hide room details' : 'See room details'}
+        </Text>
+      </TouchableOpacity>
+
+      {showRoomDetails ? (
+        <View style={[styles.detailCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          {detailRows.map(({ icon, label, value }: any) => (
+            <View key={label} style={[styles.detailRow, { borderBottomColor: colors.border }]}>
+              <Text style={styles.detailIcon}>{icon}</Text>
+              <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>{label}</Text>
+              <Text style={[styles.detailValue, { color: colors.textPrimary }]}>{value}</Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
       <Text style={[styles.safetyCopy, { color: colors.textSecondary }]}>
         Participants see route labels and privacy-safe progress, not exact live GPS.
       </Text>
@@ -256,6 +284,8 @@ const styles = StyleSheet.create({
   shareCopy: { fontSize: 13, lineHeight: 19 },
   shareActions: { width: '100%', flexDirection: 'row', gap: 12, marginTop: 12 },
   shareAction: { flex: 1 },
+  secondaryToggle: { alignSelf: 'center', paddingVertical: 8, marginTop: 2, marginBottom: 10 },
+  secondaryToggleText: { fontSize: 13, fontWeight: '800' },
   detailCard: {
     width: '100%',
     borderRadius: 18,
