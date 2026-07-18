@@ -1,0 +1,107 @@
+import React from 'react';
+import { View, Text, StyleSheet } from 'react-native';
+import { useTheme } from '../context/ThemeContext';
+import { formatClock } from '../utils/benchmarks';
+
+export interface RoomPredictionEntry {
+  predictionId: string;
+  status: 'visible' | 'submitted' | 'revoked';
+  predictedReachedTime?: string | null;
+  isCurrentUser?: boolean;
+  user?: {
+    userId: string;
+    name?: string | null;
+    prediktHandle?: string | null;
+    avatarKey?: string | null;
+  } | null;
+}
+
+interface Props {
+  data: RoomPredictionEntry[];
+}
+
+function initials(name?: string | null): string {
+  const clean = (name ?? '').replace(/^@/, '').trim();
+  if (!clean) return '?';
+  const parts = clean.split(/\s+/);
+  return (parts[0][0] + (parts[1]?.[0] ?? '')).toUpperCase();
+}
+
+export default function RoomPredictionList({ data }: Props) {
+  const { colors } = useTheme();
+  if (!data.length) return null;
+
+  return (
+    <View style={styles.wrap}>
+      <Text style={[styles.header, { color: colors.textSecondary }]}>
+        In this room · {data.length} {data.length === 1 ? 'guess' : 'guesses'}
+      </Text>
+      {data.map((entry) => {
+        const isCurrent = !!entry.isCurrentUser;
+        const name = entry.user?.name ?? 'PREDIKT user';
+        return (
+          <View
+            key={entry.predictionId}
+            style={[
+              styles.row,
+              {
+                backgroundColor: isCurrent ? colors.purpleDim : colors.surface,
+                borderColor: isCurrent ? colors.purple : colors.border,
+              },
+            ]}
+          >
+            <View style={[styles.avatar, { backgroundColor: colors.purple + '22', borderColor: colors.purple + '55' }]}>
+              <Text style={[styles.avatarText, { color: colors.purple }]}>{initials(name)}</Text>
+            </View>
+
+            <View style={styles.info}>
+              <Text style={[styles.name, { color: colors.textPrimary }]} numberOfLines={1}>
+                {name}
+                {isCurrent ? <Text style={{ color: colors.purple }}> (you)</Text> : null}
+              </Text>
+            </View>
+
+            {entry.status === 'visible' && entry.predictedReachedTime ? (
+              <View style={[styles.chip, { backgroundColor: colors.greenDim }]}>
+                <Text style={[styles.chipText, { color: colors.green }]}>
+                  {formatClock(new Date(entry.predictedReachedTime), false)}
+                </Text>
+              </View>
+            ) : entry.status === 'revoked' ? (
+              <Text style={[styles.muted, { color: colors.textMuted }]}>Withdrew</Text>
+            ) : (
+              <Text style={[styles.muted, { color: colors.textMuted }]}>🔒 Locked in</Text>
+            )}
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  wrap: { gap: 4, marginTop: 8 },
+  header: { fontSize: 12, fontWeight: '800', letterSpacing: 0.4, textTransform: 'uppercase', marginBottom: 2 },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 10,
+    marginVertical: 3,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  avatar: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarText: { fontSize: 13, fontWeight: '800' },
+  info: { flex: 1, marginLeft: 10 },
+  name: { fontWeight: '700', fontSize: 14 },
+  chip: { borderRadius: 10, paddingHorizontal: 10, paddingVertical: 5 },
+  chipText: { fontWeight: '800', fontSize: 14 },
+  muted: { fontSize: 13, fontWeight: '700' },
+});
