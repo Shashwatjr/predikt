@@ -390,7 +390,18 @@ export default function PredictionScreen({ navigation, route }: Props) {
             <Text style={[styles.helperText, { color: colors.textSecondary }]}>
               Choose Yes or No. This stays hidden until lock.
             </Text>
-            <PredictionInputYesNo value={yesNoChoice} onChange={setYesNoChoice} />
+            <PredictionInputYesNo
+              value={yesNoChoice}
+              onChange={setYesNoChoice}
+              title={room?.question ?? 'Will it happen?'}
+              helper={
+                foodEtaBenchmarkLabel
+                  ? 'Pick Yes if you think it beats the benchmark. Pick No if you think it misses.'
+                  : 'Choose the side you believe is most likely.'
+              }
+              yesSubLabel={foodEtaBenchmarkLabel ? 'Beats it' : 'Yes side'}
+              noSubLabel={foodEtaBenchmarkLabel ? 'Misses it' : 'No side'}
+            />
           </>
         ) : null}
 

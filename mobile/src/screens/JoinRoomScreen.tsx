@@ -124,7 +124,8 @@ export default function JoinRoomScreen({ navigation, route }: Props) {
 
   const benchmarks = deriveArrivalBenchmarks(room);
   const categoryTheme = getCategoryTheme(room?.category ?? room?.templateKey);
-  const roomTitle = room?.title ?? room?.roomTitle ?? 'A PREDIKT challenge';
+  const isGenericRoom = (room?.category ?? room?.templateKey) === 'open_prediction';
+  const roomTitle = room?.title ?? room?.roomTitle ?? (isGenericRoom ? 'A Wild Cards room' : 'A PREDIKT challenge');
   const lockLabel = room?.canLateJoinPredict && room?.lateJoinPredictionWindowEndsAt
     ? `Late-join guesses stay open until ${new Date(room.lateJoinPredictionWindowEndsAt).toLocaleString()}`
     : room?.lockTime || room?.predictionCloseTime
@@ -158,7 +159,7 @@ export default function JoinRoomScreen({ navigation, route }: Props) {
               <Text style={styles.heroIcon}>{categoryTheme.icon}</Text>
               <Text style={styles.heroCategory}>{categoryTheme.label}</Text>
             </View>
-            <Text style={styles.heroEyebrow}>You're invited to predict</Text>
+            <Text style={styles.heroEyebrow}>{isGenericRoom ? "You're invited to Wild Cards" : "You're invited to predict"}</Text>
             <Text style={styles.heroTitle}>{roomTitle}</Text>
             {room.question ? <Text style={styles.heroQuestion}>{room.question}</Text> : null}
             <View style={styles.socialProofPill}>
@@ -191,7 +192,9 @@ export default function JoinRoomScreen({ navigation, route }: Props) {
                 maxLength={30}
               />
               <Text style={styles.guestPromise}>
-                No account needed to play. Your guess is saved right away — claim your Aura later if you want.
+                {isGenericRoom
+                  ? 'No account needed to play. Your prediction is saved right away. Generic rooms use creator-attest plus challenge flow in MVP.'
+                  : 'No account needed to play. Your guess is saved right away — claim your Aura later if you want.'}
               </Text>
             </View>
           ) : null}
@@ -242,7 +245,11 @@ export default function JoinRoomScreen({ navigation, route }: Props) {
             <View style={{ height: 6 }} />
             <PrimaryButton label="Find Room" onPress={() => handleFind()} loading={loading} icon="🔍" />
           </View>
-          <Text style={styles.finderNote}>No account needed to play. Your guess is saved, and you can claim your Aura later.</Text>
+          <Text style={styles.finderNote}>
+            {isGenericRoom
+              ? 'No account needed to join Wild Cards. The host attests the result, and challengers can request proof through WhatsApp.'
+              : 'No account needed to play. Your guess is saved, and you can claim your Aura later.'}
+          </Text>
         </>
       )}
     </ScrollView>

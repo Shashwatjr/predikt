@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Animated, ScrollView, StyleSheet, Text, View, Alert } from 'react-native';
+import { Animated, ScrollView, StyleSheet, Text, View, Alert, Linking } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -79,6 +79,7 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
   const etaMovedShown = useRef<Set<number>>(new Set());
   const [viewerCountdownSeconds, setViewerCountdownSeconds] = useState<number | null>(null);
   const [lockCountdownSeconds, setLockCountdownSeconds] = useState<number | null>(null);
+  const [reviewCountdownSeconds, setReviewCountdownSeconds] = useState<number | null>(null);
   const sampledCheckpoints = useRef<Set<number>>(new Set());
   const firedMilestones = useRef<Set<number>>(new Set());
   const viewerCountdownInterval = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -237,6 +238,24 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
     return () => clearInterval(id);
   }, [liveState?.status, room?.status, room?.predictionCloseTime, room?.lockTime]);
 
+  useEffect(() => {
+    const mine = predictions.find((entry: any) => entry.isCurrentUser && entry.status !== 'revoked');
+    const rawDeadline = mine?.editDeadline;
+    if (!featureFlags.checkpointLeaderboardV2 || !rawDeadline) {
+      setReviewCountdownSeconds(null);
+      return;
+    }
+    const target = new Date(rawDeadline).getTime();
+    if (Number.isNaN(target)) {
+      setReviewCountdownSeconds(null);
+      return;
+    }
+    const tick = () => setReviewCountdownSeconds(Math.max(0, Math.ceil((target - Date.now()) / 1000)));
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [predictions]);
+
   async function fetchRoom() {
     try {
       const res = await api.get(`/rooms/${roomId}`);
@@ -382,8 +401,8 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
       try {
         const res = await api.post(`/rooms/${roomId}/end`, {
           actualOptionKey,
-          outcomeSource: 'host_declared',
-          confidenceLevel: 'medium',
+          outcomeSource: category === 'open_prediction' ? 'creator_attest' : 'host_declared',
+          confidenceLevel: category === 'open_prediction' ? 'creator_attested' : 'medium',
         });
         navigation.navigate('Result', { roomId, result: res.data });
       } catch (err: unknown) {
@@ -394,7 +413,7 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
       return;
     }
 
-    Alert.alert('End Room?', 'This will calculate the winner and award Aura.', [
+    Alert.alert('End Room?', category === 'open_prediction' ? 'This will use creator-attest for the result. Predictors can challenge it later.' : 'This will calculate the winner and award Aura.', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'End Room',
@@ -482,6 +501,16 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
     !!myPrediction &&
     !reached80 &&
     phase !== 'ended';
+  const reviewWindowActive =
+    featureFlags.checkpointLeaderboardV2 &&
+    !!myPrediction &&
+    reviewCountdownSeconds != null &&
+    reviewCountdownSeconds > 0;
+  const reviewCountdownLabel = reviewWindowActive
+    ? `Review & change your prediction for ${Math.floor(reviewCountdownSeconds / 60)}:${String(
+        reviewCountdownSeconds % 60,
+      ).padStart(2, '0')}`
+    : null;
 
   // During the visibility-delay window (or any moment progress hasn't landed yet), the
   // raw 0% reads as broken. Show plain "it has begun" copy instead. This changes only
@@ -674,6 +703,15 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
         </View>
       ) : null}
 
+      {reviewCountdownLabel ? (
+        <View style={styles.reviewBanner}>
+          <Text style={styles.reviewBannerTitle}>✏️ One-minute review window</Text>
+          <Text style={styles.reviewBannerCopy}>
+            {reviewCountdownLabel}. Human times stay blurred until your own prediction locks.
+          </Text>
+        </View>
+      ) : null}
+
       <LiveStatusCard
         theme={categoryTheme}
         title={room?.roomTitle ?? (category === 'weather_rain' ? 'Weather Room' : 'Live PREDIKT')}
@@ -843,11 +881,13 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
       {isCreator && room?.answerType === 'multiple_choice' ? (
         <View style={[styles.creatorCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <LinearGradient colors={[colors.purple + '30', 'transparent']} style={styles.creatorHeader}>
-            <Text style={[styles.creatorTitle, { color: colors.textPrimary }]}>Declare Result</Text>
+            <Text style={[styles.creatorTitle, { color: colors.textPrimary }]}>{category === 'open_prediction' ? 'Creator Attest Result' : 'Declare Result'}</Text>
           </LinearGradient>
           <View style={styles.creatorBody}>
             <Text style={[styles.startDelayCopy, { color: colors.textSecondary }]}>
-              Choose the actual outcome from the original options. Predictions stay hidden until lock.
+              {category === 'open_prediction'
+                ? 'Choose the actual outcome from the original options. MVP rule: creator-attest only, no screenshot upload. Predictors can challenge afterward.'
+                : 'Choose the actual outcome from the original options. Predictions stay hidden until lock.'}
             </Text>
             <View style={styles.resultOptionStack}>
               {multipleChoiceOptions.map((option: any) => (
@@ -859,7 +899,7 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
                 />
               ))}
             </View>
-            <PrimaryButton label="Declare Result & See Winners" onPress={handleEndRoom} loading={ending} icon="🏁" />
+            <PrimaryButton label={category === 'open_prediction' ? 'Attest Result & See Winners' : 'Declare Result & See Winners'} onPress={handleEndRoom} loading={ending} icon="🏁" />
           </View>
         </View>
       ) : null}
@@ -918,6 +958,17 @@ const styles = StyleSheet.create({
   lockedBannerTitle: { color: '#86efac', fontSize: 15, fontWeight: '900', marginBottom: 3 },
   lockedBannerCopy: { color: 'rgba(255,255,255,0.82)', fontSize: 13, lineHeight: 19 },
   lockedBannerDismiss: { color: 'rgba(255,255,255,0.5)', fontSize: 15, fontWeight: '800', paddingHorizontal: 4 },
+  reviewBanner: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(34,211,238,0.45)',
+    backgroundColor: 'rgba(34,211,238,0.10)',
+    padding: 14,
+    marginBottom: 16,
+    gap: 4,
+  },
+  reviewBannerTitle: { color: '#fff', fontSize: 15, fontWeight: '900' },
+  reviewBannerCopy: { color: 'rgba(255,255,255,0.82)', fontSize: 13, lineHeight: 19, fontWeight: '600' },
   privacyPill: { borderRadius: 10, paddingHorizontal: 12, paddingVertical: 7, marginBottom: 16, alignSelf: 'flex-start' },
   privacyText: { fontSize: 12, fontWeight: '600' },
   phaseBanner: { borderRadius: 14, borderWidth: 1, padding: 14, marginBottom: 16, gap: 4 },

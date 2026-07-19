@@ -5,17 +5,30 @@ import { useTheme } from '../context/ThemeContext';
 interface Props {
   value: 'yes' | 'no' | null;
   onChange: (value: 'yes' | 'no') => void;
+  title?: string;
+  helper?: string;
+  yesLabel?: string;
+  noLabel?: string;
+  yesSubLabel?: string;
+  noSubLabel?: string;
 }
 
-export default function PredictionInputYesNo({ value, onChange }: Props) {
+export default function PredictionInputYesNo({
+  value,
+  onChange,
+  title = 'Will it happen?',
+  helper = 'Pick Yes if you think it will happen. Pick No if you think it will not.',
+  yesLabel = 'Yes',
+  noLabel = 'No',
+  yesSubLabel = 'It happens',
+  noSubLabel = "It doesn't",
+}: Props) {
   const { colors } = useTheme();
 
   return (
     <>
-      <Text style={[styles.title, { color: colors.textPrimary }]}>Will it beat the ETA?</Text>
-      <Text style={[styles.helper, { color: colors.textSecondary }]}>
-        Pick Yes if you think it finishes before the estimate. Pick No if you think it lands after.
-      </Text>
+      <Text style={[styles.title, { color: colors.textPrimary }]}>{title}</Text>
+      <Text style={[styles.helper, { color: colors.textSecondary }]}>{helper}</Text>
       <View style={styles.row}>
         <TouchableOpacity
           style={[
@@ -27,8 +40,8 @@ export default function PredictionInputYesNo({ value, onChange }: Props) {
           ]}
           onPress={() => onChange('yes')}
         >
-          <Text style={[styles.text, { color: colors.textPrimary }]}>Yes</Text>
-          <Text style={[styles.subText, { color: colors.textSecondary }]}>Before ETA</Text>
+          <Text style={[styles.text, { color: colors.textPrimary }]}>{yesLabel}</Text>
+          <Text style={[styles.subText, { color: colors.textSecondary }]}>{yesSubLabel}</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[
@@ -40,8 +53,8 @@ export default function PredictionInputYesNo({ value, onChange }: Props) {
           ]}
           onPress={() => onChange('no')}
         >
-          <Text style={[styles.text, { color: colors.textPrimary }]}>No</Text>
-          <Text style={[styles.subText, { color: colors.textSecondary }]}>After ETA</Text>
+          <Text style={[styles.text, { color: colors.textPrimary }]}>{noLabel}</Text>
+          <Text style={[styles.subText, { color: colors.textSecondary }]}>{noSubLabel}</Text>
         </TouchableOpacity>
       </View>
     </>

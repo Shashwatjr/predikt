@@ -7,6 +7,7 @@ export interface RoomPredictionEntry {
   predictionId: string;
   status: 'visible' | 'submitted' | 'revoked';
   predictedReachedTime?: string | null;
+  editDeadline?: string | null;
   isCurrentUser?: boolean;
   // v2 (checkpoint_leaderboard_v2): a guess locked after the 80% checkpoint is
   // Rizz-tier — accepted and shown, but out of the winner / Aura running.

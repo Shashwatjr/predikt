@@ -19,6 +19,7 @@ import { CancelJourneyDto } from './dto/cancel-journey.dto';
 import { NotificationsService } from '../notifications/notifications.service';
 import { BadgeService } from '../badges/badge.service';
 import { featureFlags } from '../config/feature-flags';
+import { computeOracleGuess } from '../common/utils/oracle-guess';
 
 const TERMINAL_STATUSES = ['completed', 'cancelled'] as const;
 const DEFAULT_START_DELAY_MINUTES = 3;
@@ -37,6 +38,7 @@ const MULTIPLE_CHOICE_PARTICIPATION_CLOUT = 5;
 const DEFAULT_EXPECTED_DURATION_SECONDS = 60 * 60;
 const INACTIVITY_THRESHOLD_SECONDS = 20 * 60;
 const START_VISIBILITY_DELAY_MS = 2 * 60 * 1000;
+const START_VERIFY_DISTANCE_METERS = 2000;
 const ARRIVAL_CONFIRM_DISTANCE_METERS = 2000;
 const CHECKPOINT_MILESTONES = [50, 80] as const;
 const RELIABILITY_POINTS: Record<string, number> = {
@@ -124,6 +126,17 @@ export class LifecycleService {
     // Non-GPS rooms have no live location to protect or coordinate, so they may
     // start immediately (no default delay) and become visible at once.
     const isLocationTracked = usesExclusiveLocationResource(room.roomCategory);
+    if (featureFlags.checkpointLeaderboardV2 && isLocationTracked) {
+      if (dto.location?.lat == null || dto.location?.lng == null) {
+        throw new BadRequestException('Creator GPS is required to start this journey');
+      }
+      const startVerification = this.buildStartVerification(room, dto.location.lat, dto.location.lng);
+      if (startVerification.shouldBlock) {
+        throw new BadRequestException(
+          `Start verification failed. Move closer to ${room.startingPointLabel} before starting the journey.`,
+        );
+      }
+    }
     const startDelayMinutes =
       dto.startDelayMinutes ?? (isLocationTracked ? DEFAULT_START_DELAY_MINUTES : 0);
     const scheduledStartTime = new Date(Date.now() + startDelayMinutes * 60 * 1000);
@@ -162,7 +175,7 @@ export class LifecycleService {
       include: { journeyRoute: true },
     });
 
-    if (dto.location?.lat != null && dto.location?.lng != null) {
+    if (dto.location?.lat != null && dto.location?.lng != null && !featureFlags.checkpointLeaderboardV2) {
       await this.recordCheckpoint(roomId, user.userId, 0, dto.location.lat, dto.location.lng, scheduledStartTime);
     }
 
@@ -172,7 +185,12 @@ export class LifecycleService {
       action: 'journey_started',
       targetType: 'room',
       targetId: roomId,
-      afterValue: { autoCloseAt: updated.autoCloseAt, expectedDurationSeconds },
+      afterValue: {
+        autoCloseAt: updated.autoCloseAt,
+        expectedDurationSeconds,
+        startVerified:
+          featureFlags.checkpointLeaderboardV2 && dto.location?.lat != null && dto.location?.lng != null,
+      },
     });
 
     await this.notificationsService.notifyRoomMembers({
@@ -370,6 +388,17 @@ export class LifecycleService {
       await this.recordCheckpoint(room.roomId, user.userId, 100, dto.location.lat, dto.location.lng, actualEndTime);
     }
 
+    if (featureFlags.checkpointLeaderboardV2) {
+      const verification = this.buildArrivalVerification(room, dto.location?.lat, dto.location?.lng);
+      if (verification.shouldPrompt && !dto.confirmAnyway) {
+        return {
+          requiresConfirmation: true,
+          prompt: `Looks like you're not quite at ${room.destinationLabel} yet — mark as arrived anyway?`,
+          distanceMeters: verification.distanceMeters,
+        };
+      }
+    }
+
     await this.prisma.predictionRoom.update({
       where: { roomId: room.roomId },
       data: {
@@ -418,7 +447,7 @@ export class LifecycleService {
   private async recordCheckpoint(
     roomId: string,
     creatorUserId: string,
-    checkpoint: 0 | 50 | 80 | 100,
+    checkpoint: number,
     lat: number,
     lng: number,
     capturedAt: Date,
@@ -440,6 +469,20 @@ export class LifecycleService {
         createdAt: capturedAt,
       },
     });
+  }
+
+  private buildStartVerification(room: any, lat?: number, lng?: number) {
+    const expectedLat = room.startingLat ?? room.journeyRoute?.startLat ?? null;
+    const expectedLng = room.startingLng ?? room.journeyRoute?.startLng ?? null;
+    if (lat == null || lng == null || expectedLat == null || expectedLng == null) {
+      return { shouldBlock: false, distanceMeters: null };
+    }
+
+    const distance = distanceMeters(lat, lng, expectedLat, expectedLng);
+    return {
+      shouldBlock: distance > START_VERIFY_DISTANCE_METERS,
+      distanceMeters: distance,
+    };
   }
 
   private buildArrivalVerification(room: any, lat?: number, lng?: number) {
@@ -614,7 +657,7 @@ export class LifecycleService {
   ) {
     const milestone = await this.prisma.roomMilestone.findUnique({
       where: { milestoneId },
-      include: { room: true },
+      include: { room: { include: { checkpoints: true } } },
     });
     if (!milestone) throw new NotFoundException('Milestone not found');
 
@@ -634,33 +677,83 @@ export class LifecycleService {
     const predictions = v2 ? allPredictions.filter(isEligible) : allPredictions;
     const ineligiblePredictions = v2 ? allPredictions.filter((p) => !isEligible(p)) : [];
 
-    const aiDifferenceMinutes = milestone.room.aiPredictedTime
-      ? Math.abs((milestone.room.aiPredictedTime.getTime() - actualReachedTime.getTime()) / 60000)
+    // v2: Oracle competes on the final destination as a non-human, non-creator, winner-
+    // eligible entry. Its guess is READ from frozen checkpoints (computeOracleGuess never
+    // calls the maps provider) — scored here against actual, never the live ETA.
+    const oracleGuess =
+      v2 && milestone.milestoneType === 'final_destination'
+        ? computeOracleGuess(milestone.room, milestone.room.checkpoints)
+        : null;
+    const ORACLE_ID = '__oracle__';
+
+    // When Oracle is present, humans who beat it earn the existing beat-AI bonus/flex.
+    const aiBenchmarkTime = oracleGuess?.arrivalTime ?? milestone.room.aiPredictedTime;
+    const aiDifferenceMinutes = aiBenchmarkTime
+      ? Math.abs((aiBenchmarkTime.getTime() - actualReachedTime.getTime()) / 60000)
       : null;
 
-    const ranked = predictions
-      .map((prediction) => ({
-        ...prediction,
-        differenceFromActualSeconds: Math.abs(
-          Math.round((prediction.predictedReachedTime.getTime() - actualReachedTime.getTime()) / 1000),
-        ),
-      }))
-      .sort((a, b) => {
-        if (a.differenceFromActualSeconds !== b.differenceFromActualSeconds) {
-          return a.differenceFromActualSeconds - b.differenceFromActualSeconds;
-        }
-        // Tie-breaker: earlier submissions win when two predictions are equally close.
-        return a.submittedAt.getTime() - b.submittedAt.getTime();
-      });
+    const withDiff = (predictedReachedTime: Date, submittedAt: Date, isOracle: boolean, prediction?: (typeof predictions)[number]) => ({
+      isOracle,
+      prediction,
+      submittedAt,
+      predictedReachedTime,
+      differenceFromActualSeconds: Math.abs(
+        Math.round((predictedReachedTime.getTime() - actualReachedTime.getTime()) / 1000),
+      ),
+    });
+
+    const ranked = [
+      ...predictions.map((p) => withDiff(p.predictedReachedTime, p.submittedAt, false, p)),
+      // Oracle's tie-break submittedAt is its freeze moment (during the journey), so on an
+      // exact tie a human (who committed before start) ranks ahead of the bot.
+      ...(oracleGuess ? [withDiff(oracleGuess.arrivalTime, actualReachedTime, true)] : []),
+    ].sort((a, b) => {
+      if (a.differenceFromActualSeconds !== b.differenceFromActualSeconds) {
+        return a.differenceFromActualSeconds - b.differenceFromActualSeconds;
+      }
+      // Tie-breaker: earlier submissions win when two predictions are equally close.
+      return a.submittedAt.getTime() - b.submittedAt.getTime();
+    });
 
     const leaderboard = [];
 
-    for (const [index, prediction] of ranked.entries()) {
+    for (const [index, entry] of ranked.entries()) {
       const rank = index + 1;
-      const differenceFromActualMinutes = prediction.differenceFromActualSeconds / 60;
-      const tier = this.scoreTier(prediction.differenceFromActualSeconds);
+      const differenceFromActualMinutes = entry.differenceFromActualSeconds / 60;
+
+      // Oracle branch: persist its scored outcome for surfacing; award nothing, write no user rows.
+      if (entry.isOracle) {
+        await this.prisma.predictionRoom.update({
+          where: { roomId },
+          data: {
+            oracleResult: {
+              arrivalTime: entry.predictedReachedTime.toISOString(),
+              diffSeconds: entry.differenceFromActualSeconds,
+              diffMinutes: differenceFromActualMinutes,
+              rank,
+              beatenByHuman: rank > 1,
+              frozenAtCheckpoint: oracleGuess!.frozenAtCheckpoint,
+            },
+          },
+        });
+        leaderboard.push({
+          isOracle: true,
+          userId: ORACLE_ID,
+          name: 'Oracle',
+          predictedReachedTime: entry.predictedReachedTime,
+          differenceFromActualMinutes,
+          differenceFromActualSeconds: entry.differenceFromActualSeconds,
+          rankForMilestone: rank,
+          totalAuraAwarded: 0,
+          cloutAwarded: 0,
+        });
+        continue;
+      }
+
+      const prediction = entry.prediction!;
+      const tier = this.scoreTier(entry.differenceFromActualSeconds);
       const baseAura =
-        prediction.differenceFromActualSeconds > 5 * 60
+        entry.differenceFromActualSeconds > 5 * 60
           ? 5
           : AURA_BY_RANK[rank] ?? 10;
       const dotBonusAura = tier.bonusAura;
@@ -683,7 +776,7 @@ export class LifecycleService {
           where: { predictionId: prediction.predictionId },
           data: {
             differenceFromActualMinutes,
-            differenceFromActualSeconds: prediction.differenceFromActualSeconds,
+            differenceFromActualSeconds: entry.differenceFromActualSeconds,
             rankForMilestone: rank,
             baseAura,
             rankBonusAura: dotBonusAura + beatAiBonus,
@@ -768,7 +861,7 @@ export class LifecycleService {
         name: prediction.user.prediktHandle ? `@${prediction.user.prediktHandle}` : prediction.user.name,
         predictedReachedTime: prediction.predictedReachedTime,
         differenceFromActualMinutes,
-        differenceFromActualSeconds: prediction.differenceFromActualSeconds,
+        differenceFromActualSeconds: entry.differenceFromActualSeconds,
         scoreTier: tier.name,
         dotBonus: tier.flexType,
         rankForMilestone: rank,

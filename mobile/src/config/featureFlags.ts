@@ -38,6 +38,7 @@ export const featureFlags = {
   categoryWeather: envFlag('CATEGORY_WEATHER', false),
   categoryWhosLate: envFlag('CATEGORY_WHOS_LATE', false),
   categoryGymHabit: envFlag('CATEGORY_GYM_HABIT', false),
+  categoryOpenPrediction: envFlag('CATEGORY_OPEN_PREDICTION', true),
 
   // --- Modes ---
   modeBeatTheBot: envFlag('MODE_BEAT_THE_BOT', false),
@@ -76,6 +77,8 @@ export function isCategoryEnabled(categoryKey: string | null | undefined): boole
       return featureFlags.categoryWhosLate;
     case 'gym_habit':
       return featureFlags.categoryGymHabit;
+    case 'open_prediction':
+      return featureFlags.categoryOpenPrediction;
     default:
       return false;
   }

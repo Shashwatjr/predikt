@@ -346,6 +346,10 @@ model PredictionRoom {
   providerConfidence        String?             @map("provider_confidence")
   hostPrediction            Json?               @map("host_prediction")
   oracleBotPrediction       Json?               @map("oracle_bot_prediction")
+  // v2 (checkpoint_leaderboard_v2): Oracle's SCORED outcome as a ranked competitor
+  // ({ arrivalTime, diffSeconds, rank, beatenByHuman, frozenAtCheckpoint }). Distinct from
+  // oracleBotPrediction, which is only the display benchmark label.
+  oracleResult              Json?               @map("oracle_result")
   options                   Json?               @map("options")
   roomType                  String              @default("journey") @map("room_type")
   answerType                String              @default("exact_time") @map("answer_type")

@@ -26,6 +26,7 @@ export default function RoomCreatedScreen({ navigation, route }: Props) {
   const sharePayload = useMemo(() => buildSharePayload({ ...room, inviteCode }), [room, inviteCode]);
   const creationMeta = room.scoringRule?.creationMeta ?? room.creationMeta ?? {};
   const category = room.category ?? creationMeta.category ?? room.templateKey;
+  const isGenericRoom = category === 'open_prediction';
   const forecastSnapshot = room.baselineSnapshot ?? creationMeta.baselineSnapshot;
   const oracleBotPrediction = room.oracleBotPrediction ?? creationMeta.oracleBotPrediction;
   const expectedDurationMinutes = Math.round((room.expectedDurationSeconds ?? room.route?.estimatedDurationSeconds ?? room.journeyRoute?.estimatedDurationSeconds ?? 3600) / 60);
@@ -116,7 +117,9 @@ export default function RoomCreatedScreen({ navigation, route }: Props) {
             <Text style={[styles.sub, { color: colors.textSecondary }]}>
               {isGroupJourney
                 ? 'Invite friends to join, opt in as travellers, and predict each other’s arrival time.'
-                : 'Share the code below. Friends can join from the link and predict right away.'}
+                : isGenericRoom
+                  ? 'Share the Wild Cards link below. Friends can join, predict, and challenge the attested result if needed.'
+                  : 'Share the code below. Friends can join from the link and predict right away.'}
             </Text>
           </View>
         </View>
@@ -148,7 +151,9 @@ export default function RoomCreatedScreen({ navigation, route }: Props) {
         <Text style={styles.roomTitleHero}>{sharePayload.shareTitle}</Text>
         <Text style={styles.code}>{inviteCode}</Text>
         <Text style={styles.codeHint}>
-          Anyone with this code can open the room and predict. No account needed for the first round.
+          {isGenericRoom
+            ? 'Anyone with this code can join Wild Cards. MVP rule: creator-attest result, Gems/Rizz framing, no screenshot proof upload.'
+            : 'Anyone with this code can open the room and predict. No account needed for the first round.'}
         </Text>
       </LinearGradient>
 
@@ -164,7 +169,9 @@ export default function RoomCreatedScreen({ navigation, route }: Props) {
       <View style={[styles.shareCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         <Text style={[styles.shareTitle, { color: colors.textPrimary }]}>Invite friends</Text>
         <Text style={[styles.shareCopy, { color: colors.textSecondary }]}>
-          Send the link once. Friends land straight in the join flow, pick a name, and make their guess.
+          {isGenericRoom
+            ? 'Send the link once. Friends land straight in Wild Cards, pick a name, and make their call.'
+            : 'Send the link once. Friends land straight in the join flow, pick a name, and make their guess.'}
         </Text>
         <View style={styles.shareActions}>
           <View style={styles.shareAction}>

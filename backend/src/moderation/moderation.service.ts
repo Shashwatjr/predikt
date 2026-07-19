@@ -10,6 +10,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { findBannedBettingTerms } from '../common/utils/content-policy';
 import { POLICY_BLOCK_MESSAGE } from '../common/constants/policy.constants';
 import { SAFE_PUBLIC_USER_SELECT, safePublicUser } from '../common/utils/safe-user-select';
+import { NotificationsService } from '../notifications/notifications.service';
 
 const ALLOWED_REACTIONS = new Set(['🔥', '🎯', '👑', '😂', '😭', '🤝', '⚡', '🌧️', '🍕', '💪']);
 
@@ -18,6 +19,7 @@ export class ModerationService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   async report(user: User, body: any) {
@@ -118,6 +120,14 @@ export class ModerationService {
     if (!room) throw new NotFoundException('Room not found');
     if (!body.reason) throw new BadRequestException('Dispute reason is required');
 
+    const defaultProofWaMeLink = `https://wa.me/?text=${encodeURIComponent(
+      `Challenge for "${room.roomTitle}" on Myprediktion.\n\nReason: ${body.reason}\n\nHost attested the result inside the app. Please reply here with your proof or context.`,
+    )}`;
+    const proofWaMeLink =
+      typeof body.proofWaMeLink === 'string' && body.proofWaMeLink.trim()
+        ? body.proofWaMeLink.trim()
+        : defaultProofWaMeLink;
+
     const dispute = await this.prisma.$transaction(async (tx) => {
       const created = await tx.roomDispute.create({
         data: { roomId, userId: currentUser.userId, reason: body.reason },
@@ -129,16 +139,53 @@ export class ModerationService {
       return created;
     });
 
+    await Promise.all([
+      this.notificationsService.create({
+        userId: room.creatorUserId,
+        roomId,
+        type: 'generic_room_challenge',
+        title: 'Result challenged',
+        body: `${currentUser.name ?? 'A predictor'} challenged your creator-attested result.`,
+        severity: 'action_required',
+        actionLabel: 'Review challenge',
+        actionTarget: `/rooms/${roomId}`,
+        metadata: {
+          challengerUserId: currentUser.userId,
+          reason: body.reason,
+          proofWaMeLink,
+          flow: 'creator_attest',
+        },
+        idempotencyKey: `challenge:${roomId}:${dispute.disputeId}:creator`,
+      }),
+      this.notificationsService.create({
+        userId: currentUser.userId,
+        roomId,
+        type: 'generic_room_challenge',
+        title: 'Challenge submitted',
+        body: 'Your challenge was logged. Send proof through the WhatsApp link if needed.',
+        severity: 'info',
+        actionLabel: 'Open proof link',
+        actionTarget: proofWaMeLink,
+        metadata: {
+          challengerUserId: currentUser.userId,
+          reason: body.reason,
+          proofWaMeLink,
+          flow: 'creator_attest',
+        },
+        idempotencyKey: `challenge:${roomId}:${dispute.disputeId}:challenger`,
+      }),
+    ]);
+
     await this.auditService.log({
       actorType: 'user',
       actorId: currentUser.userId,
       action: 'room.dispute.created',
       targetType: 'room',
       targetId: roomId,
-      afterValue: { disputeId: dispute.disputeId },
+      afterValue: { disputeId: dispute.disputeId, proofWaMeLink, flow: 'creator_attest' },
       reason: body.reason,
     });
-    return dispute;
+    return { ...dispute, proofWaMeLink };
   }
 
   async reactToResult(currentUser: User, roomId: string, body: any) {
