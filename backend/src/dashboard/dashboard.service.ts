@@ -583,7 +583,13 @@ export class DashboardService {
             travelMode: 'custom',
           },
       liveProgress,
-      quickAction: this.buildQuickAction(normalizedStatus, room.journeyStatus, userPredictions.length > 0, room.creatorUserId === userId),
+      quickAction: this.buildQuickAction(
+        normalizedStatus,
+        room.journeyStatus,
+        userPredictions.length > 0,
+        room.creatorUserId === userId,
+        room.category ?? room.templateKey ?? null,
+      ),
       pinned: preference?.pinned ?? false,
       displayOrder: preference?.displayOrder ?? fallbackOrder,
     };
@@ -643,7 +649,26 @@ export class DashboardService {
     return `ETA is about ${Math.abs(diffMinutes)} min earlier than your prediction`;
   }
 
-  private buildQuickAction(status: string, journeyStatus: string, hasPrediction: boolean, isCreator: boolean) {
+  private buildQuickAction(
+    status: string,
+    journeyStatus: string,
+    hasPrediction: boolean,
+    isCreator: boolean,
+    category: string | null,
+  ) {
+    if (category === 'open_prediction') {
+      if (status === 'predictions_open' && !hasPrediction) {
+        return { label: 'Predikt', targetScreen: 'Prediction' };
+      }
+      if (status === 'predictions_open') {
+        return { label: 'Predikt', targetScreen: 'Prediction' };
+      }
+      if (status === 'predictions_locked' || status === 'live') {
+        return { label: 'Open Room', targetScreen: 'LiveRoom' };
+      }
+      return { label: 'View Results', targetScreen: 'Result' };
+    }
+
     if (isCreator && ['scheduled', 'open', 'locked'].includes(journeyStatus)) {
       return { label: 'Start Journey', targetScreen: 'LiveRoom' };
     }
