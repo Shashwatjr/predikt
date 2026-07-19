@@ -8,6 +8,8 @@ import { Platform } from 'react-native';
  */
 const DEFAULT_API_BASE_URL =
   Platform.OS === 'android' ? 'http://10.0.2.2:3000' : 'http://localhost:3000';
+const PRODUCTION_WEB_API_BASE_URL =
+  'https://predikt-api-676327407919.asia-southeast1.run.app';
 
 function resolveApiBaseUrl(rawUrl?: string) {
   if (Platform.OS === 'web' && typeof window !== 'undefined') {
@@ -15,6 +17,8 @@ function resolveApiBaseUrl(rawUrl?: string) {
     if (host === 'localhost' || host === '127.0.0.1') {
       return 'http://localhost:3000';
     }
+
+    return PRODUCTION_WEB_API_BASE_URL;
   }
 
   return sanitizeApiBaseUrl(rawUrl);

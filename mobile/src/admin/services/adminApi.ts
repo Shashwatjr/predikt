@@ -1,6 +1,11 @@
 import axios from 'axios';
 
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL;
+const PRODUCTION_WEB_API_BASE_URL =
+  'https://predikt-api-676327407919.asia-southeast1.run.app';
+const API_BASE_URL =
+  typeof window !== 'undefined'
+    ? PRODUCTION_WEB_API_BASE_URL
+    : process.env.EXPO_PUBLIC_API_BASE_URL;
 
 if (!API_BASE_URL) {
   throw new Error('Missing EXPO_PUBLIC_API_BASE_URL for admin API');
