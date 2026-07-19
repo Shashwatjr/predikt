@@ -87,6 +87,26 @@ export function validateEnv(rawEnv: RuntimeEnv) {
   if (productionLike && corsOrigins.length === 0) {
     throw new Error('CORS_ORIGINS must be set in production-like environments');
   }
+
+  const webBaseUrl = (
+    env.WEB_BASE_URL?.trim() ||
+    env.EXPO_PUBLIC_WEB_BASE_URL?.trim() ||
+    ''
+  );
+  if (productionLike) {
+    if (!webBaseUrl) {
+      throw new Error(
+        'WEB_BASE_URL (or EXPO_PUBLIC_WEB_BASE_URL) must be set in production-like environments',
+      );
+    }
+    if (!/^https:\/\//i.test(webBaseUrl)) {
+      throw new Error('WEB_BASE_URL must be an https:// URL in production-like environments');
+    }
+    if (/localhost|127\.0\.0\.1/i.test(webBaseUrl)) {
+      throw new Error('WEB_BASE_URL must not point at localhost in production-like environments');
+    }
+  }
+
   if (!['auto', 'google', 'bing', 'azure', 'osm'].includes(mapsProvider)) {
     throw new Error('MAPS_PROVIDER must be one of auto, google, bing, azure, osm');
   }
@@ -102,6 +122,7 @@ export function validateEnv(rawEnv: RuntimeEnv) {
     JWT_REFRESH_TTL_DAYS: `${jwtRefreshTtlDays}`,
     ADMIN_JWT_TTL_SECONDS: `${adminJwtTtlSeconds}`,
     CORS_ORIGINS: corsOrigins.join(','),
+    WEB_BASE_URL: webBaseUrl,
     GOOGLE_MAPS_API_KEY: googleMapsApiKey,
     GOOGLE_PLACES_API_KEY: googlePlacesApiKey,
     GOOGLE_DIRECTIONS_API_KEY: googleDirectionsApiKey,

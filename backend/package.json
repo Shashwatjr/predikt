@@ -10,6 +10,7 @@
     "db:seed": "ts-node prisma/seed.ts",
     "seed:engagement-demo": "ts-node scripts/seed-engagement-demo.ts",
     "seed:pilot": "ts-node scripts/seed-pilot-user.ts",
+    "seed:demo": "ts-node scripts/seed-demo-user.ts",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
     "start:dev": "nest start --watch",

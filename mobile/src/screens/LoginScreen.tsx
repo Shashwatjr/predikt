@@ -12,20 +12,23 @@ import api, { getApiErrorMessage } from '../services/api';
 
 type Props = { navigation: NativeStackNavigationProp<RootStackParamList, 'Login'> };
 
-const DEV_ACCOUNTS = [
-  {
-    key: 'pilot',
-    label: 'Pilot (first-time MVP)',
-    email: 'pilot@predikt.ai',
-    password: 'PilotMvp2026!',
-  },
-  {
-    key: 'demo',
-    label: 'Demo (pre-filled QA)',
-    email: 'test@predikt.ai',
-    password: 'Password123!',
-  },
-] as const;
+/** Dev-only quick-login chips. Kept behind `__DEV__` so passwords are stripped from production bundles. */
+const DEV_ACCOUNTS = __DEV__
+  ? ([
+      {
+        key: 'pilot',
+        label: 'Pilot (first-time MVP)',
+        email: 'pilot@predikt.ai',
+        password: 'PilotMvp2026!',
+      },
+      {
+        key: 'demo',
+        label: 'Demo (pre-filled QA)',
+        email: 'test@predikt.ai',
+        password: 'Password123!',
+      },
+    ] as const)
+  : [];
 
 export default function LoginScreen({ navigation }: Props) {
   const { login } = useAuth();

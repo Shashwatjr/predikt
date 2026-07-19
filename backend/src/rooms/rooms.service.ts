@@ -342,9 +342,32 @@ function canUserStillPredictAfterJourneyStart(room: any): boolean {
   return isLatePredictionWindowOpen(room);
 }
 
-function buildInviteUrl(inviteCode: string, configuredBaseUrl?: string | null) {
-  const baseUrl = configuredBaseUrl?.trim() || 'http://localhost:8081';
-  return `${baseUrl.replace(/\/+$/, '')}?joinCode=${encodeURIComponent(inviteCode)}`;
+function resolveWebBaseUrl(configuredBaseUrl?: string | null) {
+  const trimmed = configuredBaseUrl?.trim();
+  const nodeEnv = process.env.NODE_ENV ?? 'development';
+  const productionLike = !['development', 'test'].includes(nodeEnv);
+
+  if (trimmed) {
+    if (productionLike && /localhost|127\.0\.0\.1/i.test(trimmed)) {
+      throw new Error(
+        'WEB_BASE_URL must not point at localhost in production-like environments',
+      );
+    }
+    return trimmed.replace(/\/+$/, '');
+  }
+
+  if (productionLike) {
+    throw new Error(
+      'WEB_BASE_URL (or EXPO_PUBLIC_WEB_BASE_URL) must be set in production-like environments',
+    );
+  }
+
+  return 'http://localhost:8081';
+}
+
+export function buildInviteUrl(inviteCode: string, configuredBaseUrl?: string | null) {
+  const baseUrl = resolveWebBaseUrl(configuredBaseUrl);
+  return `${baseUrl}?joinCode=${encodeURIComponent(inviteCode)}`;
 }
 
 function buildShareCopy(room: any, inviteUrl: string) {

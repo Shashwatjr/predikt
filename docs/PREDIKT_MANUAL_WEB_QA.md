@@ -1,10 +1,11 @@
 # PREDIKT Manual Web QA
 
 ## Environment
-- Backend: `http://localhost:3000`
-- Expo Web: `http://localhost:8081`
-- Login: `test@predikt.ai` (QA demo) or `pilot@predikt.ai` (first-time MVP pilot)
-- Date: July 10, 2026
+- Backend: `http://localhost:3000` (local) or Cloud Run alpha API
+- Expo Web: `http://localhost:8081` (local) or `https://predikt-alpha.vercel.app`
+- Login: `test@predikt.ai` / `Password123!` (QA demo; seed with `npm run seed:demo`) or `pilot@predikt.ai` / `PilotMvp2026!` (first-time MVP pilot)
+- Invite base URL: production-like APIs must set `WEB_BASE_URL` (alpha: `https://predikt-alpha.vercel.app`)
+- Date: July 19, 2026
 
 ## Checklist Results
 - Landing loads: passed by Expo Web HTTP smoke at `http://localhost:8081`.

@@ -2,6 +2,7 @@ import { ValidationPipe } from '@nestjs/common';
 import { INestApplication } from '@nestjs/common';
 import helmet from 'helmet';
 import { ConfigService } from '@nestjs/config';
+import type { NextFunction, Request, Response } from 'express';
 import { parseCorsOrigins } from './config/env.validation';
 
 const LOCAL_FALLBACK_CORS_ORIGINS = [
@@ -29,6 +30,14 @@ export function configureApp(app: INestApplication, config: ConfigService) {
       crossOriginResourcePolicy: false,
     }),
   );
+  // Helmet in this stack does not emit Permissions-Policy; set it explicitly for the JSON API.
+  app.use((_req: Request, res: Response, next: NextFunction) => {
+    res.setHeader(
+      'Permissions-Policy',
+      'camera=(), microphone=(), geolocation=(), payment=(), usb=()',
+    );
+    next();
+  });
 
   const originDelegate = (
     origin: string | undefined,

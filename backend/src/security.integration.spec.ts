@@ -620,7 +620,8 @@ describe('Security And Enterprise Hardening (integration)', () => {
         destinationLabel: 'Airport',
         predictionCloseTime: new Date(Date.now() + 45 * 60 * 1000).toISOString(),
         visibility: 'invite_only',
-        roomCategory: 'travel',
+        // Non-GPS category so parallel cases do not hit the exclusive live-journey 409 rule.
+        roomCategory: 'custom',
         ...overrides,
       })
       .expect(201);

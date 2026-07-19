@@ -75,6 +75,19 @@ function AppShell() {
 }
 
 export default function App() {
+  // Expo's default web reset (index.html) sets `body { overflow: hidden }`, which
+  // assumes every screen renders its own <ScrollView>. Screens that lay content out
+  // directly on web (e.g. the landing dashboard shell) then overflow the viewport
+  // with nowhere to scroll — content is simply clipped. Letting the document scroll
+  // restores scrolling for those screens; screens that DO use a <ScrollView> fill the
+  // viewport exactly, so the document never overflows and their inner scroll is
+  // unaffected. Inline style overrides the stylesheet reset and survives `expo export`.
+  useEffect(() => {
+    if (Platform.OS === 'web' && typeof document !== 'undefined') {
+      document.body.style.overflow = 'auto';
+    }
+  }, []);
+
   if (featureFlags.adminPortalEnabled && isAdminWebRoute()) {
     return (
       <Suspense fallback={<View style={styles.adminLoading} />}>
