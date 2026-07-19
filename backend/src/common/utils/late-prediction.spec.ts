@@ -3,6 +3,7 @@ import {
   isLatePredictionWindowOpen,
   projectLiveArrival,
 } from './late-prediction';
+import { featureFlags } from '../../config/feature-flags';
 
 const MIN = 60 * 1000;
 
@@ -47,6 +48,23 @@ describe('late-prediction util', () => {
   it('is closed before the journey is live', () => {
     const room = { status: 'predictions_open', plannedStartTime: new Date(), expectedDurationSeconds: 1800 };
     expect(isLatePredictionWindowOpen(room)).toBe(false);
+  });
+
+  it('v2 widens the late-join buffer to 10 min before arrival', () => {
+    // Arrival ~8 min out: open under the 3-min v1 buffer, closed under the 10-min v2 buffer.
+    const room = {
+      status: 'live',
+      journeyStartedAt: new Date(Date.now() - 22 * MIN),
+      expectedDurationSeconds: 30 * 60,
+    };
+    expect(isLatePredictionWindowOpen(room)).toBe(true); // v1 default
+    const original = featureFlags.checkpointLeaderboardV2;
+    try {
+      (featureFlags as { checkpointLeaderboardV2: boolean }).checkpointLeaderboardV2 = true;
+      expect(isLatePredictionWindowOpen(room)).toBe(false);
+    } finally {
+      (featureFlags as { checkpointLeaderboardV2: boolean }).checkpointLeaderboardV2 = original;
+    }
   });
 
   it('stays open during the start-delay when startTime is still in the future', () => {

@@ -27,6 +27,11 @@ export const featureFlags = {
   guestJoin: envFlag('GUEST_JOIN', true),
   rematch: envFlag('REMATCH', true),
 
+  // --- Arrival checkpoint leaderboard v2 (mirror of the backend flag) ---
+  // Enables the time-based 20/40/60/80/90/100 checkpoint timers, per-viewer blur
+  // UI, Rizz-tier tags, and re-predict windows. OFF keeps the 50/80 client path.
+  checkpointLeaderboardV2: envFlag('CHECKPOINT_LEADERBOARD_V2', false),
+
   // --- Categories ---
   categoryArrivalTime: envFlag('CATEGORY_ARRIVAL_TIME', true),
   categoryFoodEta: envFlag('CATEGORY_FOOD_ETA', true),

@@ -9,7 +9,7 @@ type CheckpointBoard =
   | {
       available: true;
       checkpoint: number;
-      basis: 'gps' | 'pace_fallback' | 'plan_fallback';
+      basis: 'eta_reread' | 'gps' | 'pace_fallback' | 'plan_fallback';
       projectedArrivalAt: string;
       capturedAt: string;
       standings: Array<{
@@ -62,7 +62,7 @@ export class LeaderboardsService {
    */
   async checkpointLeaderboard(
     roomId: string,
-    checkpoint: 50 | 80,
+    checkpoint: number,
     requestingUser: User,
   ): Promise<CheckpointBoard> {
     const room = await this.prisma.predictionRoom.findUnique({
@@ -150,9 +150,16 @@ export class LeaderboardsService {
    */
   private projectArrival(
     room: any,
-    cp: { lat: number; lng: number; capturedAt: Date; checkpoint: number },
+    cp: { lat: number; lng: number; capturedAt: Date; checkpoint: number; etaSeconds?: number | null },
     checkpoint: number,
-  ): { arrival: Date; basis: 'gps' | 'pace_fallback' | 'plan_fallback' } | null {
+  ): { arrival: Date; basis: 'eta_reread' | 'gps' | 'pace_fallback' | 'plan_fallback' } | null {
+    // v2: prefer the ETA re-read captured at this checkpoint (the traveller's real
+    // remaining time), when present. Legacy 0/50/80/100 rows have no etaSeconds.
+    const etaSeconds = toNum(cp.etaSeconds);
+    if (etaSeconds != null && etaSeconds >= 0) {
+      return { arrival: new Date(cp.capturedAt.getTime() + etaSeconds * 1000), basis: 'eta_reread' };
+    }
+
     const destLat = toNum(room.destinationLat) ?? toNum(room.journeyRoute?.destinationLat);
     const destLng = toNum(room.destinationLng) ?? toNum(room.journeyRoute?.destinationLng);
 

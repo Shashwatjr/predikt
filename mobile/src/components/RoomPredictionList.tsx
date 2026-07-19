@@ -8,6 +8,10 @@ export interface RoomPredictionEntry {
   status: 'visible' | 'submitted' | 'revoked';
   predictedReachedTime?: string | null;
   isCurrentUser?: boolean;
+  // v2 (checkpoint_leaderboard_v2): a guess locked after the 80% checkpoint is
+  // Rizz-tier — accepted and shown, but out of the winner / Aura running.
+  auraEligible?: boolean;
+  lockedCheckpoint?: number | null;
   user?: {
     userId: string;
     name?: string | null;
@@ -59,6 +63,11 @@ export default function RoomPredictionList({ data }: Props) {
                 {name}
                 {isCurrent ? <Text style={{ color: colors.purple }}> (you)</Text> : null}
               </Text>
+              {entry.auraEligible === false ? (
+                <View style={[styles.rizzTag, { backgroundColor: colors.amber + '22', borderColor: colors.amber + '66' }]}>
+                  <Text style={[styles.rizzText, { color: colors.amber }]}>Rizz-tier · no Aura</Text>
+                </View>
+              ) : null}
             </View>
 
             {entry.status === 'visible' && entry.predictedReachedTime ? (
@@ -101,6 +110,8 @@ const styles = StyleSheet.create({
   avatarText: { fontSize: 13, fontWeight: '800' },
   info: { flex: 1, marginLeft: 10 },
   name: { fontWeight: '700', fontSize: 14 },
+  rizzTag: { alignSelf: 'flex-start', marginTop: 3, borderRadius: 6, borderWidth: 1, paddingHorizontal: 6, paddingVertical: 1 },
+  rizzText: { fontSize: 10, fontWeight: '800' },
   chip: { borderRadius: 10, paddingHorizontal: 10, paddingVertical: 5 },
   chipText: { fontWeight: '800', fontSize: 14 },
   muted: { fontSize: 13, fontWeight: '700' },

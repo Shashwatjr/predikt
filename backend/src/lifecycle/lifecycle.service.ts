@@ -18,6 +18,7 @@ import { AuditService } from '../audit/audit.service';
 import { CancelJourneyDto } from './dto/cancel-journey.dto';
 import { NotificationsService } from '../notifications/notifications.service';
 import { BadgeService } from '../badges/badge.service';
+import { featureFlags } from '../config/feature-flags';
 
 const TERMINAL_STATUSES = ['completed', 'cancelled'] as const;
 const DEFAULT_START_DELAY_MINUTES = 3;
@@ -107,7 +108,17 @@ export class LifecycleService {
     }
 
     if (room.status === 'predictions_open') {
-      await this.lockPredictions(roomId, user);
+      if (featureFlags.checkpointLeaderboardV2) {
+        // v2 (checkpoint_leaderboard_v2): journey start does NOT lock everyone.
+        // Lock only the creator's own guess; other members keep predicting via the
+        // late-join window (open until 10 min before the projected arrival).
+        await this.prisma.milestonePrediction.updateMany({
+          where: { roomId, userId: user.userId },
+          data: { lockedStatus: true },
+        });
+      } else {
+        await this.lockPredictions(roomId, user);
+      }
     }
 
     // Non-GPS rooms have no live location to protect or coordinate, so they may
@@ -607,11 +618,21 @@ export class LifecycleService {
     });
     if (!milestone) throw new NotFoundException('Milestone not found');
 
-    const predictions = await this.prisma.milestonePrediction.findMany({
+    const allPredictions = await this.prisma.milestonePrediction.findMany({
       where: { roomId, milestoneId, revokedAt: null },
       include: { user: true },
       orderBy: { submittedAt: 'asc' },
     });
+
+    // v2 (checkpoint_leaderboard_v2): only Aura-eligible guesses that are NOT the
+    // creator's own compete for rank/winner/Aura. Rizz-tier (locked after 80%) and the
+    // creator's own guess are still recorded + shown, but earn nothing and can't win.
+    const v2 = featureFlags.checkpointLeaderboardV2;
+    const creatorId = milestone.room.creatorUserId;
+    const isEligible = (p: (typeof allPredictions)[number]) =>
+      p.auraEligible !== false && p.userId !== creatorId;
+    const predictions = v2 ? allPredictions.filter(isEligible) : allPredictions;
+    const ineligiblePredictions = v2 ? allPredictions.filter((p) => !isEligible(p)) : [];
 
     const aiDifferenceMinutes = milestone.room.aiPredictedTime
       ? Math.abs((milestone.room.aiPredictedTime.getTime() - actualReachedTime.getTime()) / 60000)
@@ -753,6 +774,25 @@ export class LifecycleService {
         rankForMilestone: rank,
         totalAuraAwarded,
         cloutAwarded,
+      });
+    }
+
+    // v2: persist accuracy for Rizz-tier + creator guesses so results can show and tag
+    // them, but award no Aura/Clout and leave them out of the ranked leaderboard.
+    for (const prediction of ineligiblePredictions) {
+      const diffSeconds = Math.abs(
+        Math.round((prediction.predictedReachedTime.getTime() - actualReachedTime.getTime()) / 1000),
+      );
+      await this.prisma.milestonePrediction.update({
+        where: { predictionId: prediction.predictionId },
+        data: {
+          differenceFromActualSeconds: diffSeconds,
+          differenceFromActualMinutes: diffSeconds / 60,
+          rankForMilestone: null,
+          totalAuraAwarded: 0,
+          cloutAwarded: 0,
+          lockedStatus: true,
+        },
       });
     }
 

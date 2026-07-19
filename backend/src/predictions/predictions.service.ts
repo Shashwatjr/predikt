@@ -12,6 +12,20 @@ import { AuditService } from '../audit/audit.service';
 import { safePublicUser, SAFE_PUBLIC_USER_SELECT } from '../common/utils/safe-user-select';
 import { RoomsService } from '../rooms/rooms.service';
 import { isLatePredictionWindowOpen } from '../common/utils/late-prediction';
+import { featureFlags } from '../config/feature-flags';
+
+// v2: highest checkpoint reached; predictions locked after 80% are Rizz-tier only,
+// and none are accepted after 100%.
+async function maxReachedCheckpoint(
+  prisma: PrismaService,
+  roomId: string,
+): Promise<number> {
+  const rows = await prisma.roomCheckpoint.findMany({
+    where: { roomId },
+    select: { checkpoint: true },
+  });
+  return rows.reduce((max, row) => Math.max(max, row.checkpoint), -1);
+}
 
 @Injectable()
 export class PredictionsService {
@@ -120,16 +134,32 @@ export class PredictionsService {
       throw new ConflictException('You have already submitted one or more milestone predictions');
     }
 
+    // v2 (checkpoint_leaderboard_v2): predictions placed after the 80% checkpoint are
+    // accepted but Rizz-tier only (excluded from winner/Aura); none accepted after 100%.
+    const v2 = featureFlags.checkpointLeaderboardV2;
+    let auraEligible = true;
+    let lockedCheckpoint: number | null = null;
+    if (v2) {
+      const maxCp = await maxReachedCheckpoint(this.prisma, roomId);
+      if (maxCp >= 100) {
+        throw new BadRequestException('Predictions are closed for this room');
+      }
+      if (maxCp >= 80) {
+        auraEligible = false;
+        lockedCheckpoint = 80;
+      }
+    }
+
     await this.prisma.$transaction(async (tx) => {
       const submittedAt = new Date();
       // Fairness rule: edits are intentionally short-lived so players can fix typos without
       // creating a long window to wait for outside signals before changing a guess.
-      const editDeadline = new Date(
-        Math.min(
-          submittedAt.getTime() + 2 * 60 * 1000,
-          room.predictionCloseTime.getTime(),
-        ),
-      );
+      // v2 shortens the review to 1 min; editability past that is governed by the
+      // 80%-checkpoint re-predict window (see getEditablePrediction).
+      const reviewMs = v2 ? 60 * 1000 : 2 * 60 * 1000;
+      const editDeadline = v2
+        ? new Date(submittedAt.getTime() + reviewMs)
+        : new Date(Math.min(submittedAt.getTime() + reviewMs, room.predictionCloseTime.getTime()));
       await tx.milestonePrediction.createMany({
         data: predictions.map((entry) => ({
           roomId,
@@ -139,6 +169,8 @@ export class PredictionsService {
           selectedOptionKey: dto.selectedOptionKey ?? null,
           submittedAt,
           editDeadline,
+          auraEligible,
+          lockedCheckpoint,
         })),
       });
 
@@ -255,6 +287,7 @@ export class PredictionsService {
         throw new ForbiddenException('Join this room to view predictions.');
       }
     }
+    // Legacy (v1): coarse all-or-nothing hide until the room-wide lock.
     const hideValues =
       room.predictionVisibilityMode === 'hidden_until_lock' &&
       room.status === 'predictions_open';
@@ -275,7 +308,26 @@ export class PredictionsService {
       orderBy: [{ milestone: { milestoneOrder: 'asc' } }, { submittedAt: 'asc' }],
     });
 
-    return predictions.map((prediction) => ({
+    // v2 (checkpoint_leaderboard_v2): per-viewer blur. A viewer sees peers' predicted
+    // times only once their OWN prediction has locked (1-min review elapsed, or locked
+    // at the room's end). Before that, peers show as "submitted" (existence only).
+    const v2 = featureFlags.checkpointLeaderboardV2;
+    const now = Date.now();
+    const viewerLocked =
+      v2 &&
+      predictions.some(
+        (p) =>
+          p.userId === requestingUser.userId &&
+          !p.revokedAt &&
+          (p.lockedStatus || (p.editDeadline != null && now > p.editDeadline.getTime())),
+      );
+
+    return predictions.map((prediction) => {
+      const isOwn = prediction.userId === requestingUser.userId;
+      // v2: hide a peer's value until the viewer's own prediction locks; always show own.
+      // v1: coarse hide until the room-wide lock.
+      const hide = v2 ? !isOwn && !viewerLocked : hideValues;
+      return {
       predictionId: prediction.predictionId,
       milestoneId: prediction.milestoneId,
       milestoneName: prediction.milestone.milestoneName,
@@ -283,15 +335,17 @@ export class PredictionsService {
       milestoneType: prediction.milestone.milestoneType,
       predictedReachedTime:
         // Fairness rule: before lock, peers should only know that a prediction exists.
-        hideValues || prediction.revokedAt ? undefined : prediction.predictedReachedTime,
+        hide || prediction.revokedAt ? undefined : prediction.predictedReachedTime,
       selectedOptionKey:
-        hideValues || prediction.revokedAt ? undefined : prediction.selectedOptionKey,
+        hide || prediction.revokedAt ? undefined : prediction.selectedOptionKey,
       submittedAt: prediction.submittedAt,
       editDeadline: prediction.editDeadline,
       revokedAt: prediction.revokedAt,
+      auraEligible: prediction.auraEligible,
+      lockedCheckpoint: prediction.lockedCheckpoint,
       status: prediction.revokedAt
         ? 'revoked'
-        : hideValues
+        : hide
           ? 'submitted'
           : 'visible',
       isCurrentUser: prediction.userId === requestingUser.userId,
@@ -301,7 +355,8 @@ export class PredictionsService {
       totalAuraAwarded: prediction.totalAuraAwarded,
       cloutAwarded: prediction.cloutAwarded,
       user: safePublicUser(prediction.user),
-    }));
+      };
+    });
   }
 
   async updatePrediction(predictionId: string, dto: any, user: User) {
@@ -383,6 +438,19 @@ export class PredictionsService {
     }
     if (prediction.revokedAt) {
       throw new BadRequestException('Prediction has been revoked');
+    }
+    // v2 (checkpoint_leaderboard_v2): re-predict is allowed through the 80% checkpoint
+    // (the client surfaces it at 20/40/60/80); none after. A re-predict replaces the
+    // prior guess. Governed by checkpoints, not the legacy predictionCloseTime/status.
+    if (featureFlags.checkpointLeaderboardV2) {
+      if (['completed', 'cancelled'].includes(prediction.room.status)) {
+        throw new ForbiddenException('Predictions are locked for this room');
+      }
+      const maxCp = await maxReachedCheckpoint(this.prisma, prediction.roomId);
+      if (maxCp >= 80) {
+        throw new BadRequestException('Re-predict window has closed (80% checkpoint reached)');
+      }
+      return prediction;
     }
     const now = new Date();
     const deadline = prediction.editDeadline ?? prediction.room.predictionCloseTime;

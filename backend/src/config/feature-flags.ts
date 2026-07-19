@@ -31,6 +31,12 @@ export const featureFlags = {
   guestJoin: envFlag('GUEST_JOIN', true),
   rematch: envFlag('REMATCH', true),
 
+  // --- Arrival checkpoint leaderboard v2 (disabled = keep the 0/50/80/100 path) ---
+  // Gates the time-based 20/40/60/80/90/100 checkpoint cadence, per-viewer blur,
+  // Rizz-tier late predictions, and the reworked start/lock/scoring rules. When
+  // OFF, the original client-progress checkpoint flow runs unchanged.
+  checkpointLeaderboardV2: envFlag('CHECKPOINT_LEADERBOARD_V2', false),
+
   // --- Categories (disabled = not creatable/playable) ---
   categoryArrivalTime: envFlag('CATEGORY_ARRIVAL_TIME', true),
   categoryFoodEta: envFlag('CATEGORY_FOOD_ETA', true),

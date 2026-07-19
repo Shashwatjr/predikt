@@ -17,7 +17,7 @@ export type CheckpointBoard =
   | {
       available: true;
       checkpoint: number;
-      basis: 'gps' | 'pace_fallback' | 'plan_fallback';
+      basis: 'eta_reread' | 'gps' | 'pace_fallback' | 'plan_fallback';
       projectedArrivalAt: string;
       capturedAt: string;
       standings: CheckpointStanding[];
@@ -41,7 +41,11 @@ export default function CheckpointLeaderboard({ board }: Props) {
 
   const projected = formatClock(new Date(board.projectedArrivalAt), false);
   const paceNote =
-    board.basis === 'gps' ? 'based on real pace' : 'based on elapsed time';
+    board.basis === 'eta_reread'
+      ? 'based on a live ETA re-read'
+      : board.basis === 'gps'
+        ? 'based on real pace'
+        : 'based on elapsed time';
 
   return (
     <View style={[styles.wrap, { borderColor: colors.border, backgroundColor: colors.surface }]}>
