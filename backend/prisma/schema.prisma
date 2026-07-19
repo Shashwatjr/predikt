@@ -346,6 +346,10 @@ model PredictionRoom {
   providerConfidence        String?             @map("provider_confidence")
   hostPrediction            Json?               @map("host_prediction")
   oracleBotPrediction       Json?               @map("oracle_bot_prediction")
+  // v2 (checkpoint_leaderboard_v2): Oracle's SCORED outcome as a ranked competitor
+  // ({ arrivalTime, diffSeconds, rank, beatenByHuman, frozenAtCheckpoint }). Distinct from
+  // oracleBotPrediction, which is only the display benchmark label.
+  oracleResult              Json?               @map("oracle_result")
   options                   Json?               @map("options")
   roomType                  String              @default("journey") @map("room_type")
   answerType                String              @default("exact_time") @map("answer_type")
@@ -459,6 +463,11 @@ model RoomCheckpoint {
   lat              Float    @map("lat")
   lng              Float    @map("lng")
   capturedAt       DateTime @map("captured_at")
+  // v2 checkpoint scheme (checkpoint_leaderboard_v2): ETA re-read captured at this
+  // checkpoint and its source. "google" for the 20/40/60/80 live re-reads, "derived"
+  // for the free 90/100 pace-projected values. Null on legacy 0/50/80/100 rows.
+  etaSeconds       Int?     @map("eta_seconds")
+  source           String?  @map("source")
   createdAt        DateTime @default(now()) @map("created_at")
 
   room PredictionRoom @relation(fields: [roomId], references: [roomId])
@@ -570,6 +579,11 @@ model MilestonePrediction {
   multiplier                  Decimal  @default(1.0) @db.Decimal(5, 2)
   totalAuraAwarded            Int      @default(0) @map("total_aura_awarded")
   cloutAwarded                Int      @default(0) @map("clout_awarded")
+  // v2 (checkpoint_leaderboard_v2): predictions locked after the 80% checkpoint are
+  // accepted but Rizz-tier only — auraEligible=false excludes them from the winner /
+  // Aura leaderboard. lockedCheckpoint records the checkpoint % at which it locked.
+  auraEligible                Boolean  @default(true) @map("aura_eligible")
+  lockedCheckpoint            Int?     @map("locked_checkpoint")
 
   milestone RoomMilestone @relation(fields: [milestoneId], references: [milestoneId])
   room      PredictionRoom @relation(fields: [roomId], references: [roomId])

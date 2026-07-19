@@ -3,7 +3,8 @@ export type CategoryKey =
   | 'weather_rain'
   | 'food_eta'
   | 'whos_late'
-  | 'gym_habit';
+  | 'gym_habit'
+  | 'open_prediction';
 
 export type CategoryTheme = {
   key: CategoryKey;
@@ -78,6 +79,18 @@ export const CATEGORY_THEMES: Record<CategoryKey, CategoryTheme> = {
     emptyStateCopy: 'Light accountability for habits — playful, not pressure.',
     resultTitle: 'Pattern Breaker moment',
     quickStartLabel: 'Gym Promise',
+  },
+  open_prediction: {
+    key: 'open_prediction',
+    label: 'Wild Cards',
+    icon: '🏆',
+    primaryColor: '#f59e0b',
+    secondaryColor: '#ef4444',
+    gradient: ['#f59e0b', '#ef4444'],
+    badgeStyle: { bg: 'rgba(245,158,11,0.2)', border: 'rgba(245,158,11,0.45)', text: '#fde68a' },
+    emptyStateCopy: 'Open a fast generic room for sports, delivery, outcomes, and group debates.',
+    resultTitle: 'Wild Cards reveal',
+    quickStartLabel: 'Wild Cards',
   },
 };
 

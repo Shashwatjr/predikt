@@ -35,9 +35,12 @@ describe('LiveProgressService', () => {
       },
     } as any;
 
-    const service = new LiveProgressService(prisma, {
-      evaluateRoomLifecycle: jest.fn(),
-    } as any);
+    const service = new LiveProgressService(
+      prisma,
+      { evaluateRoomLifecycle: jest.fn() } as any,
+      { get: jest.fn() } as any,
+      { notifyRoomMembers: jest.fn() } as any,
+    );
     const result = await service.getLiveState('room-1');
 
     expect(result.progressPercentage).toBe(42);

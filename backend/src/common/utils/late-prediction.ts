@@ -7,7 +7,18 @@
  * progress, so it shifts as they speed up / slow down). There is no upper
  * time gate on how late they may join — only the arrival cutoff closes it.
  */
+import { featureFlags } from '../../config/feature-flags';
+
 export const LATE_PREDICTION_ARRIVAL_BUFFER_MS = 3 * 60 * 1000;
+// v2 (checkpoint_leaderboard_v2): new members can join + predict up to 10 min
+// before the projected arrival (vs 3 min on the legacy path).
+export const LATE_PREDICTION_ARRIVAL_BUFFER_V2_MS = 10 * 60 * 1000;
+
+function latePredictionBufferMs(): number {
+  return featureFlags.checkpointLeaderboardV2
+    ? LATE_PREDICTION_ARRIVAL_BUFFER_V2_MS
+    : LATE_PREDICTION_ARRIVAL_BUFFER_MS;
+}
 
 export function getJourneyStartTime(room: any): Date | null {
   const value = room.journeyStartedAt ?? room.startTime ?? room.plannedStartTime ?? null;
@@ -52,10 +63,10 @@ export function projectLiveArrival(room: any): Date | null {
   return null;
 }
 
-/** The moment late predictions close: 3 min before the projected arrival. */
+/** The moment late predictions close: buffer (3 min v1 / 10 min v2) before projected arrival. */
 export function getLatePredictionDeadline(room: any): Date | null {
   const arrival = projectLiveArrival(room);
-  return arrival ? new Date(arrival.getTime() - LATE_PREDICTION_ARRIVAL_BUFFER_MS) : null;
+  return arrival ? new Date(arrival.getTime() - latePredictionBufferMs()) : null;
 }
 
 export function isLatePredictionWindowOpen(room: any, now: number = Date.now()): boolean {

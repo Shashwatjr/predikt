@@ -141,6 +141,12 @@ const categoryTiles = [
     label: 'Gym / Habit',
     helper: 'Create light accountability challenges without pressure.',
   },
+  {
+    key: 'open_prediction',
+    icon: '🏆',
+    label: 'Open Prediction',
+    helper: 'Create sports or opinion rooms with yes/no or custom team options.',
+  },
 ] as const;
 
 const modeOptions = [
@@ -236,6 +242,38 @@ const placeholderTemplates = {
   },
 } as const;
 
+const openPredictionAnswerModes = [
+  {
+    key: 'multiple_choice',
+    label: 'Custom options',
+    helper: 'Use choices like Argentina, Spain, or Draw.',
+  },
+  {
+    key: 'yes_no',
+    label: 'Yes / No',
+    helper: 'Simple binary poll for quick predictions.',
+  },
+] as const;
+
+const genericRoomTemplates = [
+  { key: 'sports', label: 'Sports match', title: 'Argentina vs Spain', question: 'Who will win?' },
+  { key: 'delivery', label: 'Delivery race', title: 'Will this order beat the ETA?', question: 'Will it arrive before the app ETA?' },
+  { key: 'free_play', label: 'Free play', title: 'Tonight’s big call', question: 'What do you think happens?' },
+] as const;
+
+const genericDeliveryProviders = [
+  'Zomato',
+  'Swiggy',
+  'Blinkit',
+  'Zepto',
+  'Amazon',
+  'Ekart',
+  'DTDC',
+  'Bluedart',
+  'Porter',
+  'India Post',
+] as const;
+
 interface StartLocation {
   latitude: number;
   longitude: number;
@@ -307,6 +345,18 @@ export default function CreateRoomScreen({ navigation }: Props) {
   const [placeholderBaselineValue, setPlaceholderBaselineValue] = useState('');
   const [placeholderLabel, setPlaceholderLabel] = useState('');
   const [votePromptCategory, setVotePromptCategory] = useState<CategoryTheme | null>(null);
+  const [openPredictionTitle, setOpenPredictionTitle] = useState('');
+  const [openPredictionQuestion, setOpenPredictionQuestion] = useState('');
+  const [openPredictionOptionA, setOpenPredictionOptionA] = useState('');
+  const [openPredictionOptionB, setOpenPredictionOptionB] = useState('');
+  const [openPredictionOptionC, setOpenPredictionOptionC] = useState('');
+  const [openPredictionAnswerType, setOpenPredictionAnswerType] =
+    useState<(typeof openPredictionAnswerModes)[number]['key']>('multiple_choice');
+  const [genericTemplate, setGenericTemplate] =
+    useState<(typeof genericRoomTemplates)[number]['key']>('sports');
+  const [genericDeliveryProvider, setGenericDeliveryProvider] =
+    useState<(typeof genericDeliveryProviders)[number] | ''>('Zomato');
+  const [genericDeliveryProviderOther, setGenericDeliveryProviderOther] = useState('');
 
   const selectedRouteTemplate = useMemo(
     () => routeTemplates.find((template) => template.key === selectedRouteTemplateKey) ?? routeTemplates[0],
@@ -510,6 +560,40 @@ export default function CreateRoomScreen({ navigation }: Props) {
       setPlaceholderTitle(preset.title);
       setPlaceholderQuestion(preset.question);
       setPlaceholderLabel(preset.baselineLabel);
+    }
+    if (nextCategory === 'open_prediction') {
+      setOpenPredictionTitle('Argentina vs Spain');
+      setOpenPredictionQuestion('Who will win?');
+      setOpenPredictionOptionA('Argentina');
+      setOpenPredictionOptionB('Spain');
+      setOpenPredictionOptionC('');
+      setOpenPredictionAnswerType('multiple_choice');
+      setGenericTemplate('sports');
+      setGenericDeliveryProvider('Zomato');
+      setGenericDeliveryProviderOther('');
+    }
+  }
+
+  function applyGenericTemplate(templateKey: (typeof genericRoomTemplates)[number]['key']) {
+    const template = genericRoomTemplates.find((item) => item.key === templateKey) ?? genericRoomTemplates[0];
+    setGenericTemplate(templateKey);
+    setOpenPredictionTitle(template.title);
+    setOpenPredictionQuestion(template.question);
+    if (templateKey === 'sports') {
+      setOpenPredictionAnswerType('multiple_choice');
+      setOpenPredictionOptionA('Argentina');
+      setOpenPredictionOptionB('Spain');
+      setOpenPredictionOptionC('Draw');
+    } else if (templateKey === 'delivery') {
+      setOpenPredictionAnswerType('yes_no');
+      setOpenPredictionOptionA('');
+      setOpenPredictionOptionB('');
+      setOpenPredictionOptionC('');
+    } else {
+      setOpenPredictionAnswerType('multiple_choice');
+      setOpenPredictionOptionA('Option 1');
+      setOpenPredictionOptionB('Option 2');
+      setOpenPredictionOptionC('');
     }
   }
 
@@ -869,6 +953,88 @@ export default function CreateRoomScreen({ navigation }: Props) {
       navigation.navigate('RoomCreated', { room: res.data });
     } catch (err: unknown) {
       const message = getApiErrorMessage(err, 'Could not create the room. Try again in a moment.');
+      setCreateError(message);
+      Alert.alert('Create failed', message);
+    } finally {
+      setCreateLoading(false);
+    }
+  }
+
+  async function handleCreateOpenPredictionRoom() {
+    setCreateError(null);
+    const closeDate = new Date(predictionClosesAt);
+    if (Number.isNaN(closeDate.getTime())) {
+      const message = 'Use format YYYY-MM-DDTHH:MM.';
+      setCreateError(message);
+      return Alert.alert('Invalid date', message);
+    }
+
+    const title = openPredictionTitle.trim();
+    const question = openPredictionQuestion.trim();
+    if (!title) {
+      const message = 'Add a room title first.';
+      setCreateError(message);
+      return Alert.alert('Title needed', message);
+    }
+    if (!question) {
+      const message = 'Add the prediction question first.';
+      setCreateError(message);
+      return Alert.alert('Question needed', message);
+    }
+
+    const options = [openPredictionOptionA, openPredictionOptionB, openPredictionOptionC]
+      .map((option) => option.trim())
+      .filter(Boolean);
+    if (openPredictionAnswerType === 'multiple_choice' && options.length < 2) {
+      const message = 'Add at least two prediction options.';
+      setCreateError(message);
+      return Alert.alert('Options needed', message);
+    }
+
+    const deliveryProvider =
+      genericTemplate === 'delivery'
+        ? genericDeliveryProviderOther.trim() || genericDeliveryProvider || 'Delivery app'
+        : null;
+
+    setCreateLoading(true);
+    try {
+      const res = await api.post('/rooms', {
+        roomTitle: title,
+        eventType: question,
+        question,
+        category: 'open_prediction',
+        roomType: 'social_prediction',
+        answerType: openPredictionAnswerType,
+        mode: selectedMode,
+        templateKey: 'open_prediction',
+        roomCategory: genericTemplate === 'delivery' ? 'delivery' : 'custom',
+        startingPointLabel: title,
+        destinationLabel:
+          openPredictionAnswerType === 'multiple_choice'
+            ? options.join(' vs ')
+            : 'Yes / No poll',
+        predictionCloseTime: closeDate.toISOString(),
+        visibility,
+        baselineSource: genericTemplate === 'delivery' ? deliveryProvider ?? 'manual' : 'manual',
+        baselineLabel:
+          genericTemplate === 'delivery'
+            ? `${deliveryProvider ?? 'Delivery app'} · creator-attested`
+            : 'Community prediction',
+        baselineValue: openPredictionAnswerType,
+        options: openPredictionAnswerType === 'multiple_choice' ? options : undefined,
+        scoringRule: {
+          categoryKey: 'open_prediction',
+          pollType: openPredictionAnswerType,
+          genericTemplate,
+          deliveryProvider,
+          rewardMode: 'gems_rizz_no_aura',
+        },
+        outcomeSource: 'creator_attest',
+        confidenceLevel: 'creator_attested',
+      });
+      navigation.navigate('RoomCreated', { room: res.data });
+    } catch (err: unknown) {
+      const message = getApiErrorMessage(err, 'Could not create the open prediction room. Try again in a moment.');
       setCreateError(message);
       Alert.alert('Create failed', message);
     } finally {
@@ -1365,6 +1531,167 @@ export default function CreateRoomScreen({ navigation }: Props) {
 
           {createError ? <Text style={[styles.errorText, { color: colors.red }]}>{createError}</Text> : null}
           <PrimaryButton label="Create PREDIKT" onPress={handleCreatePlaceholderRoom} loading={createLoading} icon="✨" />
+        </View>
+      ) : null}
+
+      {selectedCategory === 'open_prediction' ? (
+        <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>Wild Cards</Text>
+          <Text style={[styles.generatedQuestion, { color: colors.textSecondary }]}>
+            Generic rooms for testers. Tunnel focus stays arrival, but this MVP lane covers sports, delivery, and free-play calls.
+          </Text>
+          <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Template</Text>
+          <View style={styles.optionRow}>
+            {genericRoomTemplates.map((template) => (
+              <TouchableOpacity
+                key={template.key}
+                style={[
+                  styles.chip,
+                  {
+                    borderColor: genericTemplate === template.key ? colors.purple : colors.border,
+                    backgroundColor: genericTemplate === template.key ? colors.purpleDim : colors.surfaceHigh,
+                  },
+                ]}
+                onPress={() => applyGenericTemplate(template.key)}
+              >
+                <Text style={[styles.chipText, { color: colors.textPrimary }]}>{template.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <TextInputField
+            label="Room title"
+            value={openPredictionTitle}
+            onChangeText={setOpenPredictionTitle}
+            placeholder="Argentina vs Spain"
+          />
+          <TextInputField
+            label="Question"
+            value={openPredictionQuestion}
+            onChangeText={setOpenPredictionQuestion}
+            placeholder="Who will win?"
+          />
+
+          <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Prediction format</Text>
+          <View style={styles.predictionGrid}>
+            {openPredictionAnswerModes.map((option) => (
+              <PredictionOptionCard
+                key={option.key}
+                title={option.label}
+                description={option.helper}
+                answerType={option.key}
+                example={option.key === 'yes_no' ? 'Yes / No' : 'Argentina / Spain'}
+                icon={option.key === 'yes_no' ? '✅' : '🏁'}
+                selected={openPredictionAnswerType === option.key}
+                onPress={() => setOpenPredictionAnswerType(option.key)}
+              />
+            ))}
+          </View>
+
+          {openPredictionAnswerType === 'multiple_choice' ? (
+            <View style={styles.advancedStack}>
+              <TextInputField
+                label="Option 1"
+                value={openPredictionOptionA}
+                onChangeText={setOpenPredictionOptionA}
+                placeholder="Argentina"
+              />
+              <TextInputField
+                label="Option 2"
+                value={openPredictionOptionB}
+                onChangeText={setOpenPredictionOptionB}
+                placeholder="Spain"
+              />
+              <TextInputField
+                label="Option 3 (optional)"
+                value={openPredictionOptionC}
+                onChangeText={setOpenPredictionOptionC}
+                placeholder="Draw"
+              />
+            </View>
+          ) : null}
+
+          {genericTemplate === 'delivery' ? (
+            <View style={styles.advancedStack}>
+              <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Delivery app</Text>
+              <View style={styles.optionRow}>
+                {genericDeliveryProviders.map((provider) => (
+                  <TouchableOpacity
+                    key={provider}
+                    style={[
+                      styles.chip,
+                      {
+                        borderColor: genericDeliveryProvider === provider ? colors.purple : colors.border,
+                        backgroundColor: genericDeliveryProvider === provider ? colors.purpleDim : colors.surfaceHigh,
+                      },
+                    ]}
+                    onPress={() => setGenericDeliveryProvider(provider)}
+                  >
+                    <Text style={[styles.chipText, { color: colors.textPrimary }]}>{provider}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <TextInputField
+                label="Other provider (optional)"
+                value={genericDeliveryProviderOther}
+                onChangeText={setGenericDeliveryProviderOther}
+                placeholder="Custom courier or app"
+              />
+            </View>
+          ) : null}
+
+          <LockDateTimeField
+            value={predictionClosesAt}
+            onChange={(value) => {
+              setCloseTimeEdited(true);
+              setPredictionClosesAt(value);
+            }}
+          />
+
+          <TouchableOpacity onPress={() => setShowAdvancedOptions((value) => !value)}>
+            <Text style={[styles.advancedToggle, { color: colors.purpleLight }]}>
+              {showAdvancedOptions ? 'Hide options' : 'More options'}
+            </Text>
+          </TouchableOpacity>
+
+          {showAdvancedOptions ? (
+            <View style={styles.advancedStack}>
+              <View style={[styles.generatedBox, { backgroundColor: colors.surfaceHigh }]}>
+                <Text style={[styles.generatedQuestion, { color: colors.textSecondary }]}>Result policy</Text>
+                <Text style={[styles.generatedTitle, { color: colors.textPrimary }]}>
+                  Creator-attest only. No screenshot upload in MVP.
+                </Text>
+                <Text style={[styles.generatedQuestion, { color: colors.textSecondary }]}>
+                  Any predictor can challenge later and send proof through a WhatsApp link.
+                </Text>
+              </View>
+              <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Visibility</Text>
+              <View style={styles.optionRow}>
+                {visibilities.map((mode) => (
+                  <TouchableOpacity
+                    key={mode}
+                    style={[
+                      styles.chip,
+                      {
+                        borderColor: visibility === mode ? colors.purple : colors.border,
+                        backgroundColor: visibility === mode ? colors.purpleDim : colors.surfaceHigh,
+                      },
+                    ]}
+                    onPress={() => setVisibility(mode)}
+                  >
+                    <Text style={[styles.chipText, { color: colors.textPrimary }]}>{mode.replace('_', ' ')}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          ) : null}
+
+          {createError ? <Text style={[styles.errorText, { color: colors.red }]}>{createError}</Text> : null}
+          <PrimaryButton
+            label="Create Wild Cards Room"
+            onPress={handleCreateOpenPredictionRoom}
+            loading={createLoading}
+            icon="🏆"
+          />
         </View>
       ) : null}
 

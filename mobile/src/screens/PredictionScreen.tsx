@@ -46,7 +46,8 @@ function benchmarkChipLabel(b: Benchmark): string {
 
 export default function PredictionScreen({ navigation, route }: Props) {
   const { colors } = useTheme();
-  const { roomId, room: roomParam } = route.params;
+  const { roomId, room: roomParam, editPredictionId } = route.params;
+  const isEditing = !!editPredictionId;
   const [room, setRoom] = useState<any>(roomParam);
   const [loading, setLoading] = useState(false);
   // Late-join context: peers' guesses (already un-hidden once the room is live)
@@ -173,12 +174,23 @@ export default function PredictionScreen({ navigation, route }: Props) {
     }
     setLoading(true);
     try {
-      await api.post(
-        `/rooms/${roomId}/predictions`,
-        answerType === 'multiple_choice'
-          ? { selectedOptionKey }
-          : { predictedArrivalTime: predictedReachedTime },
-      );
+      if (isEditing) {
+        // v2 re-predict: replace the prior guess (reuse the update endpoint). The server
+        // enforces the window (allowed through the 80% checkpoint, none after).
+        await api.patch(
+          `/rooms/${roomId}/${editPredictionId}`,
+          answerType === 'multiple_choice'
+            ? { selectedOptionKey }
+            : { predictedReachedTime },
+        );
+      } else {
+        await api.post(
+          `/rooms/${roomId}/predictions`,
+          answerType === 'multiple_choice'
+            ? { selectedOptionKey }
+            : { predictedArrivalTime: predictedReachedTime },
+        );
+      }
       Animated.sequence([
         Animated.timing(confirmScale, { toValue: 1.05, duration: 120, useNativeDriver: true }),
         Animated.timing(confirmScale, { toValue: 1, duration: 120, useNativeDriver: true }),
@@ -378,7 +390,18 @@ export default function PredictionScreen({ navigation, route }: Props) {
             <Text style={[styles.helperText, { color: colors.textSecondary }]}>
               Choose Yes or No. This stays hidden until lock.
             </Text>
-            <PredictionInputYesNo value={yesNoChoice} onChange={setYesNoChoice} />
+            <PredictionInputYesNo
+              value={yesNoChoice}
+              onChange={setYesNoChoice}
+              title={room?.question ?? 'Will it happen?'}
+              helper={
+                foodEtaBenchmarkLabel
+                  ? 'Pick Yes if you think it beats the benchmark. Pick No if you think it misses.'
+                  : 'Choose the side you believe is most likely.'
+              }
+              yesSubLabel={foodEtaBenchmarkLabel ? 'Beats it' : 'Yes side'}
+              noSubLabel={foodEtaBenchmarkLabel ? 'Misses it' : 'No side'}
+            />
           </>
         ) : null}
 

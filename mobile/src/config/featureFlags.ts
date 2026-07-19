@@ -27,12 +27,18 @@ export const featureFlags = {
   guestJoin: envFlag('GUEST_JOIN', true),
   rematch: envFlag('REMATCH', true),
 
+  // --- Arrival checkpoint leaderboard v2 (mirror of the backend flag) ---
+  // Enables the time-based 20/40/60/80/90/100 checkpoint timers, per-viewer blur
+  // UI, Rizz-tier tags, and re-predict windows. OFF keeps the 50/80 client path.
+  checkpointLeaderboardV2: envFlag('CHECKPOINT_LEADERBOARD_V2', false),
+
   // --- Categories ---
   categoryArrivalTime: envFlag('CATEGORY_ARRIVAL_TIME', true),
   categoryFoodEta: envFlag('CATEGORY_FOOD_ETA', true),
   categoryWeather: envFlag('CATEGORY_WEATHER', false),
   categoryWhosLate: envFlag('CATEGORY_WHOS_LATE', false),
   categoryGymHabit: envFlag('CATEGORY_GYM_HABIT', false),
+  categoryOpenPrediction: envFlag('CATEGORY_OPEN_PREDICTION', true),
 
   // --- Modes ---
   modeBeatTheBot: envFlag('MODE_BEAT_THE_BOT', false),
@@ -71,6 +77,8 @@ export function isCategoryEnabled(categoryKey: string | null | undefined): boole
       return featureFlags.categoryWhosLate;
     case 'gym_habit':
       return featureFlags.categoryGymHabit;
+    case 'open_prediction':
+      return featureFlags.categoryOpenPrediction;
     default:
       return false;
   }

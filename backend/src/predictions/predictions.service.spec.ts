@@ -1,5 +1,86 @@
 import { BadRequestException, ConflictException } from '@nestjs/common';
 import { PredictionsService } from './predictions.service';
+import { featureFlags } from '../config/feature-flags';
+
+const PAST = new Date(Date.now() - 60 * 1000);
+const FUTURE = new Date(Date.now() + 60 * 1000);
+const ARRIVAL = new Date(Date.now() + 30 * 60 * 1000);
+
+function blurPrisma(ownEditDeadline: Date) {
+  return {
+    predictionRoom: {
+      findUnique: jest.fn().mockResolvedValue({
+        roomId: 'room-1',
+        visibility: 'public',
+        predictionVisibilityMode: 'hidden_until_lock',
+        status: 'live',
+      }),
+    },
+    milestonePrediction: {
+      findMany: jest.fn().mockResolvedValue([
+        {
+          predictionId: 'p-own',
+          milestoneId: 'm1',
+          userId: 'u1',
+          predictedReachedTime: ARRIVAL,
+          submittedAt: PAST,
+          editDeadline: ownEditDeadline,
+          revokedAt: null,
+          lockedStatus: false,
+          auraEligible: true,
+          lockedCheckpoint: null,
+          milestone: { milestoneId: 'm1', milestoneName: 'Home', milestoneOrder: 1, milestoneType: 'final_destination' },
+          user: { userId: 'u1', name: 'Me', prediktHandle: 'me' },
+        },
+        {
+          predictionId: 'p-peer',
+          milestoneId: 'm1',
+          userId: 'u2',
+          predictedReachedTime: ARRIVAL,
+          submittedAt: PAST,
+          editDeadline: PAST,
+          revokedAt: null,
+          lockedStatus: true,
+          auraEligible: true,
+          lockedCheckpoint: null,
+          milestone: { milestoneId: 'm1', milestoneName: 'Home', milestoneOrder: 1, milestoneType: 'final_destination' },
+          user: { userId: 'u2', name: 'Peer', prediktHandle: 'peer' },
+        },
+      ]),
+    },
+  } as any;
+}
+
+describe('PredictionsService v2 per-viewer blur', () => {
+  let original: boolean;
+  beforeEach(() => {
+    original = featureFlags.checkpointLeaderboardV2;
+    (featureFlags as { checkpointLeaderboardV2: boolean }).checkpointLeaderboardV2 = true;
+  });
+  afterEach(() => {
+    (featureFlags as { checkpointLeaderboardV2: boolean }).checkpointLeaderboardV2 = original;
+  });
+
+  it("hides a peer's time until the viewer's own prediction locks", async () => {
+    // Viewer u1 still in the 1-min review (editDeadline in the future) => peer blurred.
+    const service = new PredictionsService(blurPrisma(FUTURE));
+    const list = await service.listMilestonePredictions('room-1', { userId: 'u1' } as any);
+    const peer = list.find((p) => p.predictionId === 'p-peer')!;
+    const own = list.find((p) => p.predictionId === 'p-own')!;
+    expect(peer.status).toBe('submitted');
+    expect(peer.predictedReachedTime).toBeUndefined();
+    expect(own.predictedReachedTime).toBeDefined(); // own always visible to self
+  });
+
+  it("reveals a peer's time once the viewer's own prediction has locked", async () => {
+    // Viewer u1's review has elapsed (editDeadline in the past) => peer revealed.
+    const service = new PredictionsService(blurPrisma(PAST));
+    const list = await service.listMilestonePredictions('room-1', { userId: 'u1' } as any);
+    const peer = list.find((p) => p.predictionId === 'p-peer')!;
+    expect(peer.status).toBe('visible');
+    expect(peer.predictedReachedTime).toBeDefined();
+  });
+});
 
 describe('PredictionsService', () => {
   it('enforces one prediction per user per milestone', async () => {

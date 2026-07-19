@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Animated, ScrollView, StyleSheet, Text, View, Alert } from 'react-native';
+import { Animated, ScrollView, StyleSheet, Text, View, Alert, Linking } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -11,6 +11,7 @@ import FoodEtaViz from '../components/FoodEtaViz';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import api, { getApiErrorMessage } from '../services/api';
+import appAlert from '../utils/appAlert';
 import { getCategoryTheme } from '../config/categoryTheme';
 import LiveStatusCard from '../components/LiveStatusCard';
 import CoachMark from '../components/CoachMark';
@@ -20,6 +21,12 @@ import CheckpointLeaderboard, { CheckpointBoard } from '../components/Checkpoint
 import { deriveArrivalBenchmarks, formatClock } from '../utils/benchmarks';
 import { botGuessTeaser, botEtaTeaser } from '../utils/botVoice';
 import { layout, palette } from '../theme/designSystem';
+import { featureFlags } from '../config/featureFlags';
+
+// v2 (checkpoint_leaderboard_v2): six time-based checkpoints; v1 samples 50/80.
+const V2_CHECKPOINTS = [20, 40, 60, 80, 90, 100];
+const V1_CHECKPOINTS = [50, 80];
+const ETA_MOVE_NOTIFY_THRESHOLD_MS = 20 * 60 * 1000;
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'LiveRoom'>;
@@ -65,11 +72,14 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
   const [cancelling, setCancelling] = useState(false);
   const [guessSummary, setGuessSummary] = useState<string | null>(null);
   const [predictions, setPredictions] = useState<RoomPredictionEntry[]>([]);
-  const [checkpointBoards, setCheckpointBoards] = useState<{ 50?: CheckpointBoard; 80?: CheckpointBoard }>({});
+  const [checkpointBoards, setCheckpointBoards] = useState<Record<number, CheckpointBoard | undefined>>({});
   const [myPredictionDate, setMyPredictionDate] = useState<Date | null>(null);
   const [milestoneBanner, setMilestoneBanner] = useState<string | null>(null);
+  const [etaMovedBanner, setEtaMovedBanner] = useState<string | null>(null);
+  const etaMovedShown = useRef<Set<number>>(new Set());
   const [viewerCountdownSeconds, setViewerCountdownSeconds] = useState<number | null>(null);
   const [lockCountdownSeconds, setLockCountdownSeconds] = useState<number | null>(null);
+  const [reviewCountdownSeconds, setReviewCountdownSeconds] = useState<number | null>(null);
   const sampledCheckpoints = useRef<Set<number>>(new Set());
   const firedMilestones = useRef<Set<number>>(new Set());
   const viewerCountdownInterval = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -142,7 +152,11 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
 
   useEffect(() => {
     if (!isCreator || !liveState?.startTime || !liveState?.expectedDurationSeconds) return;
-    const checkpoints = [50, 80];
+    const v2 = featureFlags.checkpointLeaderboardV2;
+    const checkpoints = v2 ? V2_CHECKPOINTS : V1_CHECKPOINTS;
+    // One-shot timer per checkpoint at pct × initial ETA. A checkpoint whose target is
+    // already in the past fires with delay 0 — that IS the catch-up reconcile when the
+    // screen (re)mounts after backgrounding: any missed checkpoint fires once now.
     const timers = checkpoints.map((checkpoint) => {
       if (sampledCheckpoints.current.has(checkpoint)) return null;
       const targetMs =
@@ -154,11 +168,19 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
           const permission = await Location.requestForegroundPermissionsAsync();
           if (permission.status !== 'granted') return;
           const coords = await Location.getCurrentPositionAsync({});
-          await api.post(`/rooms/${roomId}/location-update`, {
-            rawLat: coords.coords.latitude,
-            rawLng: coords.coords.longitude,
-            progressPercentage: checkpoint,
-          });
+          if (v2) {
+            await api.post(`/rooms/${roomId}/checkpoint`, {
+              checkpointPct: checkpoint,
+              lat: coords.coords.latitude,
+              lng: coords.coords.longitude,
+            });
+          } else {
+            await api.post(`/rooms/${roomId}/location-update`, {
+              rawLat: coords.coords.latitude,
+              rawLng: coords.coords.longitude,
+              progressPercentage: checkpoint,
+            });
+          }
           sampledCheckpoints.current.add(checkpoint);
         } catch {
           // silent degradation
@@ -172,6 +194,26 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
       });
     };
   }, [isCreator, liveState?.startTime, liveState?.expectedDurationSeconds, roomId]);
+
+  // v2: surface the >20-min "ETA moved" signal (same threshold the backend notifies on)
+  // by comparing the latest checkpoint's projected arrival to the original start ETA.
+  useEffect(() => {
+    if (!featureFlags.checkpointLeaderboardV2) return;
+    if (!liveState?.startTime || !liveState?.expectedDurationSeconds) return;
+    const expectedArrival =
+      new Date(liveState.startTime).getTime() + liveState.expectedDurationSeconds * 1000;
+    const available = Object.values(checkpointBoards).filter(
+      (b): b is Extract<CheckpointBoard, { available: true }> => !!b && b.available,
+    );
+    if (!available.length) return;
+    const latest = available.reduce((a, b) => (b.checkpoint > a.checkpoint ? b : a));
+    const drift = Math.abs(new Date(latest.projectedArrivalAt).getTime() - expectedArrival);
+    if (drift > ETA_MOVE_NOTIFY_THRESHOLD_MS && !etaMovedShown.current.has(latest.checkpoint)) {
+      etaMovedShown.current.add(latest.checkpoint);
+      setEtaMovedBanner(`Heads up — the arrival estimate moved by about ${Math.round(drift / 60000)} min.`);
+      setTimeout(() => setEtaMovedBanner(null), 6000);
+    }
+  }, [checkpointBoards, liveState?.startTime, liveState?.expectedDurationSeconds]);
 
   // Countdown to the prediction lock, shown only while guessing is still OPEN so the
   // "closes in mm:ss" moment is unmistakable. Presentation only — the server still
@@ -195,6 +237,24 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
   }, [liveState?.status, room?.status, room?.predictionCloseTime, room?.lockTime]);
+
+  useEffect(() => {
+    const mine = predictions.find((entry: any) => entry.isCurrentUser && entry.status !== 'revoked');
+    const rawDeadline = mine?.editDeadline;
+    if (!featureFlags.checkpointLeaderboardV2 || !rawDeadline) {
+      setReviewCountdownSeconds(null);
+      return;
+    }
+    const target = new Date(rawDeadline).getTime();
+    if (Number.isNaN(target)) {
+      setReviewCountdownSeconds(null);
+      return;
+    }
+    const tick = () => setReviewCountdownSeconds(Math.max(0, Math.ceil((target - Date.now()) / 1000)));
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [predictions]);
 
   async function fetchRoom() {
     try {
@@ -224,7 +284,10 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
   async function fetchCheckpointBoards() {
     try {
       const res = await api.get(`/rooms/${roomId}/checkpoint-leaderboards`);
-      setCheckpointBoards({ 50: res.data?.['50'], 80: res.data?.['80'] });
+      const data = (res.data ?? {}) as Record<string, CheckpointBoard>;
+      const boards: Record<number, CheckpointBoard | undefined> = {};
+      for (const [key, value] of Object.entries(data)) boards[Number(key)] = value;
+      setCheckpointBoards(boards);
     } catch {
       // provisional standings are best-effort
     }
@@ -280,7 +343,7 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
       });
       if (res.data?.requiresConfirmation) {
         setConfirmingArrival(false);
-        return Alert.alert(
+        return appAlert(
           'Almost there?',
           res.data.prompt,
           [
@@ -304,7 +367,7 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
       }
       navigation.navigate('Result', { roomId, result: res.data });
     } catch (err: unknown) {
-      Alert.alert('Arrival not confirmed', getApiErrorMessage(err, 'Could not confirm arrival.'));
+      appAlert('Arrival not confirmed', getApiErrorMessage(err, 'Could not confirm arrival.'));
     } finally {
       setConfirmingArrival(false);
     }
@@ -338,8 +401,8 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
       try {
         const res = await api.post(`/rooms/${roomId}/end`, {
           actualOptionKey,
-          outcomeSource: 'host_declared',
-          confidenceLevel: 'medium',
+          outcomeSource: category === 'open_prediction' ? 'creator_attest' : 'host_declared',
+          confidenceLevel: category === 'open_prediction' ? 'creator_attested' : 'medium',
         });
         navigation.navigate('Result', { roomId, result: res.data });
       } catch (err: unknown) {
@@ -350,7 +413,7 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
       return;
     }
 
-    Alert.alert('End Room?', 'This will calculate the winner and award Aura.', [
+    Alert.alert('End Room?', category === 'open_prediction' ? 'This will use creator-attest for the result. Predictors can challenge it later.' : 'This will calculate the winner and award Aura.', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'End Room',
@@ -400,6 +463,9 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
 
   const categoryTheme = getCategoryTheme(category);
 
+  const checkpointList = featureFlags.checkpointLeaderboardV2 ? V2_CHECKPOINTS : V1_CHECKPOINTS;
+  const anyCheckpointAvailable = checkpointList.some((cp) => checkpointBoards[cp]?.available);
+
   // ---- The three unmistakable phases: predictions OPEN → LOCKED → journey STARTED ----
   const rawStatus = liveState?.status ?? room?.status ?? 'live';
   const normStatus = rawStatus === 'prediction_open' ? 'predictions_open' : rawStatus;
@@ -425,6 +491,26 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
       : lockCountdownSeconds === 0
         ? 'Locking now…'
         : null;
+
+  // v2 re-predict: a viewer may replace their guess through the 80% checkpoint.
+  const myPrediction = predictions.find((p) => p.isCurrentUser && p.status !== 'revoked');
+  const reached80 = [80, 90, 100].some((cp) => checkpointBoards[cp]?.available);
+  const canRePredict =
+    featureFlags.checkpointLeaderboardV2 &&
+    !isCreator &&
+    !!myPrediction &&
+    !reached80 &&
+    phase !== 'ended';
+  const reviewWindowActive =
+    featureFlags.checkpointLeaderboardV2 &&
+    !!myPrediction &&
+    reviewCountdownSeconds != null &&
+    reviewCountdownSeconds > 0;
+  const reviewCountdownLabel = reviewWindowActive
+    ? `Review & change your prediction for ${Math.floor(reviewCountdownSeconds / 60)}:${String(
+        reviewCountdownSeconds % 60,
+      ).padStart(2, '0')}`
+    : null;
 
   // During the visibility-delay window (or any moment progress hasn't landed yet), the
   // raw 0% reads as broken. Show plain "it has begun" copy instead. This changes only
@@ -617,6 +703,15 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
         </View>
       ) : null}
 
+      {reviewCountdownLabel ? (
+        <View style={styles.reviewBanner}>
+          <Text style={styles.reviewBannerTitle}>✏️ One-minute review window</Text>
+          <Text style={styles.reviewBannerCopy}>
+            {reviewCountdownLabel}. Human times stay blurred until your own prediction locks.
+          </Text>
+        </View>
+      ) : null}
+
       <LiveStatusCard
         theme={categoryTheme}
         title={room?.roomTitle ?? (category === 'weather_rain' ? 'Weather Room' : 'Live PREDIKT')}
@@ -631,6 +726,12 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
       {milestoneBanner ? (
         <View style={[styles.milestoneBanner, { borderColor: colors.amber, backgroundColor: colors.surfaceHigh }]}>
           <Text style={[styles.milestoneBannerText, { color: colors.textPrimary }]}>{milestoneBanner}</Text>
+        </View>
+      ) : null}
+
+      {etaMovedBanner ? (
+        <View style={[styles.milestoneBanner, { borderColor: colors.amber, backgroundColor: colors.surfaceHigh }]}>
+          <Text style={[styles.milestoneBannerText, { color: colors.textPrimary }]}>⏱ {etaMovedBanner}</Text>
         </View>
       ) : null}
 
@@ -674,11 +775,20 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
         </View>
       ) : null}
 
-      {liveState && (predictions.length || checkpointBoards[50]?.available || checkpointBoards[80]?.available) ? (
+      {liveState && (predictions.length || anyCheckpointAvailable) ? (
         <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <RoomPredictionList data={predictions} />
-          <CheckpointLeaderboard board={checkpointBoards[50]} />
-          <CheckpointLeaderboard board={checkpointBoards[80]} />
+          {checkpointList.map((cp) => (
+            <CheckpointLeaderboard key={cp} board={checkpointBoards[cp]} />
+          ))}
+          {canRePredict ? (
+            <PrimaryButton
+              label="Change my guess"
+              onPress={() => navigation.navigate('Prediction', { roomId, room, editPredictionId: myPrediction!.predictionId })}
+              variant="secondary"
+              icon="✏️"
+            />
+          ) : null}
         </View>
       ) : null}
 
@@ -771,11 +881,13 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
       {isCreator && room?.answerType === 'multiple_choice' ? (
         <View style={[styles.creatorCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <LinearGradient colors={[colors.purple + '30', 'transparent']} style={styles.creatorHeader}>
-            <Text style={[styles.creatorTitle, { color: colors.textPrimary }]}>Declare Result</Text>
+            <Text style={[styles.creatorTitle, { color: colors.textPrimary }]}>{category === 'open_prediction' ? 'Creator Attest Result' : 'Declare Result'}</Text>
           </LinearGradient>
           <View style={styles.creatorBody}>
             <Text style={[styles.startDelayCopy, { color: colors.textSecondary }]}>
-              Choose the actual outcome from the original options. Predictions stay hidden until lock.
+              {category === 'open_prediction'
+                ? 'Choose the actual outcome from the original options. MVP rule: creator-attest only, no screenshot upload. Predictors can challenge afterward.'
+                : 'Choose the actual outcome from the original options. Predictions stay hidden until lock.'}
             </Text>
             <View style={styles.resultOptionStack}>
               {multipleChoiceOptions.map((option: any) => (
@@ -787,7 +899,7 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
                 />
               ))}
             </View>
-            <PrimaryButton label="Declare Result & See Winners" onPress={handleEndRoom} loading={ending} icon="🏁" />
+            <PrimaryButton label={category === 'open_prediction' ? 'Attest Result & See Winners' : 'Declare Result & See Winners'} onPress={handleEndRoom} loading={ending} icon="🏁" />
           </View>
         </View>
       ) : null}
@@ -799,7 +911,9 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
           </LinearGradient>
           <View style={styles.creatorBody}>
             <Text style={[styles.startDelayCopy, { color: colors.textSecondary }]}>
-              Progress now runs on the route timer with private checkpoints at 0%, 50%, 80%, and arrival.
+              {featureFlags.checkpointLeaderboardV2
+                ? 'Progress runs on the route timer with private checkpoints at 20/40/60/80/90% and arrival, each doing one GPS + ETA read.'
+                : 'Progress now runs on the route timer with private checkpoints at 0%, 50%, 80%, and arrival.'}
             </Text>
             {staysOpenUntilLabel ? (
               <Text style={[styles.startDelayCopy, { color: colors.purpleLight }]}>{staysOpenUntilLabel}</Text>
@@ -844,6 +958,17 @@ const styles = StyleSheet.create({
   lockedBannerTitle: { color: '#86efac', fontSize: 15, fontWeight: '900', marginBottom: 3 },
   lockedBannerCopy: { color: 'rgba(255,255,255,0.82)', fontSize: 13, lineHeight: 19 },
   lockedBannerDismiss: { color: 'rgba(255,255,255,0.5)', fontSize: 15, fontWeight: '800', paddingHorizontal: 4 },
+  reviewBanner: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(34,211,238,0.45)',
+    backgroundColor: 'rgba(34,211,238,0.10)',
+    padding: 14,
+    marginBottom: 16,
+    gap: 4,
+  },
+  reviewBannerTitle: { color: '#fff', fontSize: 15, fontWeight: '900' },
+  reviewBannerCopy: { color: 'rgba(255,255,255,0.82)', fontSize: 13, lineHeight: 19, fontWeight: '600' },
   privacyPill: { borderRadius: 10, paddingHorizontal: 12, paddingVertical: 7, marginBottom: 16, alignSelf: 'flex-start' },
   privacyText: { fontSize: 12, fontWeight: '600' },
   phaseBanner: { borderRadius: 14, borderWidth: 1, padding: 14, marginBottom: 16, gap: 4 },

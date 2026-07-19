@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, Alert, Animated, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { AccessibilityInfo, Alert, Animated, Linking, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -240,7 +240,37 @@ export default function ResultScreen({ navigation, route }: Props) {
     navigation.navigate('CreateRoom');
   }
 
+  async function handleChallengeResult() {
+    try {
+      const response = await api.post(`/rooms/${roomId}/disputes`, {
+        reason: 'Predictor challenge: please review this creator-attested generic-room result.',
+      });
+      const proofWaMeLink = response.data?.proofWaMeLink;
+      Alert.alert(
+        'Challenge submitted',
+        proofWaMeLink
+          ? 'The creator and challenger were notified. We can open the WhatsApp proof link now.'
+          : 'The creator and challenger were notified in-app.',
+        proofWaMeLink
+          ? [
+              { text: 'Later', style: 'cancel' },
+              {
+                text: 'Open WhatsApp link',
+                onPress: () => {
+                  void Linking.openURL(proofWaMeLink);
+                },
+              },
+            ]
+          : undefined,
+      );
+    } catch (error) {
+      Alert.alert('Challenge unavailable', getApiErrorMessage(error, 'We could not submit the challenge right now.'));
+    }
+  }
+
   const categoryTheme = getCategoryTheme(categoryKey);
+  const isGenericRoom = categoryKey === 'open_prediction';
+  const isCreator = !!user?.userId && !!room?.creatorUserId && user.userId === room.creatorUserId;
 
   return (
     <WebSideWingLayout rightPlacement="result_side">
@@ -373,6 +403,15 @@ export default function ResultScreen({ navigation, route }: Props) {
         <SectionHeader title="React + Rematch" subtitle={comebackCopy} />
         <ReactionStrip reactions={REACTIONS} onReact={sendReaction} selected={selectedReaction} />
 
+        {isGenericRoom && !isCreator ? (
+          <PrimaryButton
+            label="Challenge Creator-Attest"
+            onPress={handleChallengeResult}
+            variant="secondary"
+            icon="⚖️"
+          />
+        ) : null}
+
         {data.length ? (
           <>
             <Text style={[styles.section, { color: colors.textSecondary }]}>All Rankings</Text>
@@ -425,6 +464,8 @@ function prettyCategory(category: string) {
       return "Who's Late";
     case 'gym_habit':
       return 'Gym / Habit';
+    case 'open_prediction':
+      return 'Wild Cards';
     default:
       return 'Arrival Time';
   }
@@ -482,6 +523,12 @@ function buildFallbackMomentCard(category: string, personality?: string | null) 
         badge: 'Pattern Breaker',
         subtitle: 'Comeback Solo',
         commentary: `${personality ?? 'Best Friend'} energy says progress still deserves a screenshot.`,
+      };
+    case 'open_prediction':
+      return {
+        badge: 'Wild Cards',
+        subtitle: 'Creator-attest MVP lane',
+        commentary: `${personality ?? 'Oracle'} energy says the call is in, and challengers still have a route to contest it.`,
       };
     default:
       return {
