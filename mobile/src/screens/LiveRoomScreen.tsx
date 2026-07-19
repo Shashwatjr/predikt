@@ -694,16 +694,22 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
         </View>
       )}
 
-      {isCreator && room && phase !== 'ended' ? (
+      {room && phase !== 'ended' && (isCreator || isGenericRoom) ? (
         <View style={styles.inviteRow}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.inviteTitle}>Invite more friends</Text>
+            <Text style={styles.inviteTitle}>
+              {isCreator || !isGenericRoom ? 'Invite more friends' : 'Pass it on'}
+            </Text>
             <Text style={styles.inviteCopy}>
               {phase === 'started'
                 ? isGenericRoom
                   ? 'Predictions are live — friends can still join and vote before lock.'
                   : 'The journey is live — friends can still watch it unfold in real time.'
-                : 'Send the room around — the more guesses, the better the reveal.'}
+                : isGenericRoom
+                  ? isCreator
+                    ? 'Send the room around — invitees can forward it too, and the same countdown still applies to everyone.'
+                    : 'Forward this room to anyone you want — they can still join and predict before the same timer runs out.'
+                  : 'Send the room around — the more guesses, the better the reveal.'}
             </Text>
           </View>
           <View style={styles.inviteActions}>
@@ -715,7 +721,13 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
                 fullWidth={false}
               />
             ) : null}
-            <PrimaryButton label="Invite" onPress={handleInviteFriends} icon="📨" variant="secondary" fullWidth={false} />
+            <PrimaryButton
+              label={isCreator || !isGenericRoom ? 'Invite' : 'Forward'}
+              onPress={handleInviteFriends}
+              icon="📨"
+              variant="secondary"
+              fullWidth={false}
+            />
           </View>
         </View>
       ) : null}

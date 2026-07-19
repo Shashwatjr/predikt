@@ -118,7 +118,7 @@ export default function RoomCreatedScreen({ navigation, route }: Props) {
               {isGroupJourney
                 ? 'Invite friends to join, opt in as travellers, and predict each other’s arrival time.'
                 : isGenericRoom
-                  ? 'Share the Wild Cards link below. Friends can join, predict, and challenge the attested result if needed.'
+                  ? 'Share the Wild Cards link below. Friends can join, predict, forward it onward, and challenge the attested result if needed.'
                   : 'Share the code below. Friends can join from the link and predict right away.'}
             </Text>
           </View>
@@ -179,7 +179,7 @@ export default function RoomCreatedScreen({ navigation, route }: Props) {
         <Text style={[styles.shareTitle, { color: colors.textPrimary }]}>Invite friends</Text>
         <Text style={[styles.shareCopy, { color: colors.textSecondary }]}>
           {isGenericRoom
-            ? 'Send the link once. Friends land straight in Wild Cards, pick a name, and make their call.'
+            ? 'Send the link once. Friends can join Wild Cards, pick a name, make their call, and forward the same room onward before lock.'
             : 'Send the link once. Friends land straight in the join flow, pick a name, and make their guess.'}
         </Text>
         <View style={styles.shareActions}>
