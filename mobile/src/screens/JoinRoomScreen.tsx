@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Alert, TouchableOpacity } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, Alert, TouchableOpacity, Share, Linking } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -15,6 +15,7 @@ import { createGuestSession } from '../services/guestSession';
 import { getCategoryTheme } from '../config/categoryTheme';
 import SectionHeader from '../components/SectionHeader';
 import { deriveArrivalBenchmarks, formatClock } from '../utils/benchmarks';
+import { buildSharePayload } from '../utils/shareRoom';
 import { cardStyle, layout, palette, radius, spacing } from '../theme/designSystem';
 
 type Props = {
@@ -126,6 +127,10 @@ export default function JoinRoomScreen({ navigation, route }: Props) {
   const categoryTheme = getCategoryTheme(room?.category ?? room?.templateKey);
   const isGenericRoom = (room?.category ?? room?.templateKey) === 'open_prediction';
   const roomTitle = room?.title ?? room?.roomTitle ?? (isGenericRoom ? 'A Wild Cards room' : 'A PREDIKT challenge');
+  const sharePayload = useMemo(
+    () => (room ? buildSharePayload({ ...room, roomTitle, inviteCode: room.inviteCode ?? code }) : null),
+    [room, roomTitle, code],
+  );
   const lockLabel = room?.canLateJoinPredict && room?.lateJoinPredictionWindowEndsAt
     ? `Late-join guesses stay open until ${new Date(room.lateJoinPredictionWindowEndsAt).toLocaleString()}`
     : room?.lockTime || room?.predictionCloseTime
@@ -140,6 +145,27 @@ export default function JoinRoomScreen({ navigation, route }: Props) {
     participantCount > 0
       ? formatPeopleInRoom(participantCount)
       : 'Be the first to call it';
+
+  async function handleForwardInvite() {
+    if (!sharePayload) return;
+    try {
+      await Share.share({
+        message: sharePayload.shareText,
+        title: `Join ${sharePayload.shareTitle}`,
+      });
+    } catch {
+      Alert.alert('Share unavailable', 'Could not open the share sheet right now.');
+    }
+  }
+
+  async function handleForwardWhatsApp() {
+    if (!sharePayload) return;
+    try {
+      await Linking.openURL(sharePayload.whatsappUrl);
+    } catch {
+      Alert.alert('WhatsApp unavailable', 'Could not open WhatsApp right now.');
+    }
+  }
 
   return (
     <ScrollView
@@ -179,6 +205,23 @@ export default function JoinRoomScreen({ navigation, route }: Props) {
                 </View>
               ))}
               {isJoinable ? <Text style={styles.beatLine}>Think you can beat them?</Text> : null}
+            </View>
+          ) : null}
+
+          {isGenericRoom && sharePayload ? (
+            <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <Text style={[styles.shareTitle, { color: colors.textPrimary }]}>Forward this room</Text>
+              <Text style={[styles.shareCopy, { color: colors.textSecondary }]}>
+                Anyone you forward this to joins the same Wild Cards room with the same countdown and lock time.
+              </Text>
+              <View style={styles.shareActions}>
+                <View style={styles.shareAction}>
+                  <PrimaryButton label="Forward on WhatsApp" onPress={handleForwardWhatsApp} icon="💬" />
+                </View>
+                <View style={styles.shareAction}>
+                  <PrimaryButton label="Share Invite" onPress={handleForwardInvite} variant="secondary" icon="📨" />
+                </View>
+              </View>
             </View>
           ) : null}
 
@@ -298,6 +341,10 @@ const styles = StyleSheet.create({
   benchLabel: { color: palette.textSecondary, fontSize: 13, fontWeight: '700' },
   benchTime: { color: palette.textPrimary, fontSize: 22, fontWeight: '900' },
   beatLine: { color: palette.violetLight, fontSize: 14, fontWeight: '900', marginTop: spacing.xs },
+  shareTitle: { fontSize: 16, fontWeight: '900' },
+  shareCopy: { fontSize: 13, lineHeight: 19 },
+  shareActions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm },
+  shareAction: { flex: 1 },
   finderNote: { color: palette.textMuted, fontSize: 12, lineHeight: 18, textAlign: 'center' },
   statusMsg: { textAlign: 'center', fontSize: 14 },
 });
