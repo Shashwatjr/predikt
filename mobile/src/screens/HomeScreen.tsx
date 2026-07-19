@@ -46,6 +46,7 @@ type Props = {
 type DemoChoice = 'Yes' | 'No' | 'Exact time';
 type HomeTab = NavTab;
 type ActivePredictionFilter = 'all' | 'needs_prediction' | 'live_now' | 'result_ready' | 'created_by_me';
+type CreateRoomPresetCategory = NonNullable<RootStackParamList['CreateRoom']>['presetCategory'];
 
 const fallbackLiveRooms = [
   {
@@ -105,6 +106,18 @@ export default function HomeScreen({ navigation, route }: Props) {
   const userName = user?.name;
   const demoAccount = isDemoAccount(user);
   const showDemoHub = !demoAccount || demoHubExpanded;
+  const sportsCategoryTheme: CategoryTheme = {
+    key: 'open_prediction',
+    label: 'Sports',
+    icon: '⚽',
+    primaryColor: '#f59e0b',
+    secondaryColor: '#ef4444',
+    gradient: ['#f59e0b', '#ef4444'],
+    badgeStyle: { bg: 'rgba(245,158,11,0.2)', border: 'rgba(245,158,11,0.45)', text: '#fde68a' },
+    emptyStateCopy: 'Kick off a sports prediction like Argentina vs Spain and add more teams or players.',
+    resultTitle: 'Sports reveal',
+    quickStartLabel: 'Sports',
+  };
 
   useEffect(() => {
     fetchUnreadNotificationCount()
@@ -494,22 +507,44 @@ export default function HomeScreen({ navigation, route }: Props) {
           </View>
 
           <SectionHeader title="Choose a category" subtitle="Jump straight into the kind of moment you want to call" />
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingBottom: 4 }}>
-            {CATEGORY_LIST.map((theme) => {
+          <View style={styles.categoryQuickGrid}>
+            {[sportsCategoryTheme, ...CATEGORY_LIST.filter((theme) => isCategoryEnabled(theme.key) || theme.key === 'gym_habit')].map((theme) => {
+              if (theme === sportsCategoryTheme) {
+                return (
+                  <CategoryTile
+                  key="sports-preset"
+                  theme={theme}
+                  compact
+                  centered
+                  fill
+                  locked={false}
+                  onPress={() => navigation.navigate('CreateRoom', { presetCategory: 'sports_prediction' })}
+                />
+              );
+              }
               const enabled = isCategoryEnabled(theme.key);
+              const presetCategory = (
+                ['arrival_time', 'food_eta', 'open_prediction', 'gym_habit'] as const
+              ).includes(theme.key as CreateRoomPresetCategory)
+                ? (theme.key as CreateRoomPresetCategory)
+                : undefined;
               return (
                 <CategoryTile
                   key={theme.key}
                   theme={theme}
                   compact
+                  centered
+                  fill
                   locked={!enabled}
                   onPress={() =>
-                    enabled ? navigation.navigate('CreateRoom') : setVotePromptCategory(theme)
+                    enabled
+                      ? navigation.navigate('CreateRoom', presetCategory ? { presetCategory } : undefined)
+                      : setVotePromptCategory(theme)
                   }
                 />
               );
             })}
-          </ScrollView>
+          </View>
 
           <SectionHeader title="Live PREDIKTs" live={hasLiveHubActivity} />
 
@@ -944,6 +979,7 @@ const styles = StyleSheet.create({
   secondaryCtaText: { color: '#fff', fontSize: 17, fontWeight: '800' },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 5 },
   sectionTitle: { color: '#fff', fontSize: 16, fontWeight: '900' },
+  categoryQuickGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, paddingBottom: 4 },
   liveRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   liveDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: '#22D3EE' },
   liveText: { color: '#22D3EE', fontSize: 10, fontWeight: '900', letterSpacing: 1 },

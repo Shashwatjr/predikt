@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RouteProp } from '@react-navigation/native';
 import * as Location from 'expo-location';
 import { LinearGradient } from 'expo-linear-gradient';
 import { RootStackParamList } from '../navigation/types';
@@ -19,13 +20,15 @@ import CategoryTile from '../components/CategoryTile';
 import CategoryVotePrompt from '../components/CategoryVotePrompt';
 import ModeCard from '../components/ModeCard';
 import PrivacyModeSelector from '../components/PrivacyModeSelector';
-import CoachMark from '../components/CoachMark';
 import { getCategoryTheme, CATEGORY_LIST, CategoryTheme } from '../config/categoryTheme';
 import { featureFlags, isCategoryEnabled } from '../config/featureFlags';
 import { voteCategoryInterest } from '../utils/categoryInterest';
 import { layout, palette } from '../theme/designSystem';
 
-type Props = { navigation: NativeStackNavigationProp<RootStackParamList, 'CreateRoom'> };
+type Props = {
+  navigation: NativeStackNavigationProp<RootStackParamList, 'CreateRoom'>;
+  route: RouteProp<RootStackParamList, 'CreateRoom'>;
+};
 
 // The "Guesses lock at" field is a LOCAL wall-clock string (YYYY-MM-DDTHH:MM).
 // The submit handlers parse it with `new Date(str)` (local) then `.toISOString()`
@@ -87,7 +90,7 @@ function LockDateTimeField({
           const safeDate = nextDate.replace(/[^0-9-]/g, '').slice(0, 10);
           onChange(mergeLocalDateAndTime(safeDate, parsed.timePart));
         }}
-        placeholder="2026-07-10"
+        placeholder="2026-07-19"
         hint="Local date · YYYY-MM-DD"
         autoCapitalize="none"
       />
@@ -105,10 +108,63 @@ function LockDateTimeField({
   );
 }
 
+function LockDateField({
+  value,
+  onChange,
+  label = 'Vendor ETA date',
+}: {
+  value: string;
+  onChange: (next: string) => void;
+  label?: string;
+}) {
+  return (
+    <TextInputField
+      label={label}
+      value={value}
+      onChangeText={(nextDate) => onChange(nextDate.replace(/[^0-9-]/g, '').slice(0, 10))}
+      placeholder="2026-07-19"
+      hint="Local date · YYYY-MM-DD"
+      autoCapitalize="none"
+    />
+  );
+}
+
 const makeDefaultCloseAt = () => toLocalDateTimeInput(new Date(Date.now() + 60 * 60 * 1000));
 const startDelayOptions = [3, 5, 10, 15] as const;
-const visibilities = ['invite_only', 'private', 'public'] as const;
+const visibilities = ['invite_only', 'public'] as const;
 const forecastProviders = ['Weather app', 'Google Weather', 'IMD', 'Other'] as const;
+const timeOnlyDeliveryProviders = ['Zomato', 'Swiggy', 'Blinkit', 'Zepto', 'Porter'] as const;
+const dateOptionalDeliveryProviders = ['Amazon', 'Flipkart', 'Ekart', 'DTDC', 'Bluedart', 'India Post'] as const;
+const genericDeliveryProviders = [
+  ...timeOnlyDeliveryProviders,
+  ...dateOptionalDeliveryProviders,
+  'Other',
+] as const;
+
+type DeliveryVendorTimingMode = 'time_only' | 'date_or_datetime';
+
+function providerTimingMode(provider: string): DeliveryVendorTimingMode {
+  return (dateOptionalDeliveryProviders as readonly string[]).includes(provider)
+    ? 'date_or_datetime'
+    : 'time_only';
+}
+
+function formatVendorEtaLabel(value: string, mode: DeliveryVendorTimingMode) {
+  const parsed = parseLocalDateTimeInput(value);
+  if (!parsed) return value;
+  if (mode === 'time_only') {
+    return parsed.toLocaleTimeString('en-IN', {
+      hour: 'numeric',
+      minute: '2-digit',
+    });
+  }
+  return parsed.toLocaleString('en-IN', {
+    day: 'numeric',
+    month: 'short',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
 
 const categoryTiles = [
   {
@@ -125,15 +181,9 @@ const categoryTiles = [
   },
   {
     key: 'food_eta',
-    icon: '🍕',
-    label: 'Food ETA',
-    helper: 'Turn app ETA suspense into a playful friend challenge.',
-  },
-  {
-    key: 'whos_late',
-    icon: '⏰',
-    label: "Who's Late?",
-    helper: 'Call who reaches last or who beats the agreed time.',
+    icon: '📦',
+    label: 'Delivery ETA',
+    helper: 'Turn vendor ETA suspense into a playful friend challenge.',
   },
   {
     key: 'gym_habit',
@@ -142,10 +192,16 @@ const categoryTiles = [
     helper: 'Create light accountability challenges without pressure.',
   },
   {
+    key: 'sports_prediction',
+    icon: '⚽',
+    label: 'Sports',
+    helper: 'Start with a match-style room like Argentina vs Spain, then add teams or players as needed.',
+  },
+  {
     key: 'open_prediction',
     icon: '🏆',
-    label: 'Open Prediction',
-    helper: 'Create sports or opinion rooms with yes/no or custom team options.',
+    label: 'Custom Prediktion',
+    helper: 'Open a free-play room with your own question and prediction options.',
   },
 ] as const;
 
@@ -171,7 +227,7 @@ const routeTemplates = [
   { key: 'journey', label: 'Journey', roomCategory: 'travel' },
   { key: 'arrival', label: 'Arrival', roomCategory: 'journey' },
   { key: 'airport_run', label: 'Airport Run', roomCategory: 'travel' },
-  { key: 'food_delivery', label: 'Food Delivery', roomCategory: 'delivery' },
+  { key: 'food_delivery', label: 'Delivery', roomCategory: 'delivery' },
   { key: 'ai_eta', label: 'AI vs Human ETA', roomCategory: 'ai_vs_human' },
 ] as const;
 
@@ -223,10 +279,10 @@ const weatherOptions = [
 
 const placeholderTemplates = {
   food_eta: {
-    title: 'Will this order beat the app ETA?',
-    question: 'Will it beat the app ETA?',
+    title: 'Will this delivery beat the vendor ETA?',
+    question: 'Will it beat the vendor ETA?',
     answerType: 'yes_no',
-    baselineLabel: 'Swiggy',
+    baselineLabel: 'Zomato',
   },
   whos_late: {
     title: 'Who reaches last tonight?',
@@ -257,21 +313,8 @@ const openPredictionAnswerModes = [
 
 const genericRoomTemplates = [
   { key: 'sports', label: 'Sports match', title: 'Argentina vs Spain', question: 'Who will win?' },
-  { key: 'delivery', label: 'Delivery race', title: 'Will this order beat the ETA?', question: 'Will it arrive before the app ETA?' },
+  { key: 'delivery', label: 'Delivery race', title: 'Will this delivery beat the vendor ETA?', question: 'Will it arrive before the vendor ETA?' },
   { key: 'free_play', label: 'Free play', title: 'Tonight’s big call', question: 'What do you think happens?' },
-] as const;
-
-const genericDeliveryProviders = [
-  'Zomato',
-  'Swiggy',
-  'Blinkit',
-  'Zepto',
-  'Amazon',
-  'Ekart',
-  'DTDC',
-  'Bluedart',
-  'Porter',
-  'India Post',
 ] as const;
 
 interface StartLocation {
@@ -298,8 +341,20 @@ function buildBoundsFromCoordinates(coordinates: Array<{ latitude: number; longi
   };
 }
 
-export default function CreateRoomScreen({ navigation }: Props) {
+export default function CreateRoomScreen({ navigation, route }: Props) {
   const { colors } = useTheme();
+  const sportsCategoryTheme: CategoryTheme = {
+    key: 'open_prediction',
+    label: 'Sports',
+    icon: '⚽',
+    primaryColor: '#f59e0b',
+    secondaryColor: '#ef4444',
+    gradient: ['#f59e0b', '#ef4444'],
+    badgeStyle: { bg: 'rgba(245,158,11,0.2)', border: 'rgba(245,158,11,0.45)', text: '#fde68a' },
+    emptyStateCopy: 'Kick off a sports prediction like Argentina vs Spain and add more teams or players.',
+    resultTitle: 'Sports reveal',
+    quickStartLabel: 'Sports',
+  };
 
   const [selectedCategory, setSelectedCategory] = useState<(typeof categoryTiles)[number]['key']>('arrival_time');
   const [selectedMode, setSelectedMode] = useState<(typeof modeOptions)[number]['key']>('friends');
@@ -344,19 +399,35 @@ export default function CreateRoomScreen({ navigation }: Props) {
   const [placeholderQuestion, setPlaceholderQuestion] = useState('');
   const [placeholderBaselineValue, setPlaceholderBaselineValue] = useState('');
   const [placeholderLabel, setPlaceholderLabel] = useState('');
+  const [placeholderPredictionValue, setPlaceholderPredictionValue] = useState(makeDefaultCloseAt);
+  const [deliveryProviderPreset, setDeliveryProviderPreset] =
+    useState<(typeof genericDeliveryProviders)[number]>('Zomato');
+  const [deliveryProviderOther, setDeliveryProviderOther] = useState('');
+  const [deliveryVendorEtaDate, setDeliveryVendorEtaDate] = useState(toLocalDateTimeInput(new Date()).split('T')[0]);
+  const [deliveryVendorEtaDateTime, setDeliveryVendorEtaDateTime] = useState(makeDefaultCloseAt);
+  const [deliveryUseDateAndTime, setDeliveryUseDateAndTime] = useState(false);
   const [votePromptCategory, setVotePromptCategory] = useState<CategoryTheme | null>(null);
   const [openPredictionTitle, setOpenPredictionTitle] = useState('');
   const [openPredictionQuestion, setOpenPredictionQuestion] = useState('');
-  const [openPredictionOptionA, setOpenPredictionOptionA] = useState('');
-  const [openPredictionOptionB, setOpenPredictionOptionB] = useState('');
-  const [openPredictionOptionC, setOpenPredictionOptionC] = useState('');
+  const [openPredictionOptions, setOpenPredictionOptions] = useState<string[]>(['', '']);
   const [openPredictionAnswerType, setOpenPredictionAnswerType] =
     useState<(typeof openPredictionAnswerModes)[number]['key']>('multiple_choice');
   const [genericTemplate, setGenericTemplate] =
-    useState<(typeof genericRoomTemplates)[number]['key']>('sports');
+    useState<(typeof genericRoomTemplates)[number]['key']>('free_play');
   const [genericDeliveryProvider, setGenericDeliveryProvider] =
     useState<(typeof genericDeliveryProviders)[number] | ''>('Zomato');
   const [genericDeliveryProviderOther, setGenericDeliveryProviderOther] = useState('');
+
+  function applySportsPreset() {
+    setSelectedCategory('sports_prediction');
+    setOpenPredictionTitle('Argentina vs Spain');
+    setOpenPredictionQuestion('Who will win?');
+    setOpenPredictionOptions(['Argentina', 'Spain', 'Draw']);
+    setOpenPredictionAnswerType('multiple_choice');
+    setGenericTemplate('sports');
+    setGenericDeliveryProvider('Zomato');
+    setGenericDeliveryProviderOther('');
+  }
 
   const selectedRouteTemplate = useMemo(
     () => routeTemplates.find((template) => template.key === selectedRouteTemplateKey) ?? routeTemplates[0],
@@ -372,7 +443,7 @@ export default function CreateRoomScreen({ navigation }: Props) {
   );
 
   const placeholderPreset = useMemo(() => {
-    if (selectedCategory === 'food_eta' || selectedCategory === 'whos_late' || selectedCategory === 'gym_habit') {
+    if (selectedCategory === 'food_eta' || selectedCategory === 'gym_habit') {
       return placeholderTemplates[selectedCategory];
     }
     return null;
@@ -545,6 +616,14 @@ export default function CreateRoomScreen({ navigation }: Props) {
   }
 
   function onCategorySelect(nextCategory: (typeof categoryTiles)[number]['key']) {
+    if (nextCategory === 'sports_prediction') {
+      trackCreateEvent('category_selected', { category: 'sports_prediction' });
+      setShowAdvancedOptions(false);
+      resetCreateErrors();
+      setPreview(null);
+      applySportsPreset();
+      return;
+    }
     setSelectedCategory(nextCategory);
     trackCreateEvent('category_selected', { category: nextCategory });
     setShowAdvancedOptions(false);
@@ -555,20 +634,27 @@ export default function CreateRoomScreen({ navigation }: Props) {
     if (nextCategory === 'weather_rain') {
       setPlaceholderLabel('');
     }
-    if (nextCategory === 'food_eta' || nextCategory === 'whos_late' || nextCategory === 'gym_habit') {
+    if (nextCategory === 'food_eta' || nextCategory === 'gym_habit') {
       const preset = placeholderTemplates[nextCategory];
       setPlaceholderTitle(preset.title);
       setPlaceholderQuestion(preset.question);
       setPlaceholderLabel(preset.baselineLabel);
+      setPlaceholderBaselineValue('');
+      setPlaceholderPredictionValue(makeDefaultCloseAt());
+      if (nextCategory === 'food_eta') {
+        setDeliveryProviderPreset('Zomato');
+        setDeliveryProviderOther('');
+        setDeliveryVendorEtaDate(toLocalDateTimeInput(new Date()).split('T')[0]);
+        setDeliveryVendorEtaDateTime(makeDefaultCloseAt());
+        setDeliveryUseDateAndTime(false);
+      }
     }
     if (nextCategory === 'open_prediction') {
-      setOpenPredictionTitle('Argentina vs Spain');
-      setOpenPredictionQuestion('Who will win?');
-      setOpenPredictionOptionA('Argentina');
-      setOpenPredictionOptionB('Spain');
-      setOpenPredictionOptionC('');
+      setOpenPredictionTitle('Tonight’s big call');
+      setOpenPredictionQuestion('What do you think happens?');
+      setOpenPredictionOptions(['Option 1', 'Option 2']);
       setOpenPredictionAnswerType('multiple_choice');
-      setGenericTemplate('sports');
+      setGenericTemplate('free_play');
       setGenericDeliveryProvider('Zomato');
       setGenericDeliveryProviderOther('');
     }
@@ -581,21 +667,61 @@ export default function CreateRoomScreen({ navigation }: Props) {
     setOpenPredictionQuestion(template.question);
     if (templateKey === 'sports') {
       setOpenPredictionAnswerType('multiple_choice');
-      setOpenPredictionOptionA('Argentina');
-      setOpenPredictionOptionB('Spain');
-      setOpenPredictionOptionC('Draw');
+      setOpenPredictionTitle('Argentina vs Spain');
+      setOpenPredictionQuestion('Who will win?');
+      setOpenPredictionOptions(['Argentina', 'Spain', 'Draw']);
     } else if (templateKey === 'delivery') {
       setOpenPredictionAnswerType('yes_no');
-      setOpenPredictionOptionA('');
-      setOpenPredictionOptionB('');
-      setOpenPredictionOptionC('');
+      setOpenPredictionTitle('Will this delivery beat the vendor ETA?');
+      setOpenPredictionQuestion('Will it arrive before the vendor ETA?');
+      setOpenPredictionOptions(['', '']);
     } else {
       setOpenPredictionAnswerType('multiple_choice');
-      setOpenPredictionOptionA('Option 1');
-      setOpenPredictionOptionB('Option 2');
-      setOpenPredictionOptionC('');
+      setOpenPredictionTitle('Tonight’s big call');
+      setOpenPredictionQuestion('What do you think happens?');
+      setOpenPredictionOptions(['Option 1', 'Option 2']);
     }
   }
+
+  function updateOpenPredictionOption(index: number, value: string) {
+    setOpenPredictionOptions((current) => current.map((item, itemIndex) => (itemIndex === index ? value : item)));
+  }
+
+  function addOpenPredictionOption() {
+    setOpenPredictionOptions((current) => [...current, '']);
+  }
+
+  function removeOpenPredictionOption(index: number) {
+    setOpenPredictionOptions((current) => {
+      if (current.length <= 2) return current;
+      return current.filter((_, itemIndex) => itemIndex !== index);
+    });
+  }
+
+  useEffect(() => {
+    if (
+      route.params?.presetCategory === 'sports_prediction' ||
+      (route.params?.presetCategory === 'open_prediction' && route.params?.presetTemplate === 'sports')
+    ) {
+      applySportsPreset();
+      return;
+    }
+    if (route.params?.presetCategory === 'open_prediction') {
+      onCategorySelect('open_prediction');
+      return;
+    }
+    if (route.params?.presetCategory === 'food_eta') {
+      onCategorySelect('food_eta');
+      return;
+    }
+    if (route.params?.presetCategory === 'gym_habit') {
+      onCategorySelect('gym_habit');
+      return;
+    }
+    if (route.params?.presetCategory === 'arrival_time') {
+      onCategorySelect('arrival_time');
+    }
+  }, [route.params?.presetCategory, route.params?.presetTemplate]);
 
   async function useCurrentLocationForStart() {
     setPreviewError(null);
@@ -803,12 +929,7 @@ export default function CreateRoomScreen({ navigation }: Props) {
     if (!placeholderPreset) return '';
     if (selectedCategory === 'food_eta') {
       return placeholderTitle.trim()
-        ? `Food ETA PREDIKT: ${placeholderTitle.trim()}`
-        : placeholderPreset.title;
-    }
-    if (selectedCategory === 'whos_late') {
-      return placeholderLabel.trim()
-        ? `${placeholderLabel.trim()} arrival PREDIKT`
+        ? `Delivery ETA PREDIKT: ${placeholderTitle.trim()}`
         : placeholderPreset.title;
     }
     if (selectedCategory === 'gym_habit') {
@@ -899,21 +1020,61 @@ export default function CreateRoomScreen({ navigation }: Props) {
     }
 
     const isFoodEta = selectedCategory === 'food_eta';
-    const etaMinutes = isFoodEta ? Number(placeholderBaselineValue) : null;
-    if (isFoodEta && (!Number.isFinite(etaMinutes ?? NaN) || (etaMinutes ?? 0) <= 0)) {
-      const message = 'Add the delivery app ETA in minutes.';
+    const selectedProvider =
+      deliveryProviderPreset === 'Other'
+        ? deliveryProviderOther.trim() || placeholderLabel.trim() || placeholderPreset.baselineLabel
+        : deliveryProviderPreset;
+    const vendorTimingMode = providerTimingMode(selectedProvider);
+    const vendorEtaInput = isFoodEta
+      ? vendorTimingMode === 'time_only'
+        ? deliveryVendorEtaDateTime
+        : deliveryUseDateAndTime
+          ? deliveryVendorEtaDateTime
+          : `${deliveryVendorEtaDate}T23:59`
+      : '';
+    const vendorEtaDate = isFoodEta ? parseLocalDateTimeInput(vendorEtaInput) : null;
+    const predictedDate = isFoodEta ? parseLocalDateTimeInput(placeholderPredictionValue) : null;
+    if (isFoodEta && !vendorEtaDate) {
+      const message =
+        vendorTimingMode === 'time_only'
+          ? 'Add the vendor ETA time first.'
+          : deliveryUseDateAndTime
+            ? 'Add the vendor ETA date and time first.'
+            : 'Add the vendor ETA date first.';
       setCreateError(message);
       return Alert.alert('ETA needed', message);
+    }
+    if (isFoodEta && !predictedDate) {
+      const message = 'Add your own predicted delivery time too.';
+      setCreateError(message);
+      return Alert.alert('Prediction needed', message);
     }
 
     setCreateLoading(true);
     try {
-      const foodEtaProvider = placeholderLabel.trim() || placeholderPreset.baselineLabel;
+      const foodEtaProvider = isFoodEta
+        ? selectedProvider
+        : placeholderLabel.trim() || placeholderPreset.baselineLabel;
+      const vendorEtaLabel = isFoodEta ? formatVendorEtaLabel(vendorEtaInput, vendorTimingMode) : null;
+      const creatorPredictionLabel = isFoodEta
+        ? formatVendorEtaLabel(placeholderPredictionValue, 'date_or_datetime')
+        : null;
       const foodEtaSnapshot = isFoodEta
         ? {
             providerLabel: foodEtaProvider,
-            predictedDurationMinutes: etaMinutes,
-            predictedDurationSeconds: Math.round((etaMinutes ?? 0) * 60),
+            vendorTimingMode,
+            vendorEtaLocal: vendorEtaInput,
+            vendorEtaIso: vendorEtaDate?.toISOString(),
+            creatorPredictionLocal: placeholderPredictionValue,
+            creatorPredictionIso: predictedDate?.toISOString(),
+            vendorEtaLabel,
+            creatorPredictionLabel,
+            vendorEtaEntryMode:
+              vendorTimingMode === 'date_or_datetime'
+                ? deliveryUseDateAndTime
+                  ? 'date_time'
+                  : 'date_only'
+                : 'time_only',
             capturedAt: new Date().toISOString(),
           }
         : null;
@@ -927,27 +1088,39 @@ export default function CreateRoomScreen({ navigation }: Props) {
         mode: selectedMode,
         templateKey: selectedCategory,
         roomCategory: selectedCategory === 'food_eta' ? 'delivery' : 'custom',
-        startingPointLabel: placeholderLabel.trim() || placeholderPreset.baselineLabel,
-        destinationLabel: placeholderBaselineValue.trim() || 'Shared challenge',
+        startingPointLabel:
+          selectedCategory === 'food_eta'
+            ? foodEtaProvider
+            : placeholderLabel.trim() || placeholderPreset.baselineLabel,
+        destinationLabel:
+          selectedCategory === 'food_eta'
+            ? vendorEtaLabel || 'Vendor ETA'
+            : placeholderBaselineValue.trim() || 'Shared challenge',
         predictionCloseTime: closeDate.toISOString(),
         visibility,
         baselineSource: 'manual',
         baselineLabel: isFoodEta
-          ? `${foodEtaProvider} ETA · ${etaMinutes} min`
+          ? `${foodEtaProvider} ETA · ${vendorEtaLabel ?? 'Pending'}`
           : placeholderLabel.trim() || placeholderPreset.baselineLabel,
-        baselineValue: isFoodEta ? Math.round((etaMinutes as number) * 60) : placeholderBaselineValue.trim() || null,
+        baselineValue:
+          isFoodEta
+            ? vendorEtaDate?.toISOString()
+            : placeholderBaselineValue.trim() || null,
         baselineSnapshot: foodEtaSnapshot,
         oracleBotPrediction: isFoodEta
           ? {
-              label: `${foodEtaProvider} ETA · ${etaMinutes} min`,
-              predictedDurationMinutes: etaMinutes,
-              predictedDurationSeconds: Math.round((etaMinutes as number) * 60),
-              reason: 'Manual delivery-app ETA benchmark',
+              label: `${foodEtaProvider} ETA · ${vendorEtaLabel ?? 'Pending'}`,
+              predictedArrivalTime: vendorEtaDate?.toISOString(),
+              creatorPredictedArrivalTime: predictedDate?.toISOString(),
+              reason: 'Manual delivery ETA benchmark',
             }
           : null,
         scoringRule: {
           categoryKey: selectedCategory,
           placeholder: true,
+          deliveryProvider: isFoodEta ? foodEtaProvider : undefined,
+          vendorTimingMode: isFoodEta ? vendorTimingMode : undefined,
+          creatorPredictionIso: isFoodEta ? predictedDate?.toISOString() : undefined,
         },
       });
       navigation.navigate('RoomCreated', { room: res.data });
@@ -982,9 +1155,7 @@ export default function CreateRoomScreen({ navigation }: Props) {
       return Alert.alert('Question needed', message);
     }
 
-    const options = [openPredictionOptionA, openPredictionOptionB, openPredictionOptionC]
-      .map((option) => option.trim())
-      .filter(Boolean);
+    const options = openPredictionOptions.map((option) => option.trim()).filter(Boolean);
     if (openPredictionAnswerType === 'multiple_choice' && options.length < 2) {
       const message = 'Add at least two prediction options.';
       setCreateError(message);
@@ -999,11 +1170,6 @@ export default function CreateRoomScreen({ navigation }: Props) {
           ? ['yes', 'no']
           : options
         : undefined;
-    const deliveryProvider =
-      genericTemplate === 'delivery'
-        ? genericDeliveryProviderOther.trim() || genericDeliveryProvider || 'Delivery app'
-        : null;
-
     setCreateLoading(true);
     try {
       const res = await api.post('/rooms', {
@@ -1015,7 +1181,7 @@ export default function CreateRoomScreen({ navigation }: Props) {
         answerType: normalizedAnswerType,
         mode: selectedMode,
         templateKey: 'open_prediction',
-        roomCategory: genericTemplate === 'delivery' ? 'delivery' : 'custom',
+        roomCategory: 'custom',
         startingPointLabel: title,
         destinationLabel:
           normalizedAnswerType === 'multiple_choice'
@@ -1023,18 +1189,14 @@ export default function CreateRoomScreen({ navigation }: Props) {
             : 'Yes / No poll',
         predictionCloseTime: closeDate.toISOString(),
         visibility,
-        baselineSource: genericTemplate === 'delivery' ? deliveryProvider ?? 'manual' : 'manual',
-        baselineLabel:
-          genericTemplate === 'delivery'
-            ? `${deliveryProvider ?? 'Delivery app'} · creator-attested`
-            : 'Community prediction',
+        baselineSource: 'manual',
+        baselineLabel: 'Community prediction',
         baselineValue: normalizedAnswerType,
         options: normalizedOptions,
         scoringRule: {
           categoryKey: 'open_prediction',
           pollType: openPredictionAnswerType,
           genericTemplate,
-          deliveryProvider,
           rewardMode: 'gems_rizz_no_aura',
         },
         outcomeSource: 'creator_attest',
@@ -1083,7 +1245,7 @@ export default function CreateRoomScreen({ navigation }: Props) {
       <View style={styles.section}>
         <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Privacy</Text>
         <PrivacyModeSelector
-          value={visibility === 'public' ? 'invite_only' : visibility}
+          value={visibility}
           onChange={setVisibility}
           onLearnMore={() =>
             Alert.alert(
@@ -1091,42 +1253,43 @@ export default function CreateRoomScreen({ navigation }: Props) {
               'Your exact GPS and raw movement stay private. Friends only see privacy-safe progress and your final result — never your live location.',
             )
           }
-          onPrivateDetails={() =>
-            Alert.alert(
-              'Private Mode',
-              'Only friends you invite can open this room and see its full details.',
-            )
-          }
         />
       </View>
 
       <View style={styles.section}>
         <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Category</Text>
-        <CoachMark
-          storageKey="coachmark:create:aura"
-          title="Aura"
-          body="Reputation points. Closest guess wins. No money, no stress."
-        />
-        <CoachMark
-          storageKey="coachmark:create:ghost_mode"
-          title="Ghost Mode"
-          body="Your live location stays private — only progress shows."
-        />
         <View style={styles.categoryGrid}>
-          {CATEGORY_LIST.map((theme) => {
-            const enabled = isCategoryEnabled(theme.key);
+          {[
+            sportsCategoryTheme,
+            ...categoryTiles
+              .map((tile) => {
+                if (tile.key === 'sports_prediction') {
+                  return null;
+                }
+                return getCategoryTheme(tile.key);
+              })
+              .filter((theme): theme is CategoryTheme => Boolean(theme) && isCategoryEnabled(theme.key)),
+          ].map((theme) => {
+            if (theme === sportsCategoryTheme) {
+              return (
+                <CategoryTile
+                  key="sports-preset"
+                  theme={theme}
+                  badge="POPULAR"
+                  locked={false}
+                  selected={selectedCategory === 'sports_prediction'}
+                  onPress={() => onCategorySelect('sports_prediction')}
+                />
+              );
+            }
             return (
               <CategoryTile
                 key={theme.key}
                 theme={theme}
-                badge={enabled && theme.key === 'arrival_time' ? 'POPULAR' : undefined}
-                locked={!enabled}
-                selected={enabled && selectedCategory === theme.key}
-                onPress={() =>
-                  enabled
-                    ? onCategorySelect(theme.key as (typeof categoryTiles)[number]['key'])
-                    : setVotePromptCategory(theme)
-                }
+                badge={theme.key === 'arrival_time' ? 'POPULAR' : undefined}
+                locked={false}
+                selected={selectedCategory === theme.key}
+                onPress={() => onCategorySelect(theme.key as (typeof categoryTiles)[number]['key'])}
               />
             );
           })}
@@ -1462,10 +1625,8 @@ export default function CreateRoomScreen({ navigation }: Props) {
           <TextInputField
             label={
               selectedCategory === 'food_eta'
-                ? 'Order label'
-                : selectedCategory === 'whos_late'
-                  ? 'Who / group'
-                  : 'Habit'
+                ? 'Delivery label'
+                : 'Habit'
             }
             value={placeholderTitle}
             onChangeText={(value) => {
@@ -1476,31 +1637,105 @@ export default function CreateRoomScreen({ navigation }: Props) {
             }}
             placeholder={
               selectedCategory === 'food_eta'
-                ? 'Paneer roll'
-                : selectedCategory === 'whos_late'
-                  ? 'Team dinner'
-                  : 'Gym tomorrow'
+                ? 'Nike shoes'
+                : 'Gym tomorrow'
             }
           />
-          <TextInputField
-            label={
-              selectedCategory === 'food_eta'
-                ? 'App ETA (mins)'
-                : selectedCategory === 'whos_late'
-                  ? 'Meet time'
-                  : 'Target'
-            }
-            value={selectedCategory === 'food_eta' ? placeholderBaselineValue : placeholderLabel}
-            onChangeText={selectedCategory === 'food_eta' ? setPlaceholderBaselineValue : setPlaceholderLabel}
-            placeholder={selectedCategory === 'food_eta' ? '35' : selectedCategory === 'whos_late' ? '8 PM' : 'Tomorrow AM'}
-            keyboardType={selectedCategory === 'food_eta' ? 'numeric' : 'default'}
-          />
+          {selectedCategory === 'food_eta' ? (
+            <View style={styles.advancedStack}>
+              <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Delivery vendor</Text>
+              <View style={styles.optionRow}>
+                {genericDeliveryProviders.map((provider) => (
+                  <TouchableOpacity
+                    key={provider}
+                    style={[
+                      styles.chip,
+                      {
+                        borderColor: deliveryProviderPreset === provider ? colors.purple : colors.border,
+                        backgroundColor: deliveryProviderPreset === provider ? colors.purpleDim : colors.surfaceHigh,
+                      },
+                    ]}
+                    onPress={() => setDeliveryProviderPreset(provider)}
+                  >
+                    <Text style={[styles.chipText, { color: colors.textPrimary }]}>{provider}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              {deliveryProviderPreset === 'Other' ? (
+                <TextInputField
+                  label="Custom vendor"
+                  value={deliveryProviderOther}
+                  onChangeText={setDeliveryProviderOther}
+                  placeholder="Manual courier or seller"
+                />
+              ) : null}
+              {providerTimingMode(
+                deliveryProviderPreset === 'Other' ? deliveryProviderOther.trim() || 'Other' : deliveryProviderPreset,
+              ) === 'time_only' ? (
+                <LockDateTimeField
+                  value={deliveryVendorEtaDateTime}
+                  onChange={setDeliveryVendorEtaDateTime}
+                />
+              ) : (
+                <View style={styles.advancedStack}>
+                  <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Vendor ETA format</Text>
+                  <View style={styles.optionRow}>
+                    {[
+                      { key: 'date_only', label: 'Date only' },
+                      { key: 'date_time', label: 'Date + time' },
+                    ].map((option) => (
+                      <TouchableOpacity
+                        key={option.key}
+                        style={[
+                          styles.chip,
+                          {
+                            borderColor:
+                              (deliveryUseDateAndTime ? 'date_time' : 'date_only') === option.key ? colors.purple : colors.border,
+                            backgroundColor:
+                              (deliveryUseDateAndTime ? 'date_time' : 'date_only') === option.key
+                                ? colors.purpleDim
+                                : colors.surfaceHigh,
+                          },
+                        ]}
+                        onPress={() => setDeliveryUseDateAndTime(option.key === 'date_time')}
+                      >
+                        <Text style={[styles.chipText, { color: colors.textPrimary }]}>{option.label}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                  <LockDateField value={deliveryVendorEtaDate} onChange={setDeliveryVendorEtaDate} />
+                  {deliveryUseDateAndTime ? (
+                    <LockDateTimeField
+                      value={deliveryVendorEtaDateTime}
+                      onChange={setDeliveryVendorEtaDateTime}
+                    />
+                  ) : null}
+                </View>
+              )}
+              <LockDateTimeField
+                value={placeholderPredictionValue}
+                onChange={setPlaceholderPredictionValue}
+              />
+            </View>
+          ) : (
+            <TextInputField
+              label="Target"
+              value={placeholderLabel}
+              onChangeText={setPlaceholderLabel}
+              placeholder="Tomorrow AM"
+            />
+          )}
 
           <View style={[styles.generatedBox, { backgroundColor: colors.surfaceHigh }]}>
             <Text style={[styles.generatedQuestion, { color: colors.textSecondary }]}>Question</Text>
             <Text style={[styles.generatedTitle, { color: colors.textPrimary }]}>
               {placeholderQuestion.trim() || placeholderPreset.question}
             </Text>
+            {selectedCategory === 'food_eta' ? (
+              <Text style={[styles.generatedQuestion, { color: colors.textSecondary }]}>
+                Add both the vendor ETA and your own predicted arrival. Everyone else predicts against the same countdown.
+              </Text>
+            ) : null}
           </View>
 
           <LockDateTimeField
@@ -1520,13 +1755,12 @@ export default function CreateRoomScreen({ navigation }: Props) {
           {showAdvancedOptions ? (
             <View style={styles.advancedStack}>
               {selectedCategory === 'food_eta' ? (
-                <TextInputField
-                  label="Delivery app"
-                  value={placeholderLabel}
-                  onChangeText={setPlaceholderLabel}
-                  placeholder="Swiggy, Zomato, Blinkit"
-                  hint="This is the benchmark provider your friends will see."
-                />
+                <View style={[styles.generatedBox, { backgroundColor: colors.surfaceHigh }]}>
+                  <Text style={[styles.generatedQuestion, { color: colors.textSecondary }]}>Vendor logic</Text>
+                  <Text style={[styles.generatedTitle, { color: colors.textPrimary }]}>
+                    Zomato, Swiggy, Blinkit, Zepto, and Porter are time-based. Amazon, Flipkart-style couriers can be date-only or date + time.
+                  </Text>
+                </View>
               ) : null}
               <TextInputField
                 label="Custom question"
@@ -1542,30 +1776,16 @@ export default function CreateRoomScreen({ navigation }: Props) {
         </View>
       ) : null}
 
-      {selectedCategory === 'open_prediction' ? (
+      {selectedCategory === 'open_prediction' || selectedCategory === 'sports_prediction' ? (
         <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>Wild Cards</Text>
-          <Text style={[styles.generatedQuestion, { color: colors.textSecondary }]}>
-            Generic rooms for testers. Tunnel focus stays arrival, but this MVP lane covers sports, delivery, and free-play calls.
+          <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>
+            {selectedCategory === 'sports_prediction' ? 'Sports' : 'Custom Prediktion'}
           </Text>
-          <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Template</Text>
-          <View style={styles.optionRow}>
-            {genericRoomTemplates.map((template) => (
-              <TouchableOpacity
-                key={template.key}
-                style={[
-                  styles.chip,
-                  {
-                    borderColor: genericTemplate === template.key ? colors.purple : colors.border,
-                    backgroundColor: genericTemplate === template.key ? colors.purpleDim : colors.surfaceHigh,
-                  },
-                ]}
-                onPress={() => applyGenericTemplate(template.key)}
-              >
-                <Text style={[styles.chipText, { color: colors.textPrimary }]}>{template.label}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+          <Text style={[styles.generatedQuestion, { color: colors.textSecondary }]}>
+            {genericTemplate === 'free_play'
+              ? 'Open room — just name your moment and ask the question. Friends predict at will.'
+              : 'Set up your room with custom options.'}
+          </Text>
           <TextInputField
             label="Room title"
             value={openPredictionTitle}
@@ -1578,6 +1798,28 @@ export default function CreateRoomScreen({ navigation }: Props) {
             onChangeText={setOpenPredictionQuestion}
             placeholder="Who will win?"
           />
+
+          <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Room style</Text>
+          <View style={styles.optionRow}>
+            {[
+              { key: 'free_play', label: 'Free Play' },
+              { key: 'sports', label: 'Sports' },
+            ].map((styleOption) => (
+              <TouchableOpacity
+                key={styleOption.key}
+                style={[
+                  styles.chip,
+                  {
+                    borderColor: genericTemplate === styleOption.key ? colors.purple : colors.border,
+                    backgroundColor: genericTemplate === styleOption.key ? colors.purpleDim : colors.surfaceHigh,
+                  },
+                ]}
+                onPress={() => applyGenericTemplate(styleOption.key as 'free_play' | 'sports')}
+              >
+                <Text style={[styles.chipText, { color: colors.textPrimary }]}>{styleOption.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
 
           <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Prediction format</Text>
           <View style={styles.predictionGrid}>
@@ -1597,53 +1839,32 @@ export default function CreateRoomScreen({ navigation }: Props) {
 
           {openPredictionAnswerType === 'multiple_choice' ? (
             <View style={styles.advancedStack}>
-              <TextInputField
-                label="Option 1"
-                value={openPredictionOptionA}
-                onChangeText={setOpenPredictionOptionA}
-                placeholder="Argentina"
-              />
-              <TextInputField
-                label="Option 2"
-                value={openPredictionOptionB}
-                onChangeText={setOpenPredictionOptionB}
-                placeholder="Spain"
-              />
-              <TextInputField
-                label="Option 3 (optional)"
-                value={openPredictionOptionC}
-                onChangeText={setOpenPredictionOptionC}
-                placeholder="Draw"
-              />
-            </View>
-          ) : null}
-
-          {genericTemplate === 'delivery' ? (
-            <View style={styles.advancedStack}>
-              <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Delivery app</Text>
-              <View style={styles.optionRow}>
-                {genericDeliveryProviders.map((provider) => (
-                  <TouchableOpacity
-                    key={provider}
-                    style={[
-                      styles.chip,
-                      {
-                        borderColor: genericDeliveryProvider === provider ? colors.purple : colors.border,
-                        backgroundColor: genericDeliveryProvider === provider ? colors.purpleDim : colors.surfaceHigh,
-                      },
-                    ]}
-                    onPress={() => setGenericDeliveryProvider(provider)}
-                  >
-                    <Text style={[styles.chipText, { color: colors.textPrimary }]}>{provider}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-              <TextInputField
-                label="Other provider (optional)"
-                value={genericDeliveryProviderOther}
-                onChangeText={setGenericDeliveryProviderOther}
-                placeholder="Custom courier or app"
-              />
+              {openPredictionOptions.map((option, index) => (
+                <View key={`open-option-${index}`} style={styles.optionInputRow}>
+                  <View style={styles.optionInputField}>
+                    <TextInputField
+                      label={`Option ${index + 1}${index > 1 ? ' (optional)' : ''}`}
+                      value={option}
+                      onChangeText={(value) => updateOpenPredictionOption(index, value)}
+                      placeholder={index === 0 ? 'Argentina' : index === 1 ? 'Spain' : `Option ${index + 1}`}
+                    />
+                  </View>
+                  {openPredictionOptions.length > 2 ? (
+                    <TouchableOpacity
+                      onPress={() => removeOpenPredictionOption(index)}
+                      style={[styles.optionRemoveButton, { borderColor: colors.border, backgroundColor: colors.surfaceHigh }]}
+                    >
+                      <Text style={[styles.optionRemoveButtonText, { color: colors.textSecondary }]}>Remove</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+              ))}
+              <TouchableOpacity
+                onPress={addOpenPredictionOption}
+                style={[styles.addOptionButton, { borderColor: colors.purple, backgroundColor: colors.purpleDim }]}
+              >
+                <Text style={[styles.addOptionButtonText, { color: colors.purpleLight }]}>+ Add another option</Text>
+              </TouchableOpacity>
             </View>
           ) : null}
 
@@ -1695,7 +1916,7 @@ export default function CreateRoomScreen({ navigation }: Props) {
 
           {createError ? <Text style={[styles.errorText, { color: colors.red }]}>{createError}</Text> : null}
           <PrimaryButton
-            label="Create Wild Cards Room"
+            label="Create Custom Prediktion"
             onPress={handleCreateOpenPredictionRoom}
             loading={createLoading}
             icon="🏆"
@@ -1805,10 +2026,28 @@ const styles = StyleSheet.create({
   generatedQuestion: { fontSize: 13, lineHeight: 18 },
   privacyNote: { fontSize: 12, fontWeight: '700' },
   optionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  optionInputRow: { gap: 10 },
+  optionInputField: { flex: 1 },
+  optionRemoveButton: {
+    alignSelf: 'flex-start',
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  optionRemoveButtonText: { fontSize: 12, fontWeight: '800' },
   chip: { borderRadius: 999, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 8 },
   chipText: { fontSize: 12, fontWeight: '700' },
   predictionGrid: { gap: 10 },
   generatedBox: { borderRadius: 12, padding: 12, gap: 4 },
+  addOptionButton: {
+    alignItems: 'center',
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  addOptionButtonText: { fontSize: 13, fontWeight: '800' },
   advancedToggle: { fontSize: 13, fontWeight: '800', paddingVertical: 4 },
   advancedStack: { gap: 10 },
   lockFieldWrap: { gap: 8 },

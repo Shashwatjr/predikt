@@ -22,7 +22,7 @@ export type CategoryTheme = {
 export const CATEGORY_THEMES: Record<CategoryKey, CategoryTheme> = {
   arrival_time: {
     key: 'arrival_time',
-    label: 'Arrival Time',
+    label: 'Travel ETA',
     icon: '🚗',
     primaryColor: '#22d3ee',
     secondaryColor: '#22c55e',
@@ -30,7 +30,7 @@ export const CATEGORY_THEMES: Record<CategoryKey, CategoryTheme> = {
     badgeStyle: { bg: 'rgba(34,211,238,0.18)', border: 'rgba(34,211,238,0.45)', text: '#67e8f9' },
     emptyStateCopy: 'Start an arrival challenge and see who reads the traffic best.',
     resultTitle: 'Route Oracle moment',
-    quickStartLabel: 'Arrival Challenge',
+    quickStartLabel: 'Travel ETA',
   },
   weather_rain: {
     key: 'weather_rain',
@@ -46,15 +46,15 @@ export const CATEGORY_THEMES: Record<CategoryKey, CategoryTheme> = {
   },
   food_eta: {
     key: 'food_eta',
-    label: 'Food ETA',
-    icon: '🍕',
+    label: 'Delivery ETA',
+    icon: '📦',
     primaryColor: '#fb923c',
     secondaryColor: '#f97316',
     gradient: ['#fb923c', '#ea580c'],
     badgeStyle: { bg: 'rgba(251,146,60,0.2)', border: 'rgba(251,146,60,0.45)', text: '#fed7aa' },
     emptyStateCopy: 'Turn delivery suspense into a playful ETA faceoff.',
     resultTitle: 'Beat the ETA moment',
-    quickStartLabel: 'Food ETA Faceoff',
+    quickStartLabel: 'Delivery ETA',
   },
   whos_late: {
     key: 'whos_late',
@@ -78,19 +78,19 @@ export const CATEGORY_THEMES: Record<CategoryKey, CategoryTheme> = {
     badgeStyle: { bg: 'rgba(132,204,22,0.2)', border: 'rgba(132,204,22,0.45)', text: '#d9f99d' },
     emptyStateCopy: 'Light accountability for habits — playful, not pressure.',
     resultTitle: 'Pattern Breaker moment',
-    quickStartLabel: 'Gym Promise',
+    quickStartLabel: 'Habit Tracker',
   },
   open_prediction: {
     key: 'open_prediction',
-    label: 'Wild Cards',
+    label: 'Custom Prediktion',
     icon: '🏆',
     primaryColor: '#f59e0b',
     secondaryColor: '#ef4444',
     gradient: ['#f59e0b', '#ef4444'],
     badgeStyle: { bg: 'rgba(245,158,11,0.2)', border: 'rgba(245,158,11,0.45)', text: '#fde68a' },
-    emptyStateCopy: 'Open a fast generic room for sports, delivery, outcomes, and group debates.',
-    resultTitle: 'Wild Cards reveal',
-    quickStartLabel: 'Wild Cards',
+    emptyStateCopy: 'Open a free-play room with your own question and prediction options.',
+    resultTitle: 'Custom Prediktion reveal',
+    quickStartLabel: 'Custom Prediktion',
   },
 };
 
