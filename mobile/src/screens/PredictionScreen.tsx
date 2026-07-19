@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { Animated, View, Text, StyleSheet, ScrollView, TouchableOpacity, Share, Linking } from 'react-native';
 import { appAlert } from '../utils/appAlert';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
@@ -13,6 +13,7 @@ import TimePickerSegments from '../components/TimePickerSegments';
 import PredictionInputDuration from '../components/PredictionInputDuration';
 import PredictionInputYesNo from '../components/PredictionInputYesNo';
 import RoomPredictionList, { RoomPredictionEntry } from '../components/RoomPredictionList';
+import { buildSharePayload } from '../utils/shareRoom';
 import {
   Benchmark,
   deriveArrivalBenchmarks,
@@ -54,6 +55,8 @@ export default function PredictionScreen({ navigation, route }: Props) {
   // and a ticking clock to enforce the "closes 3 min before arrival" cutoff.
   const [others, setOthers] = useState<RoomPredictionEntry[]>([]);
   const [nowTick, setNowTick] = useState<number>(() => Date.now());
+  const category = room?.category ?? room?.templateKey ?? roomParam?.category ?? roomParam?.templateKey;
+  const isGenericRoom = category === 'open_prediction';
 
   const answerType = room?.answerType ?? 'exact_time';
   const isArrival = answerType === 'exact_time';
@@ -114,6 +117,18 @@ export default function PredictionScreen({ navigation, route }: Props) {
   );
   const [yesNoChoice, setYesNoChoice] = useState<'yes' | 'no' | null>(null);
   const [selectedOptionKey, setSelectedOptionKey] = useState<string | null>(null);
+  const inviteCode = room?.inviteCode ?? roomParam?.inviteCode ?? '';
+  const sharePayload = useMemo(
+    () =>
+      room
+        ? buildSharePayload({
+            ...room,
+            roomTitle: room.roomTitle ?? room.title,
+            inviteCode,
+          })
+        : null,
+    [room, inviteCode],
+  );
   const confirmScale = useRef(new Animated.Value(1)).current;
   const foodEtaBenchmarkLabel =
     room?.category === 'food_eta' || room?.templateKey === 'food_eta'
@@ -254,6 +269,45 @@ export default function PredictionScreen({ navigation, route }: Props) {
       </View>
     ) : null;
 
+  async function handleForwardInvite() {
+    if (!sharePayload) return;
+    try {
+      await Share.share({
+        message: sharePayload.shareText,
+        title: `Join ${sharePayload.shareTitle}`,
+      });
+    } catch {
+      appAlert('Share unavailable', 'Could not open the share sheet right now.');
+    }
+  }
+
+  async function handleForwardWhatsApp() {
+    if (!sharePayload) return;
+    try {
+      await Linking.openURL(sharePayload.whatsappUrl);
+    } catch {
+      appAlert('WhatsApp unavailable', 'Could not open WhatsApp right now.');
+    }
+  }
+
+  const forwardCard =
+    isGenericRoom && sharePayload ? (
+      <View style={[styles.forwardCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <Text style={[styles.forwardTitle, { color: colors.textPrimary }]}>Pass it on</Text>
+        <Text style={[styles.forwardCopy, { color: colors.textSecondary }]}>
+          Forward this room to others. Anyone who joins uses the same countdown and lock time.
+        </Text>
+        <View style={styles.forwardActions}>
+          <View style={styles.forwardAction}>
+            <PrimaryButton label="Forward on WhatsApp" onPress={handleForwardWhatsApp} icon="💬" />
+          </View>
+          <View style={styles.forwardAction}>
+            <PrimaryButton label="Share Invite" onPress={handleForwardInvite} variant="secondary" icon="📨" />
+          </View>
+        </View>
+      </View>
+    ) : null;
+
   // ---- Arrival (benchmark-anchored) experience ----
   if (isArrival) {
     const ordered = benchmarks?.ordered ?? [];
@@ -357,6 +411,8 @@ export default function PredictionScreen({ navigation, route }: Props) {
           ) : null}
         </View>
 
+        {forwardCard}
+
         {peersList}
 
         <Animated.View style={{ transform: [{ scale: confirmScale }] }}>
@@ -440,6 +496,8 @@ export default function PredictionScreen({ navigation, route }: Props) {
         ) : null}
       </View>
 
+      {forwardCard}
+
       {peersList}
 
       <Animated.View style={{ transform: [{ scale: confirmScale }] }}>
@@ -474,6 +532,16 @@ const styles = StyleSheet.create({
   lateLine: { color: palette.textSecondary, fontSize: 13, fontWeight: '700' },
   lateNote: { color: palette.textMuted, fontSize: 12, lineHeight: 17, marginTop: 2 },
   peersWrap: { marginTop: spacing.xs },
+  forwardCard: {
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    padding: spacing.md,
+    gap: spacing.sm,
+  },
+  forwardTitle: { fontSize: 16, fontWeight: '900' },
+  forwardCopy: { fontSize: 13, lineHeight: 19 },
+  forwardActions: { flexDirection: 'row', gap: spacing.sm },
+  forwardAction: { flex: 1 },
   startCard: {
     borderRadius: radius.lg,
     borderWidth: 1,
