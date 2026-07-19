@@ -991,6 +991,14 @@ export default function CreateRoomScreen({ navigation }: Props) {
       return Alert.alert('Options needed', message);
     }
 
+    const normalizedAnswerType =
+      openPredictionAnswerType === 'yes_no' ? 'multiple_choice' : openPredictionAnswerType;
+    const normalizedOptions =
+      normalizedAnswerType === 'multiple_choice'
+        ? openPredictionAnswerType === 'yes_no'
+          ? ['yes', 'no']
+          : options
+        : undefined;
     const deliveryProvider =
       genericTemplate === 'delivery'
         ? genericDeliveryProviderOther.trim() || genericDeliveryProvider || 'Delivery app'
@@ -1004,14 +1012,14 @@ export default function CreateRoomScreen({ navigation }: Props) {
         question,
         category: 'open_prediction',
         roomType: 'social_prediction',
-        answerType: openPredictionAnswerType,
+        answerType: normalizedAnswerType,
         mode: selectedMode,
         templateKey: 'open_prediction',
         roomCategory: genericTemplate === 'delivery' ? 'delivery' : 'custom',
         startingPointLabel: title,
         destinationLabel:
-          openPredictionAnswerType === 'multiple_choice'
-            ? options.join(' vs ')
+          normalizedAnswerType === 'multiple_choice'
+            ? (normalizedOptions ?? []).join(' vs ')
             : 'Yes / No poll',
         predictionCloseTime: closeDate.toISOString(),
         visibility,
@@ -1020,8 +1028,8 @@ export default function CreateRoomScreen({ navigation }: Props) {
           genericTemplate === 'delivery'
             ? `${deliveryProvider ?? 'Delivery app'} · creator-attested`
             : 'Community prediction',
-        baselineValue: openPredictionAnswerType,
-        options: openPredictionAnswerType === 'multiple_choice' ? options : undefined,
+        baselineValue: normalizedAnswerType,
+        options: normalizedOptions,
         scoringRule: {
           categoryKey: 'open_prediction',
           pollType: openPredictionAnswerType,

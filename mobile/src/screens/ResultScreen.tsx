@@ -23,10 +23,17 @@ import { featureFlags } from '../config/featureFlags';
 import { copyToClipboard, formatLineForShare } from '../utils/shareLine';
 import { layout, palette } from '../theme/designSystem';
 import CoachMark from '../components/CoachMark';
+import RoomPredictionList, { RoomPredictionEntry } from '../components/RoomPredictionList';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Result'>;
   route: RouteProp<RootStackParamList, 'Result'>;
+};
+
+type GenericSummaryRow = {
+  key: string;
+  label: string;
+  count: number;
 };
 
 const REACTIONS = ['🔥', '🎯', '👑', '😂', '😭', '🤝', '⚡', '🌧️', '🍕', '💪'];
@@ -43,6 +50,9 @@ export default function ResultScreen({ navigation, route }: Props) {
   const [selectedReaction, setSelectedReaction] = useState<string | null>(null);
   const [isRematching, setIsRematching] = useState(false);
   const [lineCopied, setLineCopied] = useState(false);
+  const [predictions, setPredictions] = useState<RoomPredictionEntry[]>(
+    (initialResult?.predictionEntries as RoomPredictionEntry[] | undefined) ?? [],
+  );
 
   const [reduceMotion, setReduceMotion] = useState(false);
 
@@ -50,8 +60,8 @@ export default function ResultScreen({ navigation, route }: Props) {
   const floatOpacity = useRef(new Animated.Value(0)).current;
   const winnerScale = useRef(new Animated.Value(0.94)).current;
   const winnerGlow = useRef(new Animated.Value(0)).current;
-  const commentaryRise = useRef(new Animated.Value(8)).current;
-  const commentaryOpacity = useRef(new Animated.Value(0)).current;
+  const commentaryRise = useRef(new Animated.Value(0)).current;
+  const commentaryOpacity = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
     let active = true;
@@ -69,10 +79,20 @@ export default function ResultScreen({ navigation, route }: Props) {
         }
       });
     void fetchRoomAndCommentary();
+    void fetchPredictions();
     return () => {
       active = false;
     };
   }, []);
+
+  async function fetchPredictions() {
+    try {
+      const res = await api.get(`/rooms/${roomId}/predictions`);
+      setPredictions((res.data ?? []) as RoomPredictionEntry[]);
+    } catch {
+      // ignore
+    }
+  }
 
   async function fetchRoomAndCommentary() {
     try {
@@ -109,6 +129,8 @@ export default function ResultScreen({ navigation, route }: Props) {
     }
     floatOpacity.setValue(1);
     floatY.setValue(0);
+    commentaryRise.setValue(8);
+    commentaryOpacity.setValue(0);
     Animated.parallel([
       Animated.timing(floatY, { toValue: -60, duration: 1400, useNativeDriver: true }),
       Animated.timing(floatOpacity, { toValue: 0, duration: 1400, useNativeDriver: true }),
@@ -269,8 +291,58 @@ export default function ResultScreen({ navigation, route }: Props) {
   }
 
   const categoryTheme = getCategoryTheme(categoryKey);
-  const isGenericRoom = categoryKey === 'open_prediction';
+  const genericCategoryKey =
+    room?.category ?? room?.creationMeta?.category ?? room?.templateKey ?? categoryKey;
+  const isGenericRoom = genericCategoryKey === 'open_prediction';
   const isCreator = !!user?.userId && !!room?.creatorUserId && user.userId === room.creatorUserId;
+  const genericOptions =
+    Array.isArray(room?.scoringRule?.weatherOptions)
+      ? room.scoringRule.weatherOptions.map((option: any) => ({
+          key: String(option?.key ?? ''),
+          label: String(option?.label ?? option?.key ?? '').replace(/_/g, ' '),
+        }))
+      : Array.isArray(room?.options)
+        ? room.options.map((option: string) => ({
+            key: String(option),
+            label: String(option).replace(/_/g, ' '),
+          }))
+      : Array.isArray(room?.creationMeta?.options)
+        ? room.creationMeta.options.map((option: string) => ({
+            key: String(option),
+            label: String(option).replace(/_/g, ' '),
+          }))
+        : [];
+  const genericPredictions = (predictions.length
+    ? predictions
+    : ((initialResult?.predictionEntries as RoomPredictionEntry[] | undefined) ?? [])
+  ).filter(
+    (entry) => entry.status !== 'revoked' && !!entry.selectedOptionKey,
+  );
+  const genericVoteSummary = genericPredictions.reduce<Record<string, number>>((acc, entry) => {
+      const key = String(entry.selectedOptionKey);
+      acc[key] = (acc[key] ?? 0) + 1;
+      return acc;
+    }, {});
+  const genericSummaryRows: GenericSummaryRow[] =
+    Array.isArray(initialResult?.predictionSummary) && initialResult.predictionSummary.length
+      ? initialResult.predictionSummary.map((row: { key: string; label: string; count: number }) => ({
+          key: String(row.key),
+          label: String(row.label),
+          count: Number(row.count ?? 0),
+        }))
+      : genericOptions.length
+    ? genericOptions.map((option: { key: string; label: string }) => ({
+        key: option.key,
+        label: option.label,
+        count: genericVoteSummary[option.key] ?? 0,
+      }))
+    : Object.entries(genericVoteSummary)
+        .map(([key, count]) => ({
+          key,
+          label: key.replace(/_/g, ' '),
+          count,
+        }))
+        .sort((a, b) => b.count - a.count);
 
   return (
     <WebSideWingLayout rightPlacement="result_side">
@@ -304,43 +376,71 @@ export default function ResultScreen({ navigation, route }: Props) {
           </Animated.View>
         ) : null}
 
-        <TeaCard
-          roomTitle={room?.roomTitle ?? 'PREDIKT Moment'}
-          category={categoryTheme}
-          winnerHandle={winnerHandle}
-          neutral={isNeutralClosure}
-          metrics={[
-            { label: 'Winner', value: winnerHandle },
-            { label: 'Predicted', value: winningPrediction },
-            { label: 'Actual', value: actualOutcome },
-            { label: 'Difference', value: differenceLabel },
-            { label: 'Near miss', value: biggestNearMiss },
-            { label: 'Badge', value: badgeUnlocked },
-          ]}
-          oracleLabel={oracleBotLabel}
-          badge={badgeUnlocked}
-          auraEarned={dotBonus ? undefined : auraEarned}
-        />
+        {isGenericRoom ? (
+          <View style={[styles.genericTeaCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Text style={[styles.genericTeaTitle, { color: colors.textPrimary }]}>
+              {room?.roomTitle ?? 'Wild Cards'}
+            </Text>
+            <Text style={[styles.genericTeaSubtitle, { color: colors.textSecondary }]}>
+              {room?.question ?? 'Prediction summary'}
+            </Text>
+            {genericSummaryRows.length ? (
+              <View style={styles.genericSummaryWrap}>
+                {genericSummaryRows.map((row: GenericSummaryRow) => (
+                  <View key={row.key} style={styles.genericSummaryRow}>
+                    <Text style={[styles.genericSummaryLabel, { color: colors.textPrimary }]}>
+                      {row.label}
+                    </Text>
+                    <Text style={[styles.genericSummaryCount, { color: colors.purpleLight }]}>
+                      {row.count}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            ) : null}
+            <RoomPredictionList data={genericPredictions} title="Prediction board" />
+          </View>
+        ) : (
+          <TeaCard
+            roomTitle={room?.roomTitle ?? 'PREDIKT Moment'}
+            category={categoryTheme}
+            winnerHandle={winnerHandle}
+            neutral={isNeutralClosure}
+            metrics={[
+              { label: 'Winner', value: winnerHandle },
+              { label: 'Predicted', value: winningPrediction },
+              { label: 'Actual', value: actualOutcome },
+              { label: 'Difference', value: differenceLabel },
+              { label: 'Near miss', value: biggestNearMiss },
+              { label: 'Badge', value: badgeUnlocked },
+            ]}
+            oracleLabel={oracleBotLabel}
+            badge={badgeUnlocked}
+            auraEarned={dotBonus ? undefined : auraEarned}
+          />
+        )}
 
-        {dotBonus ? (
+        {!isGenericRoom && dotBonus ? (
           <Text style={[styles.dotBonus, { color: colors.green }]}>Dot Bonus unlocked: {dotBonus}</Text>
         ) : null}
 
-        <MomentCard
-          title={room?.roomTitle ?? 'PREDIKT Moment'}
-          subtitle={momentCard.subtitle}
-          badge={badgeUnlocked}
-          category={categoryLabel}
-          handle={winnerHandle}
-          predictionLabel={winningPrediction}
-          actualLabel={actualOutcome}
-          differenceLabel={differenceLabel}
-          oracleLabel={oracleBotLabel}
-          commentary={commentary?.punchline ?? momentCard.commentary}
-          cta="Join the next PREDIKT"
-        />
+        {!isGenericRoom ? (
+          <MomentCard
+            title={room?.roomTitle ?? 'PREDIKT Moment'}
+            subtitle={momentCard.subtitle}
+            badge={badgeUnlocked}
+            category={categoryLabel}
+            handle={winnerHandle}
+            predictionLabel={winningPrediction}
+            actualLabel={actualOutcome}
+            differenceLabel={differenceLabel}
+            oracleLabel={oracleBotLabel}
+            commentary={commentary?.punchline ?? momentCard.commentary}
+            cta="Join the next PREDIKT"
+          />
+        ) : null}
 
-        {winningRow ? (
+        {!isGenericRoom && winningRow ? (
           <View style={styles.winnerWrapper}>
             <Animated.View style={{ transform: [{ scale: winnerScale }] }}>
               <Animated.View
@@ -369,7 +469,7 @@ export default function ResultScreen({ navigation, route }: Props) {
           </View>
         ) : null}
 
-        {podiumTop3.length >= 2 ? (
+        {!isGenericRoom && podiumTop3.length >= 2 ? (
           <View style={styles.podium}>
             <View style={[styles.podiumCol, { alignSelf: 'flex-end' }]}>
               <Text style={styles.podiumEmoji}>🥈</Text>
@@ -400,8 +500,12 @@ export default function ResultScreen({ navigation, route }: Props) {
         {/* Guest's Tea has resolved — offer to keep their Aura before they bounce. */}
         <GuestUpgradePrompt variant="result" />
 
-        <SectionHeader title="React + Rematch" subtitle={comebackCopy} />
-        <ReactionStrip reactions={REACTIONS} onReact={sendReaction} selected={selectedReaction} />
+        {!isGenericRoom ? (
+          <>
+            <SectionHeader title="React + Rematch" subtitle={comebackCopy} />
+            <ReactionStrip reactions={REACTIONS} onReact={sendReaction} selected={selectedReaction} />
+          </>
+        ) : null}
 
         {isGenericRoom && !isCreator ? (
           <PrimaryButton
@@ -412,7 +516,7 @@ export default function ResultScreen({ navigation, route }: Props) {
           />
         ) : null}
 
-        {data.length ? (
+        {!isGenericRoom && data.length ? (
           <>
             <Text style={[styles.section, { color: colors.textSecondary }]}>All Rankings</Text>
             <LeaderboardList
@@ -433,8 +537,12 @@ export default function ResultScreen({ navigation, route }: Props) {
         ) : null}
 
         <View style={styles.ctaStack}>
-          <PrimaryButton label={isRematching ? 'Running it back…' : 'Run it back'} onPress={handleRematch} icon="🔁" disabled={isRematching} />
-          <PrimaryButton label="Start a Comeback" onPress={handleComeback} variant="secondary" icon="⚡" />
+          {!isGenericRoom ? (
+            <PrimaryButton label={isRematching ? 'Running it back…' : 'Run it back'} onPress={handleRematch} icon="🔁" disabled={isRematching} />
+          ) : null}
+          {!isGenericRoom ? (
+            <PrimaryButton label="Start a Comeback" onPress={handleComeback} variant="secondary" icon="⚡" />
+          ) : null}
           {featureFlags.momentCardExport ? (
             <PrimaryButton label="Share Moment Card" onPress={shareMomentCard} variant="secondary" icon="✨" />
           ) : null}
@@ -558,6 +666,20 @@ const styles = StyleSheet.create({
   storyHeadline: { fontSize: 18, fontWeight: '900' },
   storyQuote: { fontSize: 14, lineHeight: 20, fontStyle: 'italic' },
   storySupport: { fontSize: 13, lineHeight: 19 },
+  genericTeaCard: { borderRadius: 20, borderWidth: 1, padding: 18, gap: 12 },
+  genericTeaTitle: { fontSize: 20, fontWeight: '900' },
+  genericTeaSubtitle: { fontSize: 13, lineHeight: 19 },
+  genericSummaryWrap: { gap: 8 },
+  genericSummaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(148,163,184,0.16)',
+  },
+  genericSummaryLabel: { fontSize: 14, fontWeight: '800', textTransform: 'capitalize' },
+  genericSummaryCount: { fontSize: 16, fontWeight: '900' },
   winnerWrapper: { position: 'relative' },
   winnerGlow: {
     position: 'absolute',

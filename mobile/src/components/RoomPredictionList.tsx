@@ -8,6 +8,7 @@ export interface RoomPredictionEntry {
   status: 'visible' | 'submitted' | 'revoked';
   predictedReachedTime?: string | null;
   editDeadline?: string | null;
+  selectedOptionKey?: string | null;
   isCurrentUser?: boolean;
   // v2 (checkpoint_leaderboard_v2): a guess locked after the 80% checkpoint is
   // Rizz-tier — accepted and shown, but out of the winner / Aura running.
@@ -23,6 +24,7 @@ export interface RoomPredictionEntry {
 
 interface Props {
   data: RoomPredictionEntry[];
+  title?: string;
 }
 
 function initials(name?: string | null): string {
@@ -32,18 +34,21 @@ function initials(name?: string | null): string {
   return (parts[0][0] + (parts[1]?.[0] ?? '')).toUpperCase();
 }
 
-export default function RoomPredictionList({ data }: Props) {
+export default function RoomPredictionList({ data, title }: Props) {
   const { colors } = useTheme();
   if (!data.length) return null;
 
   return (
     <View style={styles.wrap}>
       <Text style={[styles.header, { color: colors.textSecondary }]}>
-        In this room · {data.length} {data.length === 1 ? 'guess' : 'guesses'}
+        {title ?? `In this room · ${data.length} ${data.length === 1 ? 'guess' : 'guesses'}`}
       </Text>
       {data.map((entry) => {
         const isCurrent = !!entry.isCurrentUser;
         const name = entry.user?.name ?? 'PREDIKT user';
+        const choiceLabel = entry.selectedOptionKey
+          ? String(entry.selectedOptionKey).replace(/_/g, ' ')
+          : null;
         return (
           <View
             key={entry.predictionId}
@@ -64,6 +69,11 @@ export default function RoomPredictionList({ data }: Props) {
                 {name}
                 {isCurrent ? <Text style={{ color: colors.purple }}> (you)</Text> : null}
               </Text>
+              {choiceLabel ? (
+                <Text style={[styles.choice, { color: colors.textSecondary }]} numberOfLines={1}>
+                  Predicted: <Text style={[styles.choiceValue, { color: colors.textPrimary }]}>{choiceLabel}</Text>
+                </Text>
+              ) : null}
               {entry.auraEligible === false ? (
                 <View style={[styles.rizzTag, { backgroundColor: colors.amber + '22', borderColor: colors.amber + '66' }]}>
                   <Text style={[styles.rizzText, { color: colors.amber }]}>Rizz-tier · no Aura</Text>
@@ -75,6 +85,12 @@ export default function RoomPredictionList({ data }: Props) {
               <View style={[styles.chip, { backgroundColor: colors.greenDim }]}>
                 <Text style={[styles.chipText, { color: colors.green }]}>
                   {formatClock(new Date(entry.predictedReachedTime), false)}
+                </Text>
+              </View>
+            ) : entry.status === 'visible' && entry.selectedOptionKey ? (
+              <View style={[styles.chip, { backgroundColor: colors.greenDim }]}>
+                <Text style={[styles.chipText, { color: colors.green }]}>
+                  {String(entry.selectedOptionKey).replace(/_/g, ' ')}
                 </Text>
               </View>
             ) : entry.status === 'revoked' ? (
@@ -111,6 +127,8 @@ const styles = StyleSheet.create({
   avatarText: { fontSize: 13, fontWeight: '800' },
   info: { flex: 1, marginLeft: 10 },
   name: { fontWeight: '700', fontSize: 14 },
+  choice: { marginTop: 3, fontSize: 12, lineHeight: 17, fontWeight: '600', textTransform: 'capitalize' },
+  choiceValue: { fontWeight: '800' },
   rizzTag: { alignSelf: 'flex-start', marginTop: 3, borderRadius: 6, borderWidth: 1, paddingHorizontal: 6, paddingVertical: 1 },
   rizzText: { fontSize: 10, fontWeight: '800' },
   chip: { borderRadius: 10, paddingHorizontal: 10, paddingVertical: 5 },

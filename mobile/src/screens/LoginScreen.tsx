@@ -76,10 +76,13 @@ export default function LoginScreen({ navigation }: Props) {
 
       {/* Logo */}
       <View style={styles.logoBlock}>
+        <View style={[styles.betaPill, { backgroundColor: p.surfaceTint, borderColor: p.coral }]}>
+          <Text style={[styles.betaPillText, { color: p.coral }]}>BETA</Text>
+        </View>
         <LinearGradient colors={p.gradPrimary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.logoGradient}>
           <Text style={[styles.logoText, { color: p.onSurfaceDark }]}>PREDIKT</Text>
         </LinearGradient>
-        <Text style={[styles.tagline, { color: p.textSoft }]}>Predict what's next.</Text>
+        <Text style={[styles.tagline, { color: p.textSoft }]}>Predict what's next. Early beta build.</Text>
       </View>
 
       {/* Card */}
@@ -153,6 +156,14 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   logoBlock: { alignItems: 'center', marginBottom: 36 },
+  betaPill: {
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    marginBottom: 10,
+  },
+  betaPillText: { fontSize: 11, fontWeight: '900', letterSpacing: 1.2 },
   logoGradient: { borderRadius: 12, paddingHorizontal: 20, paddingVertical: 8, marginBottom: 8 },
   logoText: { color: '#fff', fontSize: 38, fontWeight: '900', letterSpacing: 4 },
   tagline: { fontSize: 16 },

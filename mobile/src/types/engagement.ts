@@ -28,6 +28,18 @@ export type ResultPayload = {
   roomId: string;
   actualOutcome?: string | Date;
   actualOptionKey?: string | null;
+  predictionSummary?: Array<{
+    key: string;
+    label: string;
+    count: number;
+  }>;
+  predictionEntries?: Array<{
+    predictionId: string;
+    selectedOptionKey?: string | null;
+    status: 'visible' | 'submitted' | 'revoked';
+    isCurrentUser?: boolean;
+    user?: { userId?: string; name?: string | null; prediktHandle?: string | null } | null;
+  }>;
   comebackPrompt?: string;
   rematchCta?: string;
   momentCard?: {

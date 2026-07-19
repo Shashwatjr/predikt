@@ -218,6 +218,12 @@ export default function LandingScreen({ navigation }: Props) {
       <View style={[styles.mobileHeader, isDesktop && styles.mobileHeaderDesktop]}>
         {isDesktop ? null : (
           <View style={styles.brandRow}>
+            <View style={styles.betaRow}>
+              <View style={styles.betaPill}>
+                <Text style={styles.betaPillText}>BETA</Text>
+              </View>
+              <Text style={styles.betaCopy}>Early access build</Text>
+            </View>
             <LinearGradient
               colors={p.gradPrimary}
               start={{ x: 0, y: 0 }}
@@ -573,6 +579,17 @@ function makeStyles(p: LandingPalette) {
   },
   mobileHeaderDesktop: { justifyContent: 'flex-end' },
   brandRow: { alignItems: 'flex-start', gap: 6, flex: 1 },
+  betaRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  betaPill: {
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: p.coral,
+    backgroundColor: p.coralSoft,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+  },
+  betaPillText: { color: p.coral, fontSize: 10, fontWeight: '900', letterSpacing: 1 },
+  betaCopy: { color: p.textSoft, fontSize: 10, fontWeight: '700', letterSpacing: 0.4 },
   brandLogoGradient: {
     borderRadius: 12,
     paddingHorizontal: 14,

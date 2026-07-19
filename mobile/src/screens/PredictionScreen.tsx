@@ -122,8 +122,22 @@ export default function PredictionScreen({ navigation, route }: Props) {
   const multipleChoiceOptions = useMemo(() => {
     const scoringRule = room?.scoringRule;
     if (Array.isArray(scoringRule?.weatherOptions)) return scoringRule.weatherOptions;
+    if (Array.isArray(room?.options)) {
+      return room.options.map((key: string) => ({
+        key,
+        label: key.replace(/_/g, ' '),
+        helper: 'Choose the outcome you think is most likely.',
+      }));
+    }
     if (Array.isArray(room?.creationMeta?.options)) {
       return room.creationMeta.options.map((key: string) => ({
+        key,
+        label: key.replace(/_/g, ' '),
+        helper: 'Choose the outcome you think is most likely.',
+      }));
+    }
+    if (Array.isArray(scoringRule?.creationMeta?.options)) {
+      return scoringRule.creationMeta.options.map((key: string) => ({
         key,
         label: key.replace(/_/g, ' '),
         helper: 'Choose the outcome you think is most likely.',

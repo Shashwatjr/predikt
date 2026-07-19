@@ -6,12 +6,13 @@ export class EndRoomDto {
   actualEndTime?: string;
 
   @IsOptional()
-  @IsIn(['no_rain', 'rain_before_6', 'rain_after_6', 'yes', 'no'])
+  @IsString()
   actualOptionKey?: string;
 
   @IsOptional()
   @IsIn([
     'host_declared',
+    'creator_attest',
     'participant_confirmed',
     'screenshot_evidence',
     'gps_verified',
@@ -23,7 +24,7 @@ export class EndRoomDto {
   outcomeSource?: string;
 
   @IsOptional()
-  @IsIn(['low', 'medium', 'high', 'verified'])
+  @IsIn(['low', 'medium', 'high', 'verified', 'creator_attested'])
   confidenceLevel?: string;
 
   @IsOptional()

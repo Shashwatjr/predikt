@@ -267,6 +267,28 @@ export default function ProfileScreen() {
         <PrimaryButton label="Save profile" onPress={saveProfile} loading={saving} icon="💾" />
       </View>
 
+      <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <SectionHeader title="Account Details" subtitle="These are the details currently saved on your account." />
+        <View style={styles.detailRow}>
+          <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Name</Text>
+          <Text style={[styles.detailValue, { color: colors.textPrimary }]}>{user?.name ?? '—'}</Text>
+        </View>
+        <View style={styles.detailRow}>
+          <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Handle</Text>
+          <Text style={[styles.detailValue, { color: colors.textPrimary }]}>
+            {user?.prediktHandle ? `@${user.prediktHandle}` : 'Not set'}
+          </Text>
+        </View>
+        <View style={styles.detailRow}>
+          <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Email</Text>
+          <Text style={[styles.detailValue, { color: colors.textPrimary }]}>{user?.email ?? 'Guest account'}</Text>
+        </View>
+        <View style={styles.detailRow}>
+          <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Account type</Text>
+          <Text style={[styles.detailValue, { color: colors.textPrimary }]}>{user?.isGuest ? 'Guest' : 'Registered'}</Text>
+        </View>
+      </View>
+
       {stats ? (
         <View style={styles.chipGrid}>
           <StatChip icon="📈" label="Weekly Aura" value={stats.weeklyAura} accent={colors.green} />
@@ -502,4 +524,15 @@ const styles = StyleSheet.create({
   settingRow: { paddingVertical: 14, borderBottomWidth: 1, flexDirection: 'row', justifyContent: 'space-between', gap: 12, alignItems: 'center' },
   settingLabel: { fontSize: 15, fontWeight: '700' },
   settingHint: { fontSize: 13, lineHeight: 18, marginTop: 4, maxWidth: 240 },
+  detailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(148,163,184,0.16)',
+  },
+  detailLabel: { fontSize: 13, fontWeight: '700' },
+  detailValue: { fontSize: 14, fontWeight: '800', flexShrink: 1, textAlign: 'right' },
 });

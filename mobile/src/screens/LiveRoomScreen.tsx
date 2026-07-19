@@ -395,25 +395,25 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
   async function handleEndRoom() {
     if (room?.answerType === 'multiple_choice') {
       if (!actualOptionKey) {
-        return Alert.alert('Choose outcome', 'Select the actual outcome before declaring results.');
+        return appAlert('Choose outcome', 'Select the actual outcome before declaring results.');
       }
       setEnding(true);
       try {
         const res = await api.post(`/rooms/${roomId}/end`, {
           actualOptionKey,
-          outcomeSource: category === 'open_prediction' ? 'creator_attest' : 'host_declared',
-          confidenceLevel: category === 'open_prediction' ? 'creator_attested' : 'medium',
+          outcomeSource: 'host_declared',
+          confidenceLevel: 'medium',
         });
         navigation.navigate('Result', { roomId, result: res.data });
       } catch (err: unknown) {
-        Alert.alert('Failed', getApiErrorMessage(err, 'Could not declare this result.'));
+        appAlert('Failed', getApiErrorMessage(err, 'Could not declare this result.'));
       } finally {
         setEnding(false);
       }
       return;
     }
 
-    Alert.alert('End Room?', category === 'open_prediction' ? 'This will use creator-attest for the result. Predictors can challenge it later.' : 'This will calculate the winner and award Aura.', [
+    appAlert('End Room?', category === 'open_prediction' ? 'This will submit the result for this room. Predictors can challenge it later.' : 'This will calculate the winner and award Aura.', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'End Room',
@@ -424,7 +424,7 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
             const res = await api.post(`/rooms/${roomId}/end`, {});
             navigation.navigate('Result', { roomId, result: res.data });
           } catch (err: unknown) {
-            Alert.alert('Failed', getApiErrorMessage(err, 'Could not end this room.'));
+            appAlert('Failed', getApiErrorMessage(err, 'Could not end this room.'));
           } finally {
             setEnding(false);
           }
@@ -462,6 +462,20 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
           ];
 
   const categoryTheme = getCategoryTheme(category);
+  const isGenericRoom = category === 'open_prediction';
+
+  const visibleOptionPredictions = predictions.filter(
+    (entry) => entry.status === 'visible' && !!entry.selectedOptionKey,
+  );
+  const genericVoteSummary = visibleOptionPredictions.reduce<Record<string, number>>((acc, entry) => {
+    const key = String(entry.selectedOptionKey);
+    acc[key] = (acc[key] ?? 0) + 1;
+    return acc;
+  }, {});
+  const genericSummaryRows = Object.entries(genericVoteSummary).sort((a, b) => b[1] - a[1]);
+  const myVisiblePrediction = predictions.find(
+    (entry) => entry.isCurrentUser && entry.status !== 'revoked',
+  );
 
   const checkpointList = featureFlags.checkpointLeaderboardV2 ? V2_CHECKPOINTS : V1_CHECKPOINTS;
   const anyCheckpointAvailable = checkpointList.some((cp) => checkpointBoards[cp]?.available);
@@ -535,7 +549,7 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
             : null;
 
   // ---- Pre-tracking "you're all set" waiting room (arrival only) ----
-  const isArrivalCategory = category !== 'weather_rain' && category !== 'food_eta';
+  const isArrivalCategory = category !== 'weather_rain' && category !== 'food_eta' && !isGenericRoom;
   const trackingCountdownActive =
     secondsUntilStart > 0 && (liveState?.status === 'live' || !!liveState?.waitingForDelayedStart);
   const showArrivalWaitingRoom =
@@ -658,7 +672,13 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
           ]}
         >
           <Text style={styles.phaseTitle}>
-            {phase === 'open' ? '⏳ Predictions open' : phase === 'locked' ? '🔒 Predictions closed' : '🚦 Journey started'}
+            {phase === 'open'
+              ? '⏳ Predictions open'
+              : phase === 'locked'
+                ? '🔒 Predictions closed'
+                : isGenericRoom
+                  ? '🎯 Predictions live'
+                  : '🚦 Journey started'}
           </Text>
           <Text style={styles.phaseCopy}>
             {phase === 'open'
@@ -667,7 +687,9 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
                 : 'Lock in your guess before predictions close.'
               : phase === 'locked'
                 ? 'Guesses are locked in — no more changes. Now we watch.'
-                : 'Guesses are locked. Live progress is rolling in below.'}
+                : isGenericRoom
+                  ? 'Voting is live. Make your call before the timer ends.'
+                  : 'Guesses are locked. Live progress is rolling in below.'}
           </Text>
         </View>
       )}
@@ -678,11 +700,23 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
             <Text style={styles.inviteTitle}>Invite more friends</Text>
             <Text style={styles.inviteCopy}>
               {phase === 'started'
-                ? 'The journey is live — friends can still watch it unfold in real time.'
+                ? isGenericRoom
+                  ? 'Predictions are live — friends can still join and vote before lock.'
+                  : 'The journey is live — friends can still watch it unfold in real time.'
                 : 'Send the room around — the more guesses, the better the reveal.'}
             </Text>
           </View>
-          <PrimaryButton label="Invite" onPress={handleInviteFriends} icon="📨" variant="secondary" fullWidth={false} />
+          <View style={styles.inviteActions}>
+            {isGenericRoom && phase === 'open' && !myVisiblePrediction ? (
+              <PrimaryButton
+                label="Make my prediction"
+                onPress={() => navigation.navigate('Prediction', { roomId, room })}
+                icon="🎯"
+                fullWidth={false}
+              />
+            ) : null}
+            <PrimaryButton label="Invite" onPress={handleInviteFriends} icon="📨" variant="secondary" fullWidth={false} />
+          </View>
         </View>
       ) : null}
 
@@ -712,16 +746,37 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
         </View>
       ) : null}
 
-      <LiveStatusCard
-        theme={categoryTheme}
-        title={room?.roomTitle ?? (category === 'weather_rain' ? 'Weather Room' : 'Live PREDIKT')}
-        statusLabel={(liveState?.journeyStatus ?? liveState?.status ?? 'live').replace(/_/g, ' ')}
-        statusTone="live"
-        progress={category !== 'weather_rain' ? pct : undefined}
-        etaLabel={liveState?.etaMinutes != null ? `${liveState.etaMinutes} min` : trackingCountdownLabel ?? (minutesUntilStart > 0 ? `Starts in ${minutesUntilStart} min` : undefined)}
-        oracleLabel={room?.baselineLabel ?? room?.oracleBotPrediction?.label}
-        lifecycleNote={liveState?.waitingForDelayedStart && !isCreator ? (trackingCountdownLabel ?? 'Waiting to start.') : (liveState?.lifecycleMessage ?? liveState?.safetyMessage)}
-      />
+      {isGenericRoom ? (
+        <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <Text style={[styles.creatorTitle, { color: colors.textPrimary }]}>{room?.roomTitle ?? 'Wild Cards'}</Text>
+          {room?.question ? (
+            <Text style={[styles.startDelayCopy, { color: colors.textSecondary }]}>
+              {room.question}
+            </Text>
+          ) : null}
+          <Text style={[styles.statusLine, { color: colors.purpleLight }]}>
+            {(room?.status ?? 'predictions_open').replace(/_/g, ' ')}
+          </Text>
+          <Text style={[styles.statusMeta, { color: colors.textSecondary }]}>
+            {lockCountdownLabel
+              ? `${lockCountdownLabel} until votes lock.`
+              : room?.predictionCloseTime
+                ? `Voting closes ${new Date(room.predictionCloseTime).toLocaleString()}.`
+                : 'Voting is open.'}
+          </Text>
+        </View>
+      ) : (
+        <LiveStatusCard
+          theme={categoryTheme}
+          title={room?.roomTitle ?? (category === 'weather_rain' ? 'Weather Room' : 'Live PREDIKT')}
+          statusLabel={(liveState?.journeyStatus ?? liveState?.status ?? 'live').replace(/_/g, ' ')}
+          statusTone="live"
+          progress={category !== 'weather_rain' ? pct : undefined}
+          etaLabel={liveState?.etaMinutes != null ? `${liveState.etaMinutes} min` : trackingCountdownLabel ?? (minutesUntilStart > 0 ? `Starts in ${minutesUntilStart} min` : undefined)}
+          oracleLabel={room?.baselineLabel ?? room?.oracleBotPrediction?.label}
+          lifecycleNote={liveState?.waitingForDelayedStart && !isCreator ? (trackingCountdownLabel ?? 'Waiting to start.') : (liveState?.lifecycleMessage ?? liveState?.safetyMessage)}
+        />
+      )}
 
       {milestoneBanner ? (
         <View style={[styles.milestoneBanner, { borderColor: colors.amber, backgroundColor: colors.surfaceHigh }]}>
@@ -735,14 +790,15 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
         </View>
       ) : null}
 
-      {/* Privacy notice */}
-      <View style={[styles.privacyPill, { backgroundColor: colors.purpleDim }]}>
-        <Text style={[styles.privacyText, { color: colors.purpleLight }]}>
-          🔒 Ghost Mode on · exact GPS and raw movement are hidden · {liveState?.safetyMessage ?? 'Only approximate progress is shown.'}
-        </Text>
-      </View>
+      {!isGenericRoom ? (
+        <View style={[styles.privacyPill, { backgroundColor: colors.purpleDim }]}>
+          <Text style={[styles.privacyText, { color: colors.purpleLight }]}>
+            🔒 Ghost Mode on · exact GPS and raw movement are hidden · {liveState?.safetyMessage ?? 'Only approximate progress is shown.'}
+          </Text>
+        </View>
+      ) : null}
 
-      {liveState ? (
+      {liveState && !isGenericRoom ? (
         <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <CoachMark
             storageKey="coachmark:live:route_oracle"
@@ -775,12 +831,32 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
         </View>
       ) : null}
 
-      {liveState && (predictions.length || anyCheckpointAvailable) ? (
+      {(isGenericRoom ? predictions.length > 0 : !!liveState && (predictions.length || anyCheckpointAvailable)) ? (
         <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <RoomPredictionList data={predictions} />
-          {checkpointList.map((cp) => (
-            <CheckpointLeaderboard key={cp} board={checkpointBoards[cp]} />
-          ))}
+          {isGenericRoom && genericSummaryRows.length > 0 ? (
+            <View style={styles.genericSummaryWrap}>
+              <Text style={[styles.creatorTitle, { color: colors.textPrimary }]}>The Tea</Text>
+              {genericSummaryRows.map(([key, count]) => (
+                <View key={key} style={styles.genericSummaryRow}>
+                  <Text style={[styles.genericSummaryLabel, { color: colors.textPrimary }]}>
+                    {key.replace(/_/g, ' ')}
+                  </Text>
+                  <Text style={[styles.genericSummaryCount, { color: colors.purpleLight }]}>
+                    {count} vote{count === 1 ? '' : 's'}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          ) : null}
+          <RoomPredictionList
+            data={predictions}
+            title={isGenericRoom ? 'Prediction board' : undefined}
+          />
+          {!isGenericRoom
+            ? checkpointList.map((cp) => (
+                <CheckpointLeaderboard key={cp} board={checkpointBoards[cp]} />
+              ))
+            : null}
           {canRePredict ? (
             <PrimaryButton
               label="Change my guess"
@@ -792,7 +868,7 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
         </View>
       ) : null}
 
-      {isCreator && liveState && category !== 'weather_rain' && (secondsUntilStart > 0 || liveState.status !== 'live') ? (
+      {isCreator && liveState && !isGenericRoom && category !== 'weather_rain' && (secondsUntilStart > 0 || liveState.status !== 'live') ? (
         <View style={[styles.creatorCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <LinearGradient colors={[colors.purple + '30', 'transparent']} style={styles.creatorHeader}>
             <Text style={[styles.creatorTitle, { color: colors.textPrimary }]}>Start Journey</Text>
@@ -832,7 +908,7 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
         </View>
       ) : null}
 
-      {!isCreator && liveState?.waitingForDelayedStart && trackingCountdownLabel && category !== 'weather_rain' ? (
+      {!isCreator && liveState?.waitingForDelayedStart && trackingCountdownLabel && !isGenericRoom && category !== 'weather_rain' ? (
         <View style={[styles.creatorCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <LinearGradient colors={[colors.purple + '30', 'transparent']} style={styles.creatorHeader}>
             <Text style={[styles.creatorTitle, { color: colors.textPrimary }]}>Start Journey</Text>
@@ -846,7 +922,7 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
       ) : null}
 
       {/* Live visualization — SVG only, never a map */}
-      {liveProgressPending ? (
+      {!isGenericRoom && liveProgressPending ? (
         <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <Text style={[styles.creatorTitle, { color: colors.textPrimary }]}>🚦 The journey has begun</Text>
           <Text style={[styles.startDelayCopy, { color: colors.textSecondary, marginBottom: 0 }]}>
@@ -854,13 +930,13 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
             there's nothing to do but watch.
           </Text>
         </View>
-      ) : liveState && category === 'food_eta' ? (
+      ) : !isGenericRoom && liveState && category === 'food_eta' ? (
         <FoodEtaViz
           progressPercentage={pct}
           etaMinutes={liveState.etaMinutes}
           status={liveState.journeyStatus ?? liveState.status}
         />
-      ) : liveState && category !== 'weather_rain' ? (
+      ) : !isGenericRoom && liveState && category !== 'weather_rain' ? (
         <ArrivalJourneyViz
           progressPercentage={pct}
           etaMinutes={liveState.etaMinutes}
@@ -871,11 +947,11 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
           primaryColor={categoryTheme.primaryColor}
           secondaryColor={categoryTheme.secondaryColor}
         />
-      ) : (
+      ) : !isGenericRoom ? (
         <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <Text style={[styles.waiting, { color: colors.textMuted }]}>Waiting for live updates…</Text>
         </View>
-      )}
+      ) : null}
 
       {/* Creator controls */}
       {isCreator && room?.answerType === 'multiple_choice' ? (
@@ -899,7 +975,7 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
                 />
               ))}
             </View>
-            <PrimaryButton label={category === 'open_prediction' ? 'Attest Result & See Winners' : 'Declare Result & See Winners'} onPress={handleEndRoom} loading={ending} icon="🏁" />
+            <PrimaryButton label={category === 'open_prediction' ? 'Submit' : 'Declare Result & See Winners'} onPress={handleEndRoom} loading={ending} icon="🏁" />
           </View>
         </View>
       ) : null}
@@ -999,11 +1075,24 @@ const styles = StyleSheet.create({
     padding: 14,
     marginBottom: 16,
   },
+  inviteActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   inviteTitle: { color: '#fff', fontSize: 14, fontWeight: '900', marginBottom: 2 },
   inviteCopy: { color: 'rgba(255,255,255,0.72)', fontSize: 12, lineHeight: 17 },
   botTeaser: { color: palette.violetLight, fontSize: 13, fontWeight: '800', fontStyle: 'italic', lineHeight: 18 },
   milestoneBanner: { borderRadius: 14, borderWidth: 1, padding: 14, marginBottom: 16 },
   milestoneBannerText: { fontSize: 14, fontWeight: '800', lineHeight: 20 },
+  genericSummaryWrap: { gap: 8, marginBottom: 14 },
+  genericSummaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(148,163,184,0.16)',
+  },
+  genericSummaryLabel: { fontSize: 14, fontWeight: '800', textTransform: 'capitalize' },
+  genericSummaryCount: { fontSize: 13, fontWeight: '900' },
   card: { borderRadius: 18, padding: 20, borderWidth: 1, marginBottom: 16 },
   etaBlock: { alignItems: 'center', marginBottom: 16 },
   etaNum: { fontSize: 68, fontWeight: '900', lineHeight: 72 },

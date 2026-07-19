@@ -130,8 +130,17 @@ export default function RoomCreatedScreen({ navigation, route }: Props) {
             icon="📨"
             fullWidth={false}
           />
+          {isGenericRoom ? (
+            <PrimaryButton
+              label="Make my prediction"
+              onPress={() => navigation.navigate('Prediction', { roomId: room.roomId, room })}
+              variant="secondary"
+              icon="🎯"
+              fullWidth={false}
+            />
+          ) : null}
           <PrimaryButton
-            label="Go to Room"
+            label={isGenericRoom ? 'Open Room' : 'Go to Room'}
             onPress={() => navigation.navigate('LiveRoom', { roomId: room.roomId, isCreator: true })}
             variant="secondary"
             icon="▶️"
@@ -183,7 +192,15 @@ export default function RoomCreatedScreen({ navigation, route }: Props) {
         </View>
         <View style={styles.shareActions}>
           <View style={styles.shareAction}>
-            <PrimaryButton label="Open Room" onPress={() => navigation.navigate('LiveRoom', { roomId: room.roomId, isCreator: true })} icon="▶️" />
+            <PrimaryButton
+              label={isGenericRoom ? 'Make my prediction' : 'Open Room'}
+              onPress={() =>
+                isGenericRoom
+                  ? navigation.navigate('Prediction', { roomId: room.roomId, room })
+                  : navigation.navigate('LiveRoom', { roomId: room.roomId, isCreator: true })
+              }
+              icon={isGenericRoom ? '🎯' : '▶️'}
+            />
           </View>
           <View style={styles.shareAction}>
             <PrimaryButton label="Copy Instagram Caption" onPress={copyInstagramCaption} variant="secondary" icon="📸" />
@@ -238,9 +255,13 @@ export default function RoomCreatedScreen({ navigation, route }: Props) {
       </Text>
 
       <PrimaryButton
-        label="Start / Go to Room"
-        onPress={() => navigation.navigate('LiveRoom', { roomId: room.roomId, isCreator: true })}
-        icon="▶️"
+        label={isGenericRoom ? 'Make my prediction' : 'Start / Go to Room'}
+        onPress={() =>
+          isGenericRoom
+            ? navigation.navigate('Prediction', { roomId: room.roomId, room })
+            : navigation.navigate('LiveRoom', { roomId: room.roomId, isCreator: true })
+        }
+        icon={isGenericRoom ? '🎯' : '▶️'}
       />
 
       <PrimaryButton

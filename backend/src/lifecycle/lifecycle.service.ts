@@ -304,6 +304,15 @@ export class LifecycleService {
       throw new BadRequestException('actualOptionKey is required for multiple-choice rooms');
     }
 
+    const room = await this.prisma.predictionRoom.findUnique({
+      where: { roomId },
+      select: { options: true },
+    });
+    const allowedOptions = Array.isArray(room?.options) ? (room.options as string[]) : [];
+    if (allowedOptions.length > 0 && !allowedOptions.includes(dto.actualOptionKey)) {
+      throw new BadRequestException('actualOptionKey must match one of the room options');
+    }
+
     const finalMilestone = await this.prisma.roomMilestone.findFirst({
       where: { roomId, milestoneType: 'final_destination' },
       orderBy: { milestoneOrder: 'desc' },
@@ -1114,6 +1123,44 @@ export class LifecycleService {
     }
 
     const primaryBadge = awardedBadges[0]?.title ?? momentCard.titles[0];
+    const genericPredictionEntries =
+      room?.answerType === 'multiple_choice'
+        ? await this.prisma.milestonePrediction.findMany({
+            where: {
+              roomId,
+              milestoneId: finalMilestone?.milestoneId,
+              revokedAt: null,
+            },
+            include: { user: { select: SAFE_PUBLIC_USER_SELECT } },
+            orderBy: { submittedAt: 'asc' },
+          })
+        : [];
+    const roomOptions =
+      Array.isArray(room?.options) && room.options.length
+        ? room.options.map((option) => String(option))
+        : Array.isArray((room?.scoringRule as Record<string, unknown> | null)?.options)
+          ? ((room?.scoringRule as Record<string, unknown>).options as unknown[]).map((option) =>
+              String(option),
+            )
+          : Array.isArray(
+                ((room?.scoringRule as Record<string, unknown> | null)?.creationMeta as
+                  | Record<string, unknown>
+                  | undefined)?.options,
+              )
+            ? ((((room?.scoringRule as Record<string, unknown> | null)?.creationMeta as
+                | Record<string, unknown>
+                | undefined)?.options as unknown[]) ?? []).map((option) => String(option))
+            : [];
+    const predictionSummary =
+      room?.answerType === 'multiple_choice'
+        ? roomOptions.map((option) => ({
+            key: option,
+            label: option.replace(/_/g, ' '),
+            count: genericPredictionEntries.filter(
+              (prediction) => prediction.selectedOptionKey === option,
+            ).length,
+          }))
+        : [];
 
     return {
       roomId,
@@ -1130,6 +1177,17 @@ export class LifecycleService {
       },
       badges: awardedBadges,
       reactions: ['🔥', '🎯', '👑', '😂', '😭', '🤝', '⚡'],
+      predictionSummary,
+      predictionEntries:
+        room?.answerType === 'multiple_choice'
+          ? genericPredictionEntries.map((prediction) => ({
+              predictionId: prediction.predictionId,
+              selectedOptionKey: prediction.selectedOptionKey,
+              status: 'visible',
+              isCurrentUser: false,
+              user: safePublicUser(prediction.user),
+            }))
+          : [],
       winner: winner
         ? {
             userId: winner.userId,
