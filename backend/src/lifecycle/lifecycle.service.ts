@@ -13,6 +13,7 @@ import { safePublicUser, SAFE_PUBLIC_USER_SELECT } from '../common/utils/safe-us
 import { findBannedBettingTerms } from '../common/utils/content-policy';
 import { distanceMeters } from '../common/utils/geo';
 import { usesExclusiveLocationResource } from '../rooms/rooms.service';
+import { deriveRoomSubtype } from '../rooms/rooms.service';
 import { POLICY_BLOCK_MESSAGE } from '../common/constants/policy.constants';
 import { AuditService } from '../audit/audit.service';
 import { CancelJourneyDto } from './dto/cancel-journey.dto';
@@ -49,6 +50,13 @@ const RELIABILITY_POINTS: Record<string, number> = {
   no_show_abandoned: -6,
   repeated_abandonment_penalty: -10,
   dispute_accepted_restore: 4,
+};
+
+type OpenPredictionResultCopy = {
+  badgeTitle: string;
+  scoringCopy: string;
+  resultState: string;
+  shareText: string;
 };
 
 @Injectable()
@@ -1088,7 +1096,7 @@ export class LifecycleService {
       roomId,
       type: 'result_ready',
       title: 'Result ready',
-      body: 'Results are ready. See who made the Closest Guess and earned Aura.',
+      body: this.buildResultReadyBody(room ?? null),
       severity: 'success',
       actionLabel: 'View result',
       actionTarget: `room:${roomId}:result`,
@@ -1098,7 +1106,8 @@ export class LifecycleService {
 
     const finalMilestone = room?.milestones.find((milestone) => milestone.milestoneType === 'final_destination');
     const category = room?.category ?? room?.templateKey ?? room?.roomCategory ?? 'arrival_time';
-    const momentCard = this.buildMomentCardCopy(category);
+    const subtype = deriveRoomSubtype(room ?? {});
+    const momentCard = this.buildMomentCardCopy(category, subtype);
     const isNeutralClosure = ['auto_closed', 'abandoned', 'plan_changed', 'cancelled'].includes(room?.journeyStatus ?? '');
 
     let awardedBadges: Array<{ userId: string; badgeKey: string; title: string }> = [];
@@ -1228,7 +1237,17 @@ export class LifecycleService {
     return { name: 'outside_5_min', bonusAura: 0, flexType: null };
   }
 
-  private buildMomentCardCopy(category: string) {
+  private buildMomentCardCopy(
+    category: string,
+    subtype: 'custom_challenge' | 'sports' | null = null,
+  ) {
+    if (category === 'open_prediction') {
+      const generic = this.buildOpenPredictionResultCopy(subtype ?? 'custom_challenge');
+      return {
+        titles: [generic.badgeTitle, generic.resultState, 'Aura unlocked'],
+        shareText: generic.shareText,
+      };
+    }
     switch (category) {
       case 'weather_rain':
         return {
@@ -1256,6 +1275,35 @@ export class LifecycleService {
           shareText: 'Route Oracle unlocked. Closest guess wins Aura.',
         };
     }
+  }
+
+  private buildResultReadyBody(
+    room: { category?: string | null; templateKey?: string | null; scoringRule?: unknown } | null,
+  ) {
+    if ((room?.category ?? room?.templateKey) !== 'open_prediction') {
+      return 'Results are ready. See who made the Closest Guess and earned Aura.';
+    }
+    const copy = this.buildOpenPredictionResultCopy(
+      deriveRoomSubtype(room ?? {}) ?? 'custom_challenge',
+    );
+    return `${copy.resultState}. ${copy.scoringCopy}.`;
+  }
+
+  private buildOpenPredictionResultCopy(subtype: 'custom_challenge' | 'sports'): OpenPredictionResultCopy {
+    if (subtype === 'sports') {
+      return {
+        badgeTitle: 'Match Oracle',
+        scoringCopy: 'Correct picks earn Aura',
+        resultState: 'Final result revealed',
+        shareText: 'Match Oracle unlocked. Correct picks earn Aura.',
+      };
+    }
+    return {
+      badgeTitle: 'Prediction Pro',
+      scoringCopy: 'Correct picks earn Aura',
+      resultState: 'Result revealed',
+      shareText: 'Prediction Pro unlocked. Correct picks earn Aura.',
+    };
   }
 
   private async awardResultDeclaredCredits(roomId: string, creatorUserId: string) {

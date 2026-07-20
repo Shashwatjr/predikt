@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { PredictionsService } from './predictions.service';
 import { featureFlags } from '../config/feature-flags';
 
@@ -173,5 +173,133 @@ describe('PredictionsService', () => {
         { userId: 'u1' } as any,
       ),
     ).rejects.toBeInstanceOf(BadRequestException);
+  });
+});
+
+describe('PredictionsService.updatePrediction (open_prediction editing)', () => {
+  const OWNER = { userId: 'owner-1' } as any;
+  const OTHER = { userId: 'intruder-9' } as any;
+
+  function editPrisma(overrides: {
+    predictionUserId?: string;
+    roomStatus?: string;
+    predictionCloseTime?: Date;
+    options?: unknown;
+    revokedAt?: Date | null;
+  }) {
+    const prediction = {
+      predictionId: 'pred-1',
+      roomId: 'room-1',
+      userId: overrides.predictionUserId ?? 'owner-1',
+      selectedOptionKey: 'yes',
+      revokedAt: overrides.revokedAt ?? null,
+      editDeadline: null,
+      room: {
+        roomId: 'room-1',
+        category: 'open_prediction',
+        templateKey: 'open_prediction',
+        answerType: 'multiple_choice',
+        status: overrides.roomStatus ?? 'predictions_open',
+        predictionCloseTime: overrides.predictionCloseTime ?? FUTURE,
+        options: overrides.options ?? ['yes', 'no'],
+      },
+    };
+    const update = jest.fn().mockResolvedValue({ ...prediction, selectedOptionKey: 'no' });
+    const create = jest.fn();
+    return {
+      prisma: {
+        milestonePrediction: {
+          findUnique: jest.fn().mockResolvedValue(prediction),
+          update,
+          create,
+        },
+      } as any,
+      update,
+      create,
+    };
+  }
+
+  it('lets the owner update their choice in place (no duplicate row created)', async () => {
+    const { prisma, update, create } = editPrisma({});
+    const service = new PredictionsService(prisma);
+    const result = await service.updatePrediction('pred-1', { selectedOptionKey: 'no' }, OWNER);
+    expect(update).toHaveBeenCalledWith({
+      where: { predictionId: 'pred-1' },
+      data: { selectedOptionKey: 'no', revokedAt: null },
+    });
+    expect(create).not.toHaveBeenCalled();
+    expect(result.selectedOptionKey).toBe('no');
+  });
+
+  it('rejects a non-owner with 403', async () => {
+    const { prisma, update } = editPrisma({ predictionUserId: 'someone-else' });
+    const service = new PredictionsService(prisma);
+    await expect(
+      service.updatePrediction('pred-1', { selectedOptionKey: 'no' }, OTHER),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it('rejects editing once predictions are locked (status no longer open)', async () => {
+    const { prisma } = editPrisma({ roomStatus: 'predictions_locked' });
+    const service = new PredictionsService(prisma);
+    await expect(
+      service.updatePrediction('pred-1', { selectedOptionKey: 'no' }, OWNER),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('rejects editing once the prediction close time has passed', async () => {
+    const { prisma } = editPrisma({ predictionCloseTime: PAST });
+    const service = new PredictionsService(prisma);
+    await expect(
+      service.updatePrediction('pred-1', { selectedOptionKey: 'no' }, OWNER),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('rejects an option key that is not one of the room options', async () => {
+    const { prisma, update } = editPrisma({ options: ['yes', 'no'] });
+    const service = new PredictionsService(prisma);
+    await expect(
+      service.updatePrediction('pred-1', { selectedOptionKey: 'maybe' }, OWNER),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(update).not.toHaveBeenCalled();
+  });
+});
+
+describe('Open-prediction result copy helpers', () => {
+  const makeService = () =>
+    new (require('../lifecycle/lifecycle.service').LifecycleService)(
+      {} as any,
+      { log: jest.fn() } as any,
+      { notifyRoomMembers: jest.fn() } as any,
+      { awardRoomBadges: jest.fn() } as any,
+    );
+
+  it('uses Custom Challenge result copy for custom_challenge subtype', () => {
+    const service = makeService() as any;
+    expect(
+      service.buildResultReadyBody({
+        category: 'open_prediction',
+        scoringRule: { subtype: 'custom_challenge' },
+      }),
+    ).toBe('Result revealed. Correct picks earn Aura.');
+    expect(service.buildMomentCardCopy('open_prediction', 'custom_challenge')).toEqual({
+      titles: ['Prediction Pro', 'Result revealed', 'Aura unlocked'],
+      shareText: 'Prediction Pro unlocked. Correct picks earn Aura.',
+    });
+  });
+
+  it('uses Sports result copy for sports subtype', () => {
+    const service = makeService() as any;
+    expect(
+      service.buildResultReadyBody({
+        category: 'open_prediction',
+        scoringRule: { subtype: 'sports' },
+      }),
+    ).toBe('Final result revealed. Correct picks earn Aura.');
+    expect(service.buildMomentCardCopy('open_prediction', 'sports')).toEqual({
+      titles: ['Match Oracle', 'Final result revealed', 'Aura unlocked'],
+      shareText: 'Match Oracle unlocked. Correct picks earn Aura.',
+    });
   });
 });

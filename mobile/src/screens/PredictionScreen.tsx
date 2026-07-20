@@ -48,7 +48,6 @@ function benchmarkChipLabel(b: Benchmark): string {
 export default function PredictionScreen({ navigation, route }: Props) {
   const { colors } = useTheme();
   const { roomId, room: roomParam, editPredictionId } = route.params;
-  const isEditing = !!editPredictionId;
   const [room, setRoom] = useState<any>(roomParam);
   const [loading, setLoading] = useState(false);
   // Late-join context: peers' guesses (already un-hidden once the room is live)
@@ -59,7 +58,9 @@ export default function PredictionScreen({ navigation, route }: Props) {
   const isGenericRoom = category === 'open_prediction';
 
   const answerType = room?.answerType ?? 'exact_time';
-  const isArrival = answerType === 'exact_time';
+  // Open-prediction rooms are never the arrival/travel experience, even if the
+  // room payload hasn't loaded answerType yet (default would be 'exact_time').
+  const isArrival = !isGenericRoom && answerType === 'exact_time';
   const benchmarks = useMemo(() => deriveArrivalBenchmarks(room), [room]);
   const journeyStart =
     room?.journeyStartedAt || room?.journeyScheduledStartAt || room?.startTime || room?.plannedStartTime
@@ -165,6 +166,19 @@ export default function PredictionScreen({ navigation, route }: Props) {
     ];
   }, [room]);
 
+  const ownActivePrediction = useMemo(
+    () => others.find((entry) => entry.isCurrentUser && entry.status !== 'revoked') ?? null,
+    [others],
+  );
+  const effectiveEditPredictionId = editPredictionId ?? ownActivePrediction?.predictionId ?? null;
+  const isEditing = !!effectiveEditPredictionId;
+
+  useEffect(() => {
+    if (answerType === 'multiple_choice' && ownActivePrediction?.selectedOptionKey) {
+      setSelectedOptionKey(ownActivePrediction.selectedOptionKey);
+    }
+  }, [answerType, ownActivePrediction?.selectedOptionKey]);
+
   function adjust(seconds: number) {
     setPredicted((current) => new Date(current.getTime() + seconds * 1000));
   }
@@ -207,7 +221,7 @@ export default function PredictionScreen({ navigation, route }: Props) {
         // v2 re-predict: replace the prior guess (reuse the update endpoint). The server
         // enforces the window (allowed through the 80% checkpoint, none after).
         await api.patch(
-          `/rooms/${roomId}/${editPredictionId}`,
+          `/predictions/${effectiveEditPredictionId}`,
           answerType === 'multiple_choice'
             ? { selectedOptionKey }
             : { predictedReachedTime },
@@ -417,7 +431,7 @@ export default function PredictionScreen({ navigation, route }: Props) {
 
         <Animated.View style={{ transform: [{ scale: confirmScale }] }}>
           <PrimaryButton
-            label={lockedOut ? 'Predictions closed' : 'Lock it in'}
+            label={lockedOut ? 'Predictions closed' : isEditing ? 'Update prediction' : 'Lock it in'}
             onPress={handleSubmit}
             loading={loading}
             disabled={lockedOut}
@@ -502,7 +516,7 @@ export default function PredictionScreen({ navigation, route }: Props) {
 
       <Animated.View style={{ transform: [{ scale: confirmScale }] }}>
         <PrimaryButton
-          label={lockedOut ? 'Predictions closed' : 'Lock it in'}
+          label={lockedOut ? 'Predictions closed' : isEditing ? 'Update prediction' : 'Lock it in'}
           onPress={handleSubmit}
           loading={loading}
           disabled={lockedOut}

@@ -27,6 +27,34 @@ async function maxReachedCheckpoint(
   return rows.reduce((max, row) => Math.max(max, row.checkpoint), -1);
 }
 
+// Extract the whitelist of valid option keys from a room's stored `options` JSON.
+// Options are persisted as a string[] of keys (e.g. ['yes','no'] or custom keys);
+// tolerate {key}/{value} object shapes defensively. Returns null when the room has
+// no structured options to validate against (nothing to enforce).
+function roomOptionKeys(options: unknown): string[] | null {
+  if (!Array.isArray(options) || options.length === 0) return null;
+  const keys = options
+    .map((option) => {
+      if (typeof option === 'string') return option;
+      if (option && typeof option === 'object') {
+        const record = option as Record<string, unknown>;
+        const candidate = record.key ?? record.value ?? record.id;
+        return typeof candidate === 'string' ? candidate : null;
+      }
+      return null;
+    })
+    .filter((key): key is string => typeof key === 'string' && key.length > 0);
+  return keys.length ? keys : null;
+}
+
+// Reject a selectedOptionKey that isn't one of the room's defined options.
+function assertOptionInRoom(selectedOptionKey: string, options: unknown) {
+  const keys = roomOptionKeys(options);
+  if (keys && !keys.includes(selectedOptionKey)) {
+    throw new BadRequestException('selectedOptionKey is not a valid option for this room');
+  }
+}
+
 @Injectable()
 export class PredictionsService {
   constructor(
@@ -274,6 +302,7 @@ export class PredictionsService {
 
   async listMilestonePredictions(roomId: string, requestingUser: User) {
     const room = await this.assertRoom(roomId);
+    const isGenericRoom = (room.category ?? room.templateKey) === 'open_prediction';
     if (room.visibility === 'private') {
       const membership = await this.prisma.roomMembership.findUnique({
         where: {
@@ -327,6 +356,8 @@ export class PredictionsService {
       // v2: hide a peer's value until the viewer's own prediction locks; always show own.
       // v1: coarse hide until the room-wide lock.
       const hide = v2 ? !isOwn && !viewerLocked : hideValues;
+      const hidePredictedTime = hide || prediction.revokedAt;
+      const hideSelectedOption = !isGenericRoom && (hide || prediction.revokedAt);
       return {
       predictionId: prediction.predictionId,
       milestoneId: prediction.milestoneId,
@@ -335,9 +366,9 @@ export class PredictionsService {
       milestoneType: prediction.milestone.milestoneType,
       predictedReachedTime:
         // Fairness rule: before lock, peers should only know that a prediction exists.
-        hide || prediction.revokedAt ? undefined : prediction.predictedReachedTime,
+        hidePredictedTime ? undefined : prediction.predictedReachedTime,
       selectedOptionKey:
-        hide || prediction.revokedAt ? undefined : prediction.selectedOptionKey,
+        hideSelectedOption ? undefined : prediction.selectedOptionKey,
       submittedAt: prediction.submittedAt,
       editDeadline: prediction.editDeadline,
       revokedAt: prediction.revokedAt,
@@ -345,7 +376,7 @@ export class PredictionsService {
       lockedCheckpoint: prediction.lockedCheckpoint,
       status: prediction.revokedAt
         ? 'revoked'
-        : hide
+        : hideSelectedOption
           ? 'submitted'
           : 'visible',
       isCurrentUser: prediction.userId === requestingUser.userId,
@@ -365,6 +396,7 @@ export class PredictionsService {
       if (!dto.selectedOptionKey) {
         throw new BadRequestException('selectedOptionKey is required');
       }
+      assertOptionInRoom(dto.selectedOptionKey, prediction.room.options);
       const updated = await this.prisma.milestonePrediction.update({
         where: { predictionId },
         data: {
@@ -438,6 +470,18 @@ export class PredictionsService {
     }
     if (prediction.revokedAt) {
       throw new BadRequestException('Prediction has been revoked');
+    }
+    const isGenericRoom =
+      (prediction.room.category ?? prediction.room.templateKey) === 'open_prediction';
+    if (isGenericRoom) {
+      const now = new Date();
+      if (prediction.room.status !== 'predictions_open') {
+        throw new ForbiddenException('Predictions are locked for this room');
+      }
+      if (now > prediction.room.predictionCloseTime) {
+        throw new BadRequestException('Prediction edit window has closed');
+      }
+      return prediction;
     }
     // v2 (checkpoint_leaderboard_v2): re-predict is allowed through the 80% checkpoint
     // (the client surfaces it at 20/40/60/80); none after. A re-predict replaces the
