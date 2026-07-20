@@ -8,88 +8,90 @@ type Props = {
   value: PrivacyVisibility;
   onChange: (next: PrivacyVisibility) => void;
   onLearnMore?: () => void;
-  onPrivateDetails?: () => void;
+};
+
+type ModeSpec = {
+  key: PrivacyVisibility;
+  icon: string;
+  title: string;
+  copy: string;
+  badge?: string;
 };
 
 /**
- * Prominent privacy picker shown at the top of Create Room.
+ * Prominent privacy picker shown at the top of Create Room. Three modes:
  *
- * Ghost Mode (recommended) keeps live location private — only progress is shared
- * — and maps to invite-only visibility. Private Mode restricts full details to
- * invited friends. Fine-grained visibility (incl. public) still lives in the
- * advanced options; this is the fast, friendly default choice.
+ * - Ghost   (invite_only) — hidden from discovery, but anyone with the link can join.
+ * - Private (private)     — hidden from discovery and membership-gated.
+ * - Public  (public)      — discoverable and joinable by anyone.
  */
-export default function PrivacyModeSelector({ value, onChange, onLearnMore, onPrivateDetails }: Props) {
+const MODES: ModeSpec[] = [
+  {
+    key: 'invite_only',
+    icon: '👻',
+    title: 'Ghost Mode',
+    copy: 'Hidden from discovery. Anyone with your link can open or join.',
+    badge: 'RECOMMENDED',
+  },
+  {
+    key: 'private',
+    icon: '🔒',
+    title: 'Private Mode',
+    copy: 'Hidden from discovery. Only approved members can open or join.',
+  },
+  {
+    key: 'public',
+    icon: '🌐',
+    title: 'Public',
+    copy: 'Shown in discovery and joinable by anyone.',
+  },
+];
+
+export default function PrivacyModeSelector({ value, onChange, onLearnMore }: Props) {
   const { colors } = useTheme();
-  const ghostActive = value !== 'private';
-  const privateActive = value === 'private';
 
   return (
     <View style={styles.row}>
-      {/* Ghost Mode */}
-      <TouchableOpacity
-        activeOpacity={0.9}
-        onPress={() => onChange('invite_only')}
-        style={[
-          styles.card,
-          {
-            borderColor: ghostActive ? colors.purple : colors.border,
-            backgroundColor: ghostActive ? colors.purpleDim : colors.surface,
-          },
-        ]}
-      >
-        <View style={styles.cardTop}>
-          <View style={[styles.iconBubble, { backgroundColor: colors.purpleDim, borderColor: colors.purple }]}>
-            <Text style={styles.iconText}>👻</Text>
-          </View>
-          <View style={[styles.switch, { backgroundColor: ghostActive ? colors.purple : colors.surfaceHigh }]}>
-            <View style={[styles.knob, ghostActive ? styles.knobOn : styles.knobOff]} />
-          </View>
-        </View>
-        <View style={styles.titleRow}>
-          <Text style={[styles.title, { color: colors.textPrimary }]}>Ghost Mode</Text>
-          <View style={[styles.badge, { backgroundColor: colors.purpleDim, borderColor: colors.purple }]}>
-            <Text style={[styles.badgeText, { color: colors.purpleLight }]}>RECOMMENDED</Text>
-          </View>
-        </View>
-        <Text style={[styles.copy, { color: colors.textSecondary }]}>
-          Your live location stays private. Only progress is shown to others.
-        </Text>
-        {onLearnMore ? (
-          <TouchableOpacity onPress={onLearnMore} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-            <Text style={[styles.link, { color: colors.purpleLight }]}>ⓘ Learn more</Text>
+      {MODES.map((mode) => {
+        const active = value === mode.key;
+        return (
+          <TouchableOpacity
+            key={mode.key}
+            activeOpacity={0.9}
+            onPress={() => onChange(mode.key)}
+            style={[
+              styles.card,
+              {
+                borderColor: active ? colors.purple : colors.border,
+                backgroundColor: active ? colors.purpleDim : colors.surface,
+              },
+            ]}
+          >
+            <View style={styles.cardTop}>
+              <View style={[styles.iconBubble, { backgroundColor: colors.purpleDim, borderColor: colors.purple }]}>
+                <Text style={styles.iconText}>{mode.icon}</Text>
+              </View>
+              <View style={[styles.switch, { backgroundColor: active ? colors.purple : colors.surfaceHigh }]}>
+                <View style={[styles.knob, active ? styles.knobOn : styles.knobOff]} />
+              </View>
+            </View>
+            <View style={styles.titleRow}>
+              <Text style={[styles.title, { color: colors.textPrimary }]}>{mode.title}</Text>
+              {mode.badge ? (
+                <View style={[styles.badge, { backgroundColor: colors.purpleDim, borderColor: colors.purple }]}>
+                  <Text style={[styles.badgeText, { color: colors.purpleLight }]}>{mode.badge}</Text>
+                </View>
+              ) : null}
+            </View>
+            <Text style={[styles.copy, { color: colors.textSecondary }]}>{mode.copy}</Text>
+            {mode.key === 'invite_only' && onLearnMore ? (
+              <TouchableOpacity onPress={onLearnMore} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                <Text style={[styles.link, { color: colors.purpleLight }]}>ⓘ Learn more</Text>
+              </TouchableOpacity>
+            ) : null}
           </TouchableOpacity>
-        ) : null}
-      </TouchableOpacity>
-
-      {/* Private Mode */}
-      <TouchableOpacity
-        activeOpacity={0.9}
-        onPress={() => {
-          onChange('private');
-          onPrivateDetails?.();
-        }}
-        style={[
-          styles.card,
-          {
-            borderColor: privateActive ? colors.purple : colors.border,
-            backgroundColor: privateActive ? colors.purpleDim : colors.surface,
-          },
-        ]}
-      >
-        <View style={styles.cardTop}>
-          <View style={[styles.iconBubble, { backgroundColor: colors.surfaceHigh, borderColor: colors.border }]}>
-            <Text style={styles.iconText}>🔒</Text>
-          </View>
-          <Text style={[styles.chevron, { color: colors.textSecondary }]}>›</Text>
-        </View>
-        <View style={styles.titleRow}>
-          <Text style={[styles.title, { color: colors.textPrimary }]}>Private Mode</Text>
-        </View>
-        <Text style={[styles.copy, { color: colors.textSecondary }]}>
-          Only invited friends can see full details.
-        </Text>
-      </TouchableOpacity>
+        );
+      })}
     </View>
   );
 }
@@ -125,7 +127,6 @@ const styles = StyleSheet.create({
   knob: { width: 20, height: 20, borderRadius: 10, backgroundColor: '#FFFFFF' },
   knobOn: { alignSelf: 'flex-end' },
   knobOff: { alignSelf: 'flex-start' },
-  chevron: { fontSize: 26, fontWeight: '400', paddingHorizontal: 6 },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
   title: { fontSize: 16, fontWeight: '900' },
   badge: {

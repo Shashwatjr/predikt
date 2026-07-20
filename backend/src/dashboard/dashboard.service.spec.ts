@@ -139,6 +139,48 @@ describe('DashboardService active predictions', () => {
     expect(card.quickAction).toEqual({ label: 'View Results', targetScreen: 'Result' });
   });
 
+  it('uses subtype-aware labels for sports open-prediction rooms', async () => {
+    const rooms = [
+      {
+        roomId: 'room-sports',
+        inviteCode: 'SPORT',
+        roomTitle: 'Cup Final',
+        eventType: 'Who wins?',
+        roomType: 'single_target',
+        answerType: 'multiple_choice',
+        visibility: 'public',
+        creatorUserId: 'user-1',
+        status: 'completed',
+        category: 'open_prediction',
+        templateKey: 'open_prediction',
+        scoringRule: { subtype: 'sports' },
+        lockTime: null,
+        predictionCloseTime: new Date('2026-07-20T10:00:00.000Z'),
+        resultDeadline: null,
+        selectedBackground: null,
+        selectedRoomTheme: null,
+        confidenceLevel: null,
+        startingPointLabel: null,
+        destinationLabel: null,
+        createdAt: new Date('2026-07-20T09:00:00.000Z'),
+        updatedAt: new Date('2026-07-20T11:00:00.000Z'),
+        creator: { userId: 'user-1' },
+        journeyRoute: null,
+        milestonePredictions: [],
+        locationEvents: [],
+        roomPreferences: [],
+        roomMemberships: [{ userId: 'user-1', role: 'creator', status: 'joined' }],
+      },
+    ];
+    prisma.predictionRoom.findMany.mockResolvedValueOnce(rooms).mockResolvedValueOnce(rooms);
+
+    const [card] = await service.activePredictions(user);
+
+    expect(card.subtype).toBe('sports');
+    expect(card.liveProgress.statusLabel).toBe('Final result revealed');
+    expect(card.quickAction).toEqual({ label: 'View Results', targetScreen: 'Result' });
+  });
+
   it('shows joined rooms before the user submits a prediction', async () => {
     const rooms = [
       {
@@ -209,5 +251,34 @@ describe('DashboardService active predictions', () => {
         ],
       }),
     ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+});
+
+describe('DashboardService discovery visibility filter', () => {
+  const prisma = {
+    follow: { findMany: jest.fn().mockResolvedValue([]) },
+    predictionRoom: { findMany: jest.fn().mockResolvedValue([]) },
+  } as any;
+  const lifecycleService = { evaluateRoomLifecycle: jest.fn() } as any;
+  const service = new DashboardService(prisma, lifecycleService);
+  const user = { userId: 'viewer-1' } as any;
+
+  beforeEach(() => jest.clearAllMocks());
+
+  it('surfaces only Public rooms plus the viewer\'s own/joined rooms in discovery', async () => {
+    await service.activeRooms(user);
+
+    const where = prisma.predictionRoom.findMany.mock.calls[0][0].where;
+    expect(where.status).toEqual({ in: ['predictions_open', 'live'] });
+    expect(where.OR).toEqual(
+      expect.arrayContaining([
+        { visibility: 'public' },
+        { creatorUserId: 'viewer-1' },
+        { roomMemberships: { some: { userId: 'viewer-1', status: 'joined' } } },
+      ]),
+    );
+    // Ghost (invite_only) and Private (private) are NOT unconditionally included.
+    expect(where.OR).not.toContainEqual({ visibility: 'invite_only' });
+    expect(where.OR).not.toContainEqual({ visibility: 'private' });
   });
 });

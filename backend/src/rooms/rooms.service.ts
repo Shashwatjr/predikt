@@ -127,6 +127,27 @@ function buildOracleBotPrediction(dto: CreateRoomDto) {
   };
 }
 
+/**
+ * Open-prediction rooms carry a subtype that drives presentation everywhere:
+ * `custom_challenge` (creator-defined question + options) or `sports`. The subtype
+ * is persisted inside the `scoringRule` JSON so it round-trips without a schema
+ * change; legacy rooms that only stored `genericTemplate` are mapped forward.
+ * Non open-prediction rooms have no subtype.
+ */
+export function deriveRoomSubtype(room: {
+  category?: string | null;
+  templateKey?: string | null;
+  scoringRule?: unknown;
+}): 'custom_challenge' | 'sports' | null {
+  const category = room.category ?? room.templateKey ?? null;
+  if (category !== 'open_prediction') return null;
+  const rule = (room.scoringRule ?? null) as Record<string, unknown> | null;
+  const explicit = rule?.subtype;
+  if (explicit === 'sports' || explicit === 'custom_challenge') return explicit;
+  if (rule?.genericTemplate === 'sports') return 'sports';
+  return 'custom_challenge';
+}
+
 function categoryResultShareText(category: string, inviteCode: string) {
   switch (category) {
     case 'weather_rain':
@@ -301,28 +322,16 @@ function buildSafeInvitePreview(room: any) {
     inviteCode: room.inviteCode,
     title: room.roomTitle,
     question: buildInviteQuestion(room),
+    category: room.category ?? room.templateKey ?? null,
+    templateKey: room.templateKey ?? null,
+    subtype: deriveRoomSubtype(room),
     answerType: room.answerType,
     status: normalizeRoomStatus(room.status),
     lockTime: room.lockTime ?? room.predictionCloseTime,
     visibility: room.visibility,
     participantCount: participantIds.size,
-    creatorDisplayName: room.creator?.name ?? null,
-    creatorHandle: room.creator?.prediktHandle ?? null,
-    benchmarks: buildArrivalBenchmarks(room),
-    canLateJoinPredict: canUserStillPredictAfterJourneyStart(room),
-    predictionWindow: buildPredictionWindow(room),
-    lateJoinPredictionWindowEndsAt: getLateJoinPredictionWindowEndsAt(room)?.toISOString() ?? null,
-    lateJoinPredictionArrivalCutoffAt: getLateJoinPredictionArrivalCutoffAt(room)?.toISOString() ?? null,
     selectedBackgroundKey: room.selectedBackground ?? null,
     selectedRoomTheme: room.selectedRoomTheme ?? null,
-    routeSummary: room.journeyRoute
-      ? {
-          startLabel: room.journeyRoute.startLabel,
-          destinationLabel: room.journeyRoute.destinationLabel,
-          travelMode: room.journeyRoute.travelMode,
-        }
-      : null,
-    safePreview: safeRoomProjection(room, { includeInviteCode: true }),
   };
 }
 
@@ -914,9 +923,12 @@ export class RoomsService {
       })) > 0;
     const predictionWindow = buildPredictionWindow(room);
 
+    const subtype = deriveRoomSubtype(room);
+
     if (isCreator) {
       return {
         ...room,
+        subtype,
         creator: safePublicUser(room.creator),
         milestones: safeMilestones(room.milestones),
         route: room.journeyRoute,
@@ -928,6 +940,10 @@ export class RoomsService {
         lateJoinPredictionWindowEndsAt: getLateJoinPredictionWindowEndsAt(room)?.toISOString() ?? null,
         lateJoinPredictionArrivalCutoffAt: getLateJoinPredictionArrivalCutoffAt(room)?.toISOString() ?? null,
       };
+    }
+
+    if (room.visibility === 'invite_only' && !isMember) {
+      return buildSafeInvitePreview(room);
     }
 
     const {
@@ -947,6 +963,7 @@ export class RoomsService {
     void roomMemberships;
     return {
       ...safeRoomProjection({ ...safe, journeyRoute }, { includeInviteCode: true }),
+      subtype,
       milestones: safeMilestones(milestones),
       creator: safePublicUser(room.creator),
       benchmarks: buildArrivalBenchmarks({ ...safe, journeyRoute }),
@@ -982,9 +999,6 @@ export class RoomsService {
       },
     });
     if (!room) throw new NotFoundException('Room not found');
-    if (room.visibility === 'private' && room.creatorUserId !== requestingUser.userId) {
-      throw new ForbiddenException('This private room requires an invite from the creator.');
-    }
 
     const existing = await this.prisma.roomMembership.findUnique({
       where: { roomId_userId: { roomId, userId: requestingUser.userId } },
@@ -1118,24 +1132,98 @@ export class RoomsService {
     };
   }
 
+  async deleteRoom(roomId: string, requestingUser: User) {
+    const room = await this.prisma.predictionRoom.findUnique({
+      where: { roomId },
+      select: {
+        roomId: true,
+        roomTitle: true,
+        creatorUserId: true,
+        status: true,
+        rematches: { select: { roomId: true } },
+      },
+    });
+    if (!room) throw new NotFoundException('Room not found');
+    if (room.creatorUserId !== requestingUser.userId) {
+      throw new ForbiddenException('Only the creator can delete this room.');
+    }
+    // Only terminal rooms are deletable; an in-flight room is a state conflict (409).
+    if (!['completed', 'cancelled'].includes(room.status)) {
+      throw new ConflictException('Only completed or cancelled rooms can be deleted.');
+    }
+    // A room that has spawned rematches/successors is a linked parent — deleting it
+    // would orphan its successors, so this is likewise a state conflict (409).
+    if (room.rematches.length) {
+      throw new ConflictException('This room has rematches or linked successors and cannot be deleted.');
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      // Write the audit record FIRST, inside the same transaction as the cascade.
+      // If any delete below fails the whole unit — including this audit row — rolls
+      // back; if the transaction commits, the audit row is guaranteed to survive.
+      await tx.auditLog.create({
+        data: {
+          actorType: 'user',
+          actorId: requestingUser.userId,
+          action: 'room.deleted',
+          targetType: 'room',
+          targetId: roomId,
+          afterValue: {
+            roomTitle: room.roomTitle,
+            status: room.status,
+            deletedAt: new Date().toISOString(),
+          } as never,
+        },
+      });
+      await tx.resultReaction.deleteMany({ where: { roomId } });
+      await tx.roomDispute.deleteMany({ where: { roomId } });
+      await tx.report.deleteMany({ where: { roomId } });
+      await tx.userNotification.deleteMany({ where: { roomId } });
+      await tx.userRoomPreference.deleteMany({ where: { roomId } });
+      await tx.roomMembership.deleteMany({ where: { roomId } });
+      await tx.roomCommentary.deleteMany({ where: { roomId } });
+      await tx.campaignMetric.deleteMany({ where: { roomId } });
+      await tx.roomDropRule.deleteMany({ where: { roomId } });
+      await tx.userDrop.deleteMany({ where: { roomId } });
+      await tx.userBadge.deleteMany({ where: { roomId } });
+      await tx.userFlex.deleteMany({ where: { roomId } });
+      await tx.userReliabilityLedger.deleteMany({ where: { roomId } });
+      await tx.creditLedger.deleteMany({ where: { sourceId: roomId } });
+      await tx.cloutTransaction.deleteMany({ where: { roomId } });
+      await tx.auraTransaction.deleteMany({ where: { roomId } });
+      await tx.roomResult.deleteMany({ where: { roomId } });
+      await tx.liveLocationEvent.deleteMany({ where: { roomId } });
+      await tx.roomCheckpoint.deleteMany({ where: { roomId } });
+      await tx.milestonePrediction.deleteMany({ where: { roomId } });
+      await tx.journeyRoute.deleteMany({ where: { roomId } });
+      await tx.roomMilestone.deleteMany({ where: { roomId } });
+      await tx.predictionRoom.delete({ where: { roomId } });
+    });
+
+    return { success: true, roomId };
+  }
+
   async ensureJoinedMembership(roomId: string, user: User) {
     return this.join(roomId, user);
   }
 
-  async findByInviteCode(inviteCode: string) {
+  async findByInviteCode(inviteCode: string, viewerUserId?: string | null) {
     const room = await this.prisma.predictionRoom.findUnique({
       where: { inviteCode },
       include: {
         creator: { select: ROOM_CREATOR_SELECT },
         milestones: { orderBy: { milestoneOrder: 'asc' } },
         journeyRoute: true,
+        milestonePredictions: { select: { userId: true } },
+        roomMemberships: { select: { userId: true, status: true } },
       },
     });
     if (!room) throw new NotFoundException('Room not found');
-    return safeRoomSummary(room);
+    this.assertInvitePreviewAccess(room, viewerUserId ?? null);
+    return buildSafeInvitePreview(room);
   }
 
-  async getInvitePreview(inviteCode: string) {
+  async getInvitePreview(inviteCode: string, viewerUserId?: string | null) {
     const room = await this.prisma.predictionRoom.findUnique({
       where: { inviteCode },
       include: {
@@ -1152,6 +1240,7 @@ export class RoomsService {
       },
     });
     if (!room) throw new NotFoundException('Room not found');
+    this.assertInvitePreviewAccess(room, viewerUserId ?? null);
     await this.auditService.log({
       actorType: 'system',
       actorId: null,
@@ -1260,5 +1349,14 @@ export class RoomsService {
 
   private nextActionTarget(roomId: string, status: string, journeyStatus?: string | null) {
     return `room:${roomId}:${this.nextAction(status, journeyStatus)}`;
+  }
+
+  private assertInvitePreviewAccess(
+    room: { visibility?: string | null },
+    viewerUserId: string | null,
+  ) {
+    if (room.visibility === 'private' && !viewerUserId) {
+      throw new ForbiddenException('Sign in to access this private room invite.');
+    }
   }
 }

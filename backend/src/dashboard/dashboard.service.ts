@@ -4,6 +4,7 @@ import { Prisma, User } from '@prisma/client';
 import { UpdateActivePredictionsOrderDto } from './dto/update-active-predictions-order.dto';
 import { LifecycleService } from '../lifecycle/lifecycle.service';
 import { ClearActivePredictionsDto } from './dto/clear-active-predictions.dto';
+import { deriveRoomSubtype } from '../rooms/rooms.service';
 
 const DAILY_SPIN_REWARDS = [
   { rewardType: 'clout', rewardValue: 10, label: '+10 Clout' },
@@ -68,7 +69,24 @@ function formatMinutesLabel(totalMinutes: number | null) {
   return minutes ? `${hours}h ${minutes}m left` : `${hours}h left`;
 }
 
-function progressStatusLabel(progress: number, roomStatus: string) {
+function progressStatusLabel(
+  progress: number,
+  roomStatus: string,
+  category?: string | null,
+  subtype?: string | null,
+) {
+  if (category === 'open_prediction') {
+    const isSports = subtype === 'sports';
+    // Open-prediction dashboard labels are subtype-aware and must stay
+    // completely separate from the journey/travel wording.
+    if (roomStatus === 'predictions_open') return 'Prediction window';
+    if (roomStatus === 'predictions_locked' || roomStatus === 'live') {
+      return isSports ? 'Match live' : 'Predictions live';
+    }
+    if (roomStatus === 'completed') return isSports ? 'Final result revealed' : 'Result revealed';
+    if (roomStatus === 'cancelled') return 'Cancelled';
+    return roomStatus.replace(/_/g, ' ');
+  }
   if (roomStatus === 'completed') return 'Result ready';
   if (progress <= 0) return 'Not started';
   if (progress < 15) return 'Just started';
@@ -150,7 +168,17 @@ export class DashboardService {
   async activeRooms(user: User) {
     const followingIds = await this.getFollowingIds(user.userId);
     const rooms = await this.prisma.predictionRoom.findMany({
-      where: { status: { in: ['predictions_open', 'live'] } },
+      where: {
+        status: { in: ['predictions_open', 'live'] },
+        // Discovery only surfaces Public rooms. Ghost (invite_only) and Private
+        // (private) rooms stay hidden from discovery — reachable only via invite /
+        // membership — except that the viewer always sees rooms they created or joined.
+        OR: [
+          { visibility: 'public' },
+          { creatorUserId: user.userId },
+          { roomMemberships: { some: { userId: user.userId, status: 'joined' } } },
+        ],
+      },
       include: {
         creator: { select: { userId: true, name: true, prediktHandle: true } },
         milestonePredictions: true,
@@ -550,6 +578,9 @@ export class DashboardService {
     );
     const liveProgress = this.buildLiveProgress(room, userPredictions);
     const normalizedStatus = room.status === 'completed' ? 'result_ready' : room.status;
+    const category = room.category ?? room.templateKey ?? null;
+    const isOpenPrediction = category === 'open_prediction';
+    const subtype = deriveRoomSubtype(room);
 
     return {
       roomId: room.roomId,
@@ -560,6 +591,8 @@ export class DashboardService {
       roomMode: room.roomType,
       status: normalizedStatus,
       answerType: room.answerType,
+      category,
+      subtype,
       visibility: room.visibility,
       isCreator: room.creatorUserId === userId,
       userRole: membership?.role ?? (room.creatorUserId === userId ? 'creator' : 'participant'),
@@ -571,17 +604,21 @@ export class DashboardService {
       journeyStatus: room.journeyStatus,
       selectedBackgroundKey: room.selectedBackground,
       selectedRoomTheme: room.selectedRoomTheme,
-      routeSummary: room.journeyRoute
-        ? {
-            startLabel: room.journeyRoute.startLabel,
-            destinationLabel: room.journeyRoute.destinationLabel,
-            travelMode: room.journeyRoute.travelMode,
-          }
-        : {
-            startLabel: room.startingPointLabel,
-            destinationLabel: room.destinationLabel,
-            travelMode: 'custom',
-          },
+      // Open-prediction rooms have no journey — omit the route summary so the
+      // dashboard card never renders "Start → Destination" travel framing.
+      routeSummary: isOpenPrediction
+        ? null
+        : room.journeyRoute
+          ? {
+              startLabel: room.journeyRoute.startLabel,
+              destinationLabel: room.journeyRoute.destinationLabel,
+              travelMode: room.journeyRoute.travelMode,
+            }
+          : {
+              startLabel: room.startingPointLabel,
+              destinationLabel: room.destinationLabel,
+              travelMode: 'custom',
+            },
       liveProgress,
       quickAction: this.buildQuickAction(
         normalizedStatus,
@@ -599,6 +636,7 @@ export class DashboardService {
     room: ActivePredictionRoom,
     userPredictions: Array<{ predictedReachedTime: Date; userId: string; revokedAt: Date | null }>,
   ) {
+    const category = room.category ?? room.templateKey ?? null;
     const latestEvent = room.locationEvents[0];
     const estimatedDurationSeconds = room.journeyRoute?.estimatedDurationSeconds ?? null;
     const startTime = room.startTime ?? room.plannedStartTime ?? room.createdAt;
@@ -622,17 +660,27 @@ export class DashboardService {
     const myPrediction = userPredictions[0]?.predictedReachedTime ?? null;
 
     return {
-      statusLabel: progressStatusLabel(progressPercentApprox, room.status),
-      progressPercentApprox,
-      etaLabel: etaMinutes !== null ? 'Approx. ETA' : 'Estimated ETA pending',
+      statusLabel: progressStatusLabel(progressPercentApprox, room.status, category, deriveRoomSubtype(room)),
+      progressPercentApprox: category === 'open_prediction' ? 0 : progressPercentApprox,
+      etaLabel:
+        category === 'open_prediction'
+          ? 'Prediction window'
+          : etaMinutes !== null
+            ? 'Approx. ETA'
+            : 'Estimated ETA pending',
       etaTime: formatEtaTime(etaDate),
       etaVsMyPredictionLabel:
-        myPrediction && etaDate
+        category === 'open_prediction'
+          ? userPredictions.length
+            ? 'Prediction submitted'
+            : 'Needs your prediction'
+          : myPrediction && etaDate
           ? this.buildEtaVsPredictionLabel(etaDate, myPrediction)
           : userPredictions.length
             ? 'Prediction submitted'
             : 'Needs your prediction',
-      timeToDestinationLabel: formatMinutesLabel(etaMinutes),
+      timeToDestinationLabel:
+        category === 'open_prediction' ? null : formatMinutesLabel(etaMinutes),
       lastUpdatedAt: latestEvent?.createdAt?.toISOString() ?? room.updatedAt.toISOString(),
       confidenceLevel: room.confidenceLevel ?? 'approximate',
       lifecycleLabel: this.buildLifecycleLabel(room),

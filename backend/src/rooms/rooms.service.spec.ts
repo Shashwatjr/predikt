@@ -199,6 +199,39 @@ describe('RoomsService memberships', () => {
     );
   });
 
+  it('allows authenticated users to join a private room through the invite flow', async () => {
+    const prisma = {
+      predictionRoom: {
+        findUnique: jest.fn().mockResolvedValue({
+          roomId: 'room-1',
+          roomTitle: 'Private Room',
+          creatorUserId: 'creator-1',
+          status: 'predictions_open',
+          visibility: 'private',
+          journeyStatus: 'scheduled',
+        }),
+      },
+      roomMembership: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        upsert: jest.fn().mockResolvedValue({
+          membershipId: 'm-private',
+          role: 'participant',
+          status: 'joined',
+          joinedAt: new Date('2026-07-20T10:00:00.000Z'),
+        }),
+      },
+      milestonePrediction: {
+        count: jest.fn().mockResolvedValue(0),
+      },
+    } as any;
+    const service = new RoomsService(prisma, auditService, notificationsService);
+
+    const joined = await service.join('room-1', { userId: 'user-1', name: 'Viewer' } as any);
+
+    expect(joined.status).toBe('joined');
+    expect(joined.nextAction).toBe('prediction');
+  });
+
   it('prevents creators from leaving active rooms', async () => {
     const prisma = {
       predictionRoom: {
@@ -326,6 +359,249 @@ describe('RoomsService memberships', () => {
 
     expect(joined.nextAction).toBe('live');
     expect(joined.canLateJoinPredict).toBe(false);
+  });
+});
+
+describe('RoomsService.deleteRoom', () => {
+  const auditService = { log: jest.fn() } as any;
+  const notificationsService = { create: jest.fn() } as any;
+
+  beforeEach(() => jest.clearAllMocks());
+
+  const CHILD_MODELS = [
+    'resultReaction', 'roomDispute', 'report', 'userNotification', 'userRoomPreference',
+    'roomMembership', 'roomCommentary', 'campaignMetric', 'roomDropRule', 'userDrop',
+    'userBadge', 'userFlex', 'userReliabilityLedger', 'creditLedger', 'cloutTransaction',
+    'auraTransaction', 'roomResult', 'liveLocationEvent', 'roomCheckpoint',
+    'milestonePrediction', 'journeyRoute', 'roomMilestone',
+  ];
+
+  function deletePrisma(room: any) {
+    const prisma: any = {
+      predictionRoom: {
+        findUnique: jest.fn().mockResolvedValue(room),
+        delete: jest.fn().mockResolvedValue(room),
+      },
+      auditLog: { create: jest.fn().mockResolvedValue({ auditId: 'audit-1' }) },
+    };
+    for (const model of CHILD_MODELS) {
+      prisma[model] = { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) };
+    }
+    prisma.$transaction = jest.fn(async (cb: any) => cb(prisma));
+    return prisma;
+  }
+
+  const completedRoom = {
+    roomId: 'room-1',
+    roomTitle: 'Old Match',
+    creatorUserId: 'creator-1',
+    status: 'completed',
+    rematches: [],
+  };
+
+  it('lets the creator delete a completed room and writes the audit row inside the transaction, first', async () => {
+    const prisma = deletePrisma({ ...completedRoom });
+    const service = new RoomsService(prisma, auditService, notificationsService);
+
+    const result = await service.deleteRoom('room-1', { userId: 'creator-1' } as any);
+
+    expect(result).toEqual({ success: true, roomId: 'room-1' });
+    expect(prisma.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ action: 'room.deleted', targetId: 'room-1' }),
+      }),
+    );
+    expect(prisma.predictionRoom.delete).toHaveBeenCalledWith({ where: { roomId: 'room-1' } });
+    // Audit must be written BEFORE the room row is deleted (same transaction).
+    const auditOrder = prisma.auditLog.create.mock.invocationCallOrder[0];
+    const deleteOrder = prisma.predictionRoom.delete.mock.invocationCallOrder[0];
+    expect(auditOrder).toBeLessThan(deleteOrder);
+  });
+
+  it('rejects a non-creator with 403 and writes no audit', async () => {
+    const prisma = deletePrisma({ ...completedRoom });
+    const service = new RoomsService(prisma, auditService, notificationsService);
+
+    await expect(
+      service.deleteRoom('room-1', { userId: 'not-the-creator' } as any),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(prisma.auditLog.create).not.toHaveBeenCalled();
+    expect(prisma.predictionRoom.delete).not.toHaveBeenCalled();
+  });
+
+  it('rejects deleting an in-flight room with 409', async () => {
+    const prisma = deletePrisma({ ...completedRoom, status: 'live' });
+    const service = new RoomsService(prisma, auditService, notificationsService);
+
+    await expect(
+      service.deleteRoom('room-1', { userId: 'creator-1' } as any),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(prisma.predictionRoom.delete).not.toHaveBeenCalled();
+  });
+
+  it('rejects deleting a room that has rematches/linked successors with 409', async () => {
+    const prisma = deletePrisma({ ...completedRoom, rematches: [{ roomId: 'child-1' }] });
+    const service = new RoomsService(prisma, auditService, notificationsService);
+
+    await expect(
+      service.deleteRoom('room-1', { userId: 'creator-1' } as any),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(prisma.predictionRoom.delete).not.toHaveBeenCalled();
+  });
+
+  it('deletes the room row so it is excluded from normal list/query views', async () => {
+    const prisma = deletePrisma({ ...completedRoom, status: 'cancelled' });
+    const service = new RoomsService(prisma, auditService, notificationsService);
+
+    await service.deleteRoom('room-1', { userId: 'creator-1' } as any);
+    expect(prisma.predictionRoom.delete).toHaveBeenCalledWith({ where: { roomId: 'room-1' } });
+  });
+});
+
+describe('RoomsService privacy access matrix (findById)', () => {
+  const auditService = { log: jest.fn() } as any;
+  const notificationsService = { create: jest.fn() } as any;
+
+  beforeEach(() => jest.clearAllMocks());
+
+  function findByIdPrisma(roomOverrides: any) {
+    const prisma = {
+      predictionRoom: {
+        findUnique: jest.fn().mockResolvedValue({
+          ...buildRoom(),
+          creator: {},
+          milestones: [],
+          journeyRoute: null,
+          locationEvents: [],
+          roomMemberships: [],
+          ...roomOverrides,
+        }),
+      },
+      milestonePrediction: { count: jest.fn().mockResolvedValue(0) },
+    } as any;
+    return prisma;
+  }
+
+  // --- Private (invite-only, visible to invited) ---
+  it('Private: blocks a non-invited authenticated viewer (403)', async () => {
+    const prisma = findByIdPrisma({ visibility: 'private', roomMemberships: [] });
+    const service = new RoomsService(prisma, auditService, notificationsService);
+    await expect(service.findById('room-1', { userId: 'outsider' } as any)).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+  });
+
+  it('Private: allows the creator', async () => {
+    const prisma = findByIdPrisma({ visibility: 'private', creatorUserId: 'creator-1' });
+    const service = new RoomsService(prisma, auditService, notificationsService);
+    await expect(service.findById('room-1', { userId: 'creator-1' } as any)).resolves.toBeTruthy();
+  });
+
+  it('Private: allows an invited (joined) viewer', async () => {
+    const prisma = findByIdPrisma({
+      visibility: 'private',
+      roomMemberships: [{ userId: 'invitee', status: 'joined' }],
+    });
+    const service = new RoomsService(prisma, auditService, notificationsService);
+    await expect(service.findById('room-1', { userId: 'invitee' } as any)).resolves.toBeTruthy();
+  });
+
+  // --- Ghost (invite_only): reachable via link, not membership-gated at read ---
+  it('Ghost (invite_only): does not 403 a viewer holding the room reference', async () => {
+    const prisma = findByIdPrisma({ visibility: 'invite_only', roomMemberships: [] });
+    const service = new RoomsService(prisma, auditService, notificationsService);
+    await expect(service.findById('room-1', { userId: 'link-holder' } as any)).resolves.toBeTruthy();
+  });
+
+  it('Ghost (invite_only): returns only a safe preview before membership is established', async () => {
+    const prisma = findByIdPrisma({ visibility: 'invite_only', roomMemberships: [] });
+    const service = new RoomsService(prisma, auditService, notificationsService);
+
+    const preview = await service.findById('room-1', { userId: 'link-holder' } as any);
+
+    expect(preview.roomId).toBe('room-1');
+    expect(preview.visibility).toBe('invite_only');
+    expect('creator' in preview).toBe(false);
+    expect('shareKit' in preview).toBe(false);
+    expect('milestones' in preview).toBe(false);
+  });
+
+  // --- Public (discoverable): open to any authenticated viewer ---
+  it('Public: allows any authenticated viewer', async () => {
+    const prisma = findByIdPrisma({ visibility: 'public', roomMemberships: [] });
+    const service = new RoomsService(prisma, auditService, notificationsService);
+    await expect(service.findById('room-1', { userId: 'anyone' } as any)).resolves.toBeTruthy();
+  });
+});
+
+describe('RoomsService invite preview access', () => {
+  const auditService = { log: jest.fn() } as any;
+  const notificationsService = { create: jest.fn() } as any;
+
+  beforeEach(() => jest.clearAllMocks());
+
+  function invitePreviewPrisma(roomOverrides: any) {
+    return {
+      predictionRoom: {
+        findUnique: jest.fn().mockResolvedValue({
+          ...buildRoom(),
+          creator: { name: 'Creator', prediktHandle: 'creator' },
+          milestones: [],
+          journeyRoute: null,
+          locationEvents: [],
+          milestonePredictions: [{ userId: 'u1' }],
+          roomMemberships: [{ userId: 'u1', status: 'joined' }],
+          ...roomOverrides,
+        }),
+      },
+    } as any;
+  }
+
+  it('Ghost: allows unauthenticated invite preview and returns minimal safe data', async () => {
+    const prisma = invitePreviewPrisma({ visibility: 'invite_only' });
+    const service = new RoomsService(prisma, auditService, notificationsService);
+
+    const preview = await service.getInvitePreview('ABCDE', null);
+
+    expect(preview.visibility).toBe('invite_only');
+    expect(preview.title).toBeDefined();
+    expect('creatorDisplayName' in preview).toBe(false);
+    expect('creatorHandle' in preview).toBe(false);
+    expect('benchmarks' in preview).toBe(false);
+    expect('routeSummary' in preview).toBe(false);
+    expect('safePreview' in preview).toBe(false);
+  });
+
+  it('Private: blocks unauthenticated invite preview', async () => {
+    const prisma = invitePreviewPrisma({ visibility: 'private' });
+    const service = new RoomsService(prisma, auditService, notificationsService);
+
+    await expect(service.getInvitePreview('ABCDE', null)).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+  });
+
+  it('Private: allows authenticated invite preview for the join flow', async () => {
+    const prisma = invitePreviewPrisma({ visibility: 'private' });
+    const service = new RoomsService(prisma, auditService, notificationsService);
+
+    const preview = await service.getInvitePreview('ABCDE', 'viewer-1');
+
+    expect(preview.visibility).toBe('private');
+    expect(preview.roomId).toBe('room-1');
+  });
+
+  it('code lookup never exposes more than invite preview data', async () => {
+    const prisma = invitePreviewPrisma({ visibility: 'invite_only' });
+    const service = new RoomsService(prisma, auditService, notificationsService);
+
+    const byCode = await service.findByInviteCode('ABCDE', null);
+
+    expect('creatorDisplayName' in byCode).toBe(false);
+    expect('creatorHandle' in byCode).toBe(false);
+    expect('benchmarks' in byCode).toBe(false);
+    expect('routeSummary' in byCode).toBe(false);
+    expect('safePreview' in byCode).toBe(false);
   });
 });
 
