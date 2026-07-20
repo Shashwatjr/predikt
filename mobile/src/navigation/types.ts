@@ -6,7 +6,7 @@ export type RootStackParamList = {
   CreateRoom:
     | {
         presetCategory?: 'arrival_time' | 'food_eta' | 'open_prediction' | 'gym_habit' | 'sports_prediction';
-        presetTemplate?: 'sports' | 'delivery' | 'free_play';
+        presetTemplate?: 'sports' | 'delivery' | 'custom_challenge';
       }
     | undefined;
   RoomCreated: { room: any };

@@ -82,23 +82,118 @@ export const CATEGORY_THEMES: Record<CategoryKey, CategoryTheme> = {
   },
   open_prediction: {
     key: 'open_prediction',
-    label: 'Custom Prediktion',
-    icon: '🏆',
+    label: 'Custom Challenge',
+    icon: '🎯',
     primaryColor: '#f59e0b',
     secondaryColor: '#ef4444',
     gradient: ['#f59e0b', '#ef4444'],
     badgeStyle: { bg: 'rgba(245,158,11,0.2)', border: 'rgba(245,158,11,0.45)', text: '#fde68a' },
-    emptyStateCopy: 'Open a free-play room with your own question and prediction options.',
-    resultTitle: 'Custom Prediktion reveal',
-    quickStartLabel: 'Custom Prediktion',
+    emptyStateCopy: 'Create your own question and let friends choose from the answers you define.',
+    resultTitle: 'Custom Challenge reveal',
+    quickStartLabel: 'Custom Challenge',
   },
 };
 
 export const CATEGORY_LIST = Object.values(CATEGORY_THEMES);
+
+// ---------------------------------------------------------------------------
+// Open-prediction subtypes — the single source of truth.
+//
+// `open_prediction` rooms come in two flavours: `custom_challenge` (creator
+// defines the question + answers) and `sports`. Both share the open_prediction
+// category and machinery, but differ in label, icon, Create-form placeholders,
+// and Live / The Tea copy. Every surface must resolve presentation from here
+// (via getRoomTheme / getOpenPredictionSubtypeConfig) rather than inlining a
+// Sports theme locally — Sports must never render as "Custom Prediktion" 🏆.
+// ---------------------------------------------------------------------------
+
+export type OpenPredictionSubtype = 'custom_challenge' | 'sports';
+
+export type OpenPredictionSubtypeConfig = {
+  subtype: OpenPredictionSubtype;
+  theme: CategoryTheme;
+  /** Create-form placeholders. */
+  titlePlaceholder: string;
+  questionPlaceholder: string;
+  /** Live-room banner copy (travel-free). */
+  liveCopy: string;
+  /** "The Tea" dashboard card copy (travel-free). */
+  teaHeadline: string;
+  teaBody: string;
+};
+
+const SPORTS_THEME: CategoryTheme = {
+  key: 'open_prediction',
+  label: 'Sports',
+  icon: '⚽',
+  primaryColor: '#22c55e',
+  secondaryColor: '#0ea5e9',
+  gradient: ['#16a34a', '#0ea5e9'],
+  badgeStyle: { bg: 'rgba(34,197,94,0.2)', border: 'rgba(34,197,94,0.45)', text: '#bbf7d0' },
+  emptyStateCopy: 'Set up the matchup and let friends call the result.',
+  resultTitle: 'Sports reveal',
+  quickStartLabel: 'Sports',
+};
+
+export const OPEN_PREDICTION_SUBTYPES: Record<OpenPredictionSubtype, OpenPredictionSubtypeConfig> = {
+  custom_challenge: {
+    subtype: 'custom_challenge',
+    theme: CATEGORY_THEMES.open_prediction,
+    titlePlaceholder: "Tonight's big call",
+    questionPlaceholder: 'What do you think happens?',
+    liveCopy: 'The guesses are locked in. Time to reveal what actually happens.',
+    teaHeadline: 'The calls are in.',
+    teaBody: 'Now we find out what actually happens.',
+  },
+  sports: {
+    subtype: 'sports',
+    theme: SPORTS_THEME,
+    titlePlaceholder: 'Argentina vs Spain',
+    questionPlaceholder: 'Who will win?',
+    liveCopy: 'Everyone has picked a side. Now the game decides who called it.',
+    teaHeadline: 'The match is on.',
+    teaBody: 'Everyone picked a side — now the game decides who called it.',
+  },
+};
+
+/** Coerce any stored subtype/legacy template value into a known subtype. */
+export function normalizeOpenPredictionSubtype(raw?: string | null): OpenPredictionSubtype {
+  if (raw === 'sports') return 'sports';
+  return 'custom_challenge';
+}
+
+/** Resolve the subtype of a room object (server `subtype`, then legacy fallbacks). */
+export function resolveRoomSubtype(room: any): OpenPredictionSubtype | null {
+  const category = room?.category ?? room?.templateKey ?? null;
+  if (category !== 'open_prediction') return null;
+  const raw =
+    room?.subtype ??
+    room?.scoringRule?.subtype ??
+    room?.scoringRule?.genericTemplate ??
+    null;
+  return normalizeOpenPredictionSubtype(raw);
+}
+
+export function getOpenPredictionSubtypeConfig(
+  subtype?: string | null,
+): OpenPredictionSubtypeConfig {
+  return OPEN_PREDICTION_SUBTYPES[normalizeOpenPredictionSubtype(subtype)];
+}
 
 export function getCategoryTheme(key?: string | null): CategoryTheme {
   if (key && key in CATEGORY_THEMES) {
     return CATEGORY_THEMES[key as CategoryKey];
   }
   return CATEGORY_THEMES.arrival_time;
+}
+
+/**
+ * Subtype-aware theme resolver — the entry point screens should use for a room.
+ * Open-prediction rooms resolve to their subtype theme (Custom Challenge vs
+ * Sports); everything else falls back to its category theme.
+ */
+export function getRoomTheme(room: any): CategoryTheme {
+  const subtype = resolveRoomSubtype(room);
+  if (subtype) return OPEN_PREDICTION_SUBTYPES[subtype].theme;
+  return getCategoryTheme(room?.category ?? room?.templateKey);
 }

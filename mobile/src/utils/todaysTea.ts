@@ -1,4 +1,8 @@
-import { getCategoryTheme } from '../config/categoryTheme';
+import {
+  getRoomTheme,
+  getOpenPredictionSubtypeConfig,
+  resolveRoomSubtype,
+} from '../config/categoryTheme';
 
 type DashboardSummary = {
   currentStreak?: number;
@@ -11,6 +15,9 @@ type ActivePrediction = {
   title?: string;
   roomTitle?: string;
   category?: string;
+  subtype?: string | null;
+  scoringRule?: any;
+  templateKey?: string;
   status?: string;
   hasSubmittedPrediction?: boolean;
   participantCount?: number;
@@ -67,7 +74,7 @@ export function buildTodaysTea({ userName, summary, activePredictions = [], foll
 
   const pendingPrediction = activePredictions.find((room) => !room.hasSubmittedPrediction);
   if (pendingPrediction) {
-    const theme = getCategoryTheme(pendingPrediction.category);
+    const theme = getRoomTheme(pendingPrediction);
     return {
       category: 'oracle',
       label: 'Oracle Tea',
@@ -81,14 +88,29 @@ export function buildTodaysTea({ userName, summary, activePredictions = [], foll
 
   const liveRoom = activePredictions.find((room) => room.status === 'live');
   if (liveRoom) {
-    const theme = getCategoryTheme(liveRoom.category);
+    const theme = getRoomTheme(liveRoom);
+    const roomName = liveRoom.title ?? liveRoom.roomTitle ?? 'That room';
+    const subtype = resolveRoomSubtype(liveRoom);
+    if (subtype) {
+      // Open-prediction rooms have no journey — use travel-free subtype copy.
+      const config = getOpenPredictionSubtypeConfig(subtype);
+      return {
+        category: 'group',
+        label: `${theme.label} Tea`,
+        icon: theme.icon,
+        accent: theme.gradient,
+        headline: config.teaHeadline,
+        body: `${roomName} is live. ${config.teaBody}`,
+        kicker: 'A calm prediction now would look extremely intentional.',
+      };
+    }
     return {
       category: liveRoom.category === 'food_eta' ? 'food' : liveRoom.category === 'weather_rain' ? 'weather' : 'arrival',
       label: `${theme.label} Tea`,
       icon: theme.icon,
       accent: theme.gradient,
       headline: liveRoom.liveProgress?.statusLabel ?? 'Today feels suspiciously in motion.',
-      body: `${liveRoom.title ?? liveRoom.roomTitle ?? 'That room'} is live. ${liveRoom.liveProgress?.progressLabel ?? 'The plot is advancing.'}`,
+      body: `${roomName} is live. ${liveRoom.liveProgress?.progressLabel ?? 'The plot is advancing.'}`,
       kicker: 'A calm prediction now would look extremely intentional.',
     };
   }

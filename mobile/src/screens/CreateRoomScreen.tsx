@@ -20,7 +20,13 @@ import CategoryTile from '../components/CategoryTile';
 import CategoryVotePrompt from '../components/CategoryVotePrompt';
 import ModeCard from '../components/ModeCard';
 import PrivacyModeSelector from '../components/PrivacyModeSelector';
-import { getCategoryTheme, CATEGORY_LIST, CategoryTheme } from '../config/categoryTheme';
+import {
+  getCategoryTheme,
+  CATEGORY_LIST,
+  CategoryTheme,
+  getOpenPredictionSubtypeConfig,
+  OpenPredictionSubtype,
+} from '../config/categoryTheme';
 import { featureFlags, isCategoryEnabled } from '../config/featureFlags';
 import { voteCategoryInterest } from '../utils/categoryInterest';
 import { layout, palette } from '../theme/designSystem';
@@ -131,7 +137,7 @@ function LockDateField({
 
 const makeDefaultCloseAt = () => toLocalDateTimeInput(new Date(Date.now() + 60 * 60 * 1000));
 const startDelayOptions = [3, 5, 10, 15] as const;
-const visibilities = ['invite_only', 'public'] as const;
+const visibilities = ['invite_only', 'private', 'public'] as const;
 const forecastProviders = ['Weather app', 'Google Weather', 'IMD', 'Other'] as const;
 const timeOnlyDeliveryProviders = ['Zomato', 'Swiggy', 'Blinkit', 'Zepto', 'Porter'] as const;
 const dateOptionalDeliveryProviders = ['Amazon', 'Flipkart', 'Ekart', 'DTDC', 'Bluedart', 'India Post'] as const;
@@ -199,9 +205,9 @@ const categoryTiles = [
   },
   {
     key: 'open_prediction',
-    icon: '🏆',
-    label: 'Custom Prediktion',
-    helper: 'Open a free-play room with your own question and prediction options.',
+    icon: '🎯',
+    label: 'Custom Challenge',
+    helper: 'Create your own question and let friends choose from the answers you define.',
   },
 ] as const;
 
@@ -314,7 +320,7 @@ const openPredictionAnswerModes = [
 const genericRoomTemplates = [
   { key: 'sports', label: 'Sports match', title: 'Argentina vs Spain', question: 'Who will win?' },
   { key: 'delivery', label: 'Delivery race', title: 'Will this delivery beat the vendor ETA?', question: 'Will it arrive before the vendor ETA?' },
-  { key: 'free_play', label: 'Free play', title: 'Tonight’s big call', question: 'What do you think happens?' },
+  { key: 'custom_challenge', label: 'Custom Challenge', title: 'Tonight’s big call', question: 'What do you think happens?' },
 ] as const;
 
 interface StartLocation {
@@ -343,18 +349,8 @@ function buildBoundsFromCoordinates(coordinates: Array<{ latitude: number; longi
 
 export default function CreateRoomScreen({ navigation, route }: Props) {
   const { colors } = useTheme();
-  const sportsCategoryTheme: CategoryTheme = {
-    key: 'open_prediction',
-    label: 'Sports',
-    icon: '⚽',
-    primaryColor: '#f59e0b',
-    secondaryColor: '#ef4444',
-    gradient: ['#f59e0b', '#ef4444'],
-    badgeStyle: { bg: 'rgba(245,158,11,0.2)', border: 'rgba(245,158,11,0.45)', text: '#fde68a' },
-    emptyStateCopy: 'Kick off a sports prediction like Argentina vs Spain and add more teams or players.',
-    resultTitle: 'Sports reveal',
-    quickStartLabel: 'Sports',
-  };
+  // Single source of truth — the Sports theme lives in categoryTheme.ts.
+  const sportsCategoryTheme: CategoryTheme = getOpenPredictionSubtypeConfig('sports').theme;
 
   const [selectedCategory, setSelectedCategory] = useState<(typeof categoryTiles)[number]['key']>('arrival_time');
   const [selectedMode, setSelectedMode] = useState<(typeof modeOptions)[number]['key']>('friends');
@@ -413,10 +409,17 @@ export default function CreateRoomScreen({ navigation, route }: Props) {
   const [openPredictionAnswerType, setOpenPredictionAnswerType] =
     useState<(typeof openPredictionAnswerModes)[number]['key']>('multiple_choice');
   const [genericTemplate, setGenericTemplate] =
-    useState<(typeof genericRoomTemplates)[number]['key']>('free_play');
+    useState<(typeof genericRoomTemplates)[number]['key']>('custom_challenge');
   const [genericDeliveryProvider, setGenericDeliveryProvider] =
     useState<(typeof genericDeliveryProviders)[number] | ''>('Zomato');
   const [genericDeliveryProviderOther, setGenericDeliveryProviderOther] = useState('');
+
+  // The room-type toggle (Custom Challenge / Sports) drives the subtype; it also
+  // feeds the subtype-specific placeholders, labels and copy from the single
+  // source of truth in categoryTheme.ts.
+  const openPredictionSubtype: OpenPredictionSubtype =
+    genericTemplate === 'sports' ? 'sports' : 'custom_challenge';
+  const openPredictionConfig = getOpenPredictionSubtypeConfig(openPredictionSubtype);
 
   function applySportsPreset() {
     setSelectedCategory('sports_prediction');
@@ -654,7 +657,7 @@ export default function CreateRoomScreen({ navigation, route }: Props) {
       setOpenPredictionQuestion('What do you think happens?');
       setOpenPredictionOptions(['Option 1', 'Option 2']);
       setOpenPredictionAnswerType('multiple_choice');
-      setGenericTemplate('free_play');
+      setGenericTemplate('custom_challenge');
       setGenericDeliveryProvider('Zomato');
       setGenericDeliveryProviderOther('');
     }
@@ -1197,6 +1200,8 @@ export default function CreateRoomScreen({ navigation, route }: Props) {
           categoryKey: 'open_prediction',
           pollType: openPredictionAnswerType,
           genericTemplate,
+          // Reliable subtype persisted in the round-tripped scoringRule JSON.
+          subtype: openPredictionSubtype,
           rewardMode: 'gems_rizz_no_aura',
         },
         outcomeSource: 'creator_attest',
@@ -1268,7 +1273,7 @@ export default function CreateRoomScreen({ navigation, route }: Props) {
                 }
                 return getCategoryTheme(tile.key);
               })
-              .filter((theme): theme is CategoryTheme => Boolean(theme) && isCategoryEnabled(theme.key)),
+              .filter((theme): theme is CategoryTheme => theme != null && isCategoryEnabled(theme.key)),
           ].map((theme) => {
             if (theme === sportsCategoryTheme) {
               return (
@@ -1779,30 +1784,30 @@ export default function CreateRoomScreen({ navigation, route }: Props) {
       {selectedCategory === 'open_prediction' || selectedCategory === 'sports_prediction' ? (
         <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>
-            {selectedCategory === 'sports_prediction' ? 'Sports' : 'Custom Prediktion'}
+            {openPredictionConfig.theme.label}
           </Text>
           <Text style={[styles.generatedQuestion, { color: colors.textSecondary }]}>
-            {genericTemplate === 'free_play'
-              ? 'Open room — just name your moment and ask the question. Friends predict at will.'
-              : 'Set up your room with custom options.'}
+            {openPredictionSubtype === 'sports'
+              ? 'Set up the matchup and let friends call the result.'
+              : 'Create your own question and let friends choose from the answers you define.'}
           </Text>
           <TextInputField
             label="Room title"
             value={openPredictionTitle}
             onChangeText={setOpenPredictionTitle}
-            placeholder="Argentina vs Spain"
+            placeholder={openPredictionConfig.titlePlaceholder}
           />
           <TextInputField
             label="Question"
             value={openPredictionQuestion}
             onChangeText={setOpenPredictionQuestion}
-            placeholder="Who will win?"
+            placeholder={openPredictionConfig.questionPlaceholder}
           />
 
-          <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Room style</Text>
+          <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Room type</Text>
           <View style={styles.optionRow}>
             {[
-              { key: 'free_play', label: 'Free Play' },
+              { key: 'custom_challenge', label: 'Custom Challenge' },
               { key: 'sports', label: 'Sports' },
             ].map((styleOption) => (
               <TouchableOpacity
@@ -1810,11 +1815,11 @@ export default function CreateRoomScreen({ navigation, route }: Props) {
                 style={[
                   styles.chip,
                   {
-                    borderColor: genericTemplate === styleOption.key ? colors.purple : colors.border,
-                    backgroundColor: genericTemplate === styleOption.key ? colors.purpleDim : colors.surfaceHigh,
+                    borderColor: openPredictionSubtype === styleOption.key ? colors.purple : colors.border,
+                    backgroundColor: openPredictionSubtype === styleOption.key ? colors.purpleDim : colors.surfaceHigh,
                   },
                 ]}
-                onPress={() => applyGenericTemplate(styleOption.key as 'free_play' | 'sports')}
+                onPress={() => applyGenericTemplate(styleOption.key as 'custom_challenge' | 'sports')}
               >
                 <Text style={[styles.chipText, { color: colors.textPrimary }]}>{styleOption.label}</Text>
               </TouchableOpacity>
@@ -1916,10 +1921,10 @@ export default function CreateRoomScreen({ navigation, route }: Props) {
 
           {createError ? <Text style={[styles.errorText, { color: colors.red }]}>{createError}</Text> : null}
           <PrimaryButton
-            label="Create Custom Prediktion"
+            label={`Create ${openPredictionConfig.theme.label}`}
             onPress={handleCreateOpenPredictionRoom}
             loading={createLoading}
-            icon="🏆"
+            icon={openPredictionConfig.theme.icon}
           />
         </View>
       ) : null}

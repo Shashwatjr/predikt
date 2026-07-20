@@ -9,6 +9,8 @@ type ActivePrediction = {
   roomId: string;
   title: string;
   status: string;
+  category?: string | null;
+  subtype?: string | null;
   participantCount: number;
   hasSubmittedPrediction: boolean;
   routeSummary?: {
@@ -51,10 +53,13 @@ export default function ActivePredictionCard({
   disableMoveDown,
 }: Props) {
   const { colors } = useTheme();
+  // Open-prediction rooms have no journey: skip route/ETA/progress travel framing.
+  const hasJourney = !!item.routeSummary;
   // Live-Now cards speak in the bot's voice instead of dropping a bare ETA number,
-  // so a first-timer instantly reads it as "the mark to beat".
+  // so a first-timer instantly reads it as "the mark to beat". ETA teasers only
+  // make sense for journey rooms.
   const botLine =
-    item.status === 'live'
+    hasJourney && item.status === 'live'
       ? botEtaTeaser(item.liveProgress.etaTime ?? item.liveProgress.etaLabel)
       : null;
 
@@ -72,11 +77,15 @@ export default function ActivePredictionCard({
         </View>
       </View>
 
-      <Text style={[styles.route, { color: 'rgba(255,255,255,0.82)' }]}>
-        {item.routeSummary?.startLabel ?? 'Start'} → {item.routeSummary?.destinationLabel ?? 'Destination'}
-      </Text>
+      {hasJourney ? (
+        <Text style={[styles.route, { color: 'rgba(255,255,255,0.82)' }]}>
+          {item.routeSummary?.startLabel ?? 'Start'} → {item.routeSummary?.destinationLabel ?? 'Destination'}
+        </Text>
+      ) : null}
 
-      <ProgressBar percentage={item.liveProgress.progressPercentApprox} label="Approximate progress" />
+      {hasJourney ? (
+        <ProgressBar percentage={item.liveProgress.progressPercentApprox} label="Approximate progress" />
+      ) : null}
 
       <View style={styles.infoRow}>
         <Text style={[styles.infoText, { color: 'rgba(255,255,255,0.72)' }]}>

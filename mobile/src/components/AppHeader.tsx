@@ -28,12 +28,12 @@ export default function AppHeader({ greeting, subtitle, aura, streak, onNotifica
       <View style={styles.right}>
         {typeof aura === 'number' ? (
           <View style={styles.statPill}>
-            <Text style={styles.statText}>✨ {aura}</Text>
+            <Text style={styles.statText}>✨ Aura {aura}</Text>
           </View>
         ) : null}
         {typeof streak === 'number' && streak > 0 ? (
           <View style={styles.statPill}>
-            <Text style={styles.statText}>🔥 {streak}</Text>
+            <Text style={styles.statText}>🔥 Streak {streak}</Text>
           </View>
         ) : null}
         {rightSlot}

@@ -18,7 +18,11 @@ import CommentaryBubble from '../components/CommentaryBubble';
 import ReactionStrip from '../components/ReactionStrip';
 import SectionHeader from '../components/SectionHeader';
 import GuestUpgradePrompt from '../components/GuestUpgradePrompt';
-import { getCategoryTheme } from '../config/categoryTheme';
+import {
+  getRoomTheme,
+  resolveRoomSubtype,
+  getOpenPredictionSubtypeConfig,
+} from '../config/categoryTheme';
 import { featureFlags } from '../config/featureFlags';
 import { copyToClipboard, formatLineForShare } from '../utils/shareLine';
 import { layout, palette } from '../theme/designSystem';
@@ -49,6 +53,7 @@ export default function ResultScreen({ navigation, route }: Props) {
   const [badges, setBadges] = useState<RoomBadge[]>([]);
   const [selectedReaction, setSelectedReaction] = useState<string | null>(null);
   const [isRematching, setIsRematching] = useState(false);
+  const [isDeletingRoom, setIsDeletingRoom] = useState(false);
   const [lineCopied, setLineCopied] = useState(false);
   const [predictions, setPredictions] = useState<RoomPredictionEntry[]>(
     (initialResult?.predictionEntries as RoomPredictionEntry[] | undefined) ?? [],
@@ -180,7 +185,9 @@ export default function ResultScreen({ navigation, route }: Props) {
   const closureState = initialResult?.closureType ?? room?.journeyStatus;
   const isNeutralClosure = ['plan_changed', 'cancelled_by_host', 'auto_closed', 'abandoned'].includes(closureState ?? '');
   const categoryKey = room?.category ?? room?.creationMeta?.category ?? room?.templateKey ?? 'arrival_time';
-  const categoryLabel = prettyCategory(categoryKey);
+  const roomSubtype = resolveRoomSubtype(room ?? { category: categoryKey, templateKey: room?.templateKey });
+  const subtypeLabel = roomSubtype ? getOpenPredictionSubtypeConfig(roomSubtype).theme.label : null;
+  const categoryLabel = subtypeLabel ?? prettyCategory(categoryKey);
   const actualOutcome = formatActualOutcome(initialResult);
   const winningPrediction = winningRow?.predictedReachedTime
     ? new Date(winningRow.predictedReachedTime).toLocaleString()
@@ -199,7 +206,13 @@ export default function ResultScreen({ navigation, route }: Props) {
           : 'a little'
       }`
     : 'No near miss this time';
-  const momentCard = buildMomentCardFromResult(initialResult as ResultPayload | undefined, categoryKey, commentary?.personality);
+  const momentCard = buildMomentCardFromResult(
+    initialResult as ResultPayload | undefined,
+    categoryKey,
+    commentary?.personality,
+    roomSubtype,
+    subtypeLabel,
+  );
   const badgeUnlocked =
     badges.find((badge) => badge.userId === (winningRow?.userId ?? winningRow?.user?.userId))?.title
     ?? initialResult?.momentCard?.badge
@@ -212,7 +225,7 @@ export default function ResultScreen({ navigation, route }: Props) {
   async function shareMomentCard() {
     await shareMoment({
       title: `☕ The Tea • ${room?.roomTitle ?? 'PREDIKT'}`,
-      subtitle: 'Closest guess wins Aura',
+      subtitle: momentCard.subtitle,
       category: categoryLabel,
       winner: winnerHandle,
       predictionLabel: winningPrediction,
@@ -262,6 +275,32 @@ export default function ResultScreen({ navigation, route }: Props) {
     navigation.navigate('CreateRoom');
   }
 
+  async function handleDeleteRoom() {
+    if (isDeletingRoom) return;
+    Alert.alert(
+      'Delete this room?',
+      'This permanently removes this older room and its results from your account view.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete room',
+          style: 'destructive',
+          onPress: async () => {
+            setIsDeletingRoom(true);
+            try {
+              await api.delete(`/rooms/${roomId}`);
+              navigation.navigate('Home');
+            } catch (error) {
+              Alert.alert('Delete unavailable', getApiErrorMessage(error, 'We could not delete this room right now.'));
+            } finally {
+              setIsDeletingRoom(false);
+            }
+          },
+        },
+      ],
+    );
+  }
+
   async function handleChallengeResult() {
     try {
       const response = await api.post(`/rooms/${roomId}/disputes`, {
@@ -290,7 +329,7 @@ export default function ResultScreen({ navigation, route }: Props) {
     }
   }
 
-  const categoryTheme = getCategoryTheme(categoryKey);
+  const categoryTheme = getRoomTheme(room ?? { category: categoryKey });
   const genericCategoryKey =
     room?.category ?? room?.creationMeta?.category ?? room?.templateKey ?? categoryKey;
   const isGenericRoom = genericCategoryKey === 'open_prediction';
@@ -378,8 +417,28 @@ export default function ResultScreen({ navigation, route }: Props) {
 
         {isGenericRoom ? (
           <View style={[styles.genericTeaCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            {roomSubtype ? (
+              <View
+                style={[
+                  styles.subtypeChip,
+                  {
+                    backgroundColor: getOpenPredictionSubtypeConfig(roomSubtype).theme.badgeStyle.bg,
+                    borderColor: getOpenPredictionSubtypeConfig(roomSubtype).theme.badgeStyle.border,
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.subtypeChipText,
+                    { color: getOpenPredictionSubtypeConfig(roomSubtype).theme.badgeStyle.text },
+                  ]}
+                >
+                  {getOpenPredictionSubtypeConfig(roomSubtype).theme.icon} {getOpenPredictionSubtypeConfig(roomSubtype).theme.label}
+                </Text>
+              </View>
+            ) : null}
             <Text style={[styles.genericTeaTitle, { color: colors.textPrimary }]}>
-              {room?.roomTitle ?? 'Wild Cards'}
+              {room?.roomTitle ?? categoryTheme.label}
             </Text>
             <Text style={[styles.genericTeaSubtitle, { color: colors.textSecondary }]}>
               {room?.question ?? 'Prediction summary'}
@@ -546,6 +605,15 @@ export default function ResultScreen({ navigation, route }: Props) {
           {featureFlags.momentCardExport ? (
             <PrimaryButton label="Share Moment Card" onPress={shareMomentCard} variant="secondary" icon="✨" />
           ) : null}
+          {isCreator ? (
+            <PrimaryButton
+              label={isDeletingRoom ? 'Deleting room…' : 'Delete room'}
+              onPress={handleDeleteRoom}
+              variant="secondary"
+              icon="🗑️"
+              disabled={isDeletingRoom}
+            />
+          ) : null}
           <PrimaryButton label="Back to Home" onPress={() => navigation.navigate('Home')} variant="secondary" icon="🏠" />
         </View>
       </ScrollView>
@@ -573,7 +641,7 @@ function prettyCategory(category: string) {
     case 'gym_habit':
       return 'Gym / Habit';
     case 'open_prediction':
-      return 'Wild Cards';
+      return 'Custom Challenge';
     default:
       return 'Arrival Time';
   }
@@ -595,18 +663,36 @@ function formatActualOutcome(result: any) {
   return new Date(result.actualOutcome).toLocaleString();
 }
 
-function buildMomentCardFromResult(result: ResultPayload | undefined, category: string, personality?: string | null) {
+function buildMomentCardFromResult(
+  result: ResultPayload | undefined,
+  category: string,
+  personality?: string | null,
+  subtype?: string | null,
+  subtypeLabel?: string | null,
+) {
   if (result?.momentCard?.badge || result?.momentCard?.shareText) {
     return {
       badge: result.momentCard.badge ?? result.momentCard.titles?.[0] ?? 'Closest Guess',
-      subtitle: result.momentCard.shareText ?? 'Closest guess wins Aura',
+      subtitle: result.momentCard.shareText ?? fallbackOpenPredictionSubtitle(category, subtype),
       commentary: `${personality ?? 'Oracle'} energy says the result is ready to share.`,
     };
   }
-  return buildFallbackMomentCard(category, personality);
+  return buildFallbackMomentCard(category, personality, subtype, subtypeLabel);
 }
 
-function buildFallbackMomentCard(category: string, personality?: string | null) {
+function fallbackOpenPredictionSubtitle(category: string, subtype?: string | null) {
+  if (category !== 'open_prediction') return 'Closest guess wins Aura';
+  return subtype === 'sports'
+    ? 'Match Oracle unlocked. Correct picks earn Aura.'
+    : 'Prediction Pro unlocked. Correct picks earn Aura.';
+}
+
+function buildFallbackMomentCard(
+  category: string,
+  personality?: string | null,
+  subtype?: string | null,
+  subtypeLabel?: string | null,
+) {
   switch (category) {
     case 'weather_rain':
       return {
@@ -634,9 +720,15 @@ function buildFallbackMomentCard(category: string, personality?: string | null) 
       };
     case 'open_prediction':
       return {
-        badge: 'Wild Cards',
-        subtitle: 'Creator-attest MVP lane',
-        commentary: `${personality ?? 'Oracle'} energy says the call is in, and challengers still have a route to contest it.`,
+        badge:
+          subtype === 'sports'
+            ? 'Match Oracle'
+            : subtypeLabel ?? 'Prediction Pro',
+        subtitle: fallbackOpenPredictionSubtitle(category, subtype),
+        commentary:
+          subtype === 'sports'
+            ? `${personality ?? 'Oracle'} energy says the final whistle is in and the right call just earned Aura.`
+            : `${personality ?? 'Oracle'} energy says the result is in and the right call just earned Aura.`,
       };
     default:
       return {
@@ -667,6 +759,14 @@ const styles = StyleSheet.create({
   storyQuote: { fontSize: 14, lineHeight: 20, fontStyle: 'italic' },
   storySupport: { fontSize: 13, lineHeight: 19 },
   genericTeaCard: { borderRadius: 20, borderWidth: 1, padding: 18, gap: 12 },
+  subtypeChip: {
+    alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  subtypeChipText: { fontSize: 12, fontWeight: '900', letterSpacing: 0.4 },
   genericTeaTitle: { fontSize: 20, fontWeight: '900' },
   genericTeaSubtitle: { fontSize: 13, lineHeight: 19 },
   genericSummaryWrap: { gap: 8 },

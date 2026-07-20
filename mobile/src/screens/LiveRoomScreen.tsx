@@ -12,7 +12,11 @@ import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import api, { getApiErrorMessage } from '../services/api';
 import appAlert from '../utils/appAlert';
-import { getCategoryTheme } from '../config/categoryTheme';
+import {
+  getRoomTheme,
+  resolveRoomSubtype,
+  getOpenPredictionSubtypeConfig,
+} from '../config/categoryTheme';
 import LiveStatusCard from '../components/LiveStatusCard';
 import CoachMark from '../components/CoachMark';
 import ArrivalWaitingRoom from '../components/ArrivalWaitingRoom';
@@ -461,8 +465,14 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
             { key: 'rain_after_6', label: 'Yes, after 6 PM' },
           ];
 
-  const categoryTheme = getCategoryTheme(category);
   const isGenericRoom = category === 'open_prediction';
+  const categoryTheme = getRoomTheme(room ?? { category });
+  const openPredictionSubtype = isGenericRoom
+    ? resolveRoomSubtype({ category, subtype: room?.subtype, scoringRule: room?.scoringRule })
+    : null;
+  const openPredictionConfig = openPredictionSubtype
+    ? getOpenPredictionSubtypeConfig(openPredictionSubtype)
+    : null;
 
   const visibleOptionPredictions = predictions.filter(
     (entry) => entry.status === 'visible' && !!entry.selectedOptionKey,
@@ -686,7 +696,9 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
                 ? `${lockCountdownLabel} — get your guess in before it closes.`
                 : 'Lock in your guess before predictions close.'
               : phase === 'locked'
-                ? 'Guesses are locked in — no more changes. Now we watch.'
+                ? isGenericRoom && openPredictionConfig
+                  ? openPredictionConfig.liveCopy
+                  : 'Guesses are locked in — no more changes. Now we watch.'
                 : isGenericRoom
                   ? 'Voting is live. Make your call before the timer ends.'
                   : 'Guesses are locked. Live progress is rolling in below.'}
@@ -760,7 +772,22 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
 
       {isGenericRoom ? (
         <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <Text style={[styles.creatorTitle, { color: colors.textPrimary }]}>{room?.roomTitle ?? 'Wild Cards'}</Text>
+          {openPredictionConfig ? (
+            <View
+              style={[
+                styles.subtypeChip,
+                {
+                  backgroundColor: openPredictionConfig.theme.badgeStyle.bg,
+                  borderColor: openPredictionConfig.theme.badgeStyle.border,
+                },
+              ]}
+            >
+              <Text style={[styles.subtypeChipText, { color: openPredictionConfig.theme.badgeStyle.text }]}>
+                {openPredictionConfig.theme.icon} {openPredictionConfig.theme.label}
+              </Text>
+            </View>
+          ) : null}
+          <Text style={[styles.creatorTitle, { color: colors.textPrimary }]}>{room?.roomTitle ?? categoryTheme.label}</Text>
           {room?.question ? (
             <Text style={[styles.startDelayCopy, { color: colors.textSecondary }]}>
               {room.question}
@@ -1028,6 +1055,19 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
 const styles = StyleSheet.create({
   container: { flexGrow: 1, width: '100%', maxWidth: 880, alignSelf: 'center', padding: 20, paddingTop: 28 },
   liveHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
+  subtypeChip: {
+    alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    marginBottom: 10,
+  },
+  subtypeChipText: {
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 0.4,
+  },
   liveDot: { width: 10, height: 10, borderRadius: 5, marginRight: 6 },
   liveText: { fontWeight: '900', fontSize: 14, letterSpacing: 2 },
   heading: { fontWeight: '700', fontSize: 18 },

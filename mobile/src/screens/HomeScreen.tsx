@@ -29,7 +29,7 @@ import CategoryTile from '../components/CategoryTile';
 import CategoryVotePrompt from '../components/CategoryVotePrompt';
 import SectionHeader from '../components/SectionHeader';
 import EmptyState from '../components/EmptyState';
-import { CATEGORY_LIST, CategoryTheme } from '../config/categoryTheme';
+import { CATEGORY_LIST, CategoryTheme, getOpenPredictionSubtypeConfig } from '../config/categoryTheme';
 import { featureFlags, isCategoryEnabled } from '../config/featureFlags';
 import { voteCategoryInterest } from '../utils/categoryInterest';
 import { palette } from '../theme/designSystem';
@@ -83,7 +83,7 @@ const waysToPlay = [
   { label: 'Food', icon: '🍕', tint: '#f97316' },
   { label: 'Gym', icon: '🏋️', tint: '#16a34a' },
   { label: 'Friends', icon: '👥', tint: '#06B6D4' },
-  { label: 'Sports', icon: '🏆', tint: '#d97706' },
+  { label: 'Sports', icon: '⚽', tint: '#d97706' },
 ];
 
 export default function HomeScreen({ navigation, route }: Props) {
@@ -106,18 +106,8 @@ export default function HomeScreen({ navigation, route }: Props) {
   const userName = user?.name;
   const demoAccount = isDemoAccount(user);
   const showDemoHub = !demoAccount || demoHubExpanded;
-  const sportsCategoryTheme: CategoryTheme = {
-    key: 'open_prediction',
-    label: 'Sports',
-    icon: '⚽',
-    primaryColor: '#f59e0b',
-    secondaryColor: '#ef4444',
-    gradient: ['#f59e0b', '#ef4444'],
-    badgeStyle: { bg: 'rgba(245,158,11,0.2)', border: 'rgba(245,158,11,0.45)', text: '#fde68a' },
-    emptyStateCopy: 'Kick off a sports prediction like Argentina vs Spain and add more teams or players.',
-    resultTitle: 'Sports reveal',
-    quickStartLabel: 'Sports',
-  };
+  // Single source of truth — the Sports theme lives in categoryTheme.ts.
+  const sportsCategoryTheme: CategoryTheme = getOpenPredictionSubtypeConfig('sports').theme;
 
   useEffect(() => {
     fetchUnreadNotificationCount()
@@ -524,8 +514,8 @@ export default function HomeScreen({ navigation, route }: Props) {
               }
               const enabled = isCategoryEnabled(theme.key);
               const presetCategory = (
-                ['arrival_time', 'food_eta', 'open_prediction', 'gym_habit'] as const
-              ).includes(theme.key as CreateRoomPresetCategory)
+                ['arrival_time', 'food_eta', 'open_prediction', 'gym_habit'] as string[]
+              ).includes(theme.key)
                 ? (theme.key as CreateRoomPresetCategory)
                 : undefined;
               return (

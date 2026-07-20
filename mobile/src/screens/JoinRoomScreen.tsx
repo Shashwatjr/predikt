@@ -12,7 +12,7 @@ import api, { getApiErrorMessage, setAuthToken } from '../services/api';
 import { savePendingJoinCode } from '../utils/inviteIntent';
 import { setPostAuthIntent } from '../utils/postAuthIntent';
 import { createGuestSession } from '../services/guestSession';
-import { getCategoryTheme } from '../config/categoryTheme';
+import { getRoomTheme } from '../config/categoryTheme';
 import SectionHeader from '../components/SectionHeader';
 import { deriveArrivalBenchmarks, formatClock } from '../utils/benchmarks';
 import { buildSharePayload } from '../utils/shareRoom';
@@ -124,9 +124,11 @@ export default function JoinRoomScreen({ navigation, route }: Props) {
   const isJoinable = canPredictNow || !!(normalizedStatus && ctaLabel[normalizedStatus]);
 
   const benchmarks = deriveArrivalBenchmarks(room);
-  const categoryTheme = getCategoryTheme(room?.category ?? room?.templateKey);
+  const categoryTheme = getRoomTheme(room ?? {});
   const isGenericRoom = (room?.category ?? room?.templateKey) === 'open_prediction';
-  const roomTitle = room?.title ?? room?.roomTitle ?? (isGenericRoom ? 'A Wild Cards room' : 'A PREDIKT challenge');
+  const genericRoomLabel = categoryTheme.label; // subtype-aware: Custom Challenge or Sports
+  const roomTitle =
+    room?.title ?? room?.roomTitle ?? (isGenericRoom ? `A ${genericRoomLabel} room` : 'A PREDIKT challenge');
   const sharePayload = useMemo(
     () => (room ? buildSharePayload({ ...room, roomTitle, inviteCode: room.inviteCode ?? code }) : null),
     [room, roomTitle, code],
@@ -185,7 +187,7 @@ export default function JoinRoomScreen({ navigation, route }: Props) {
               <Text style={styles.heroIcon}>{categoryTheme.icon}</Text>
               <Text style={styles.heroCategory}>{categoryTheme.label}</Text>
             </View>
-            <Text style={styles.heroEyebrow}>{isGenericRoom ? "You're invited to Wild Cards" : "You're invited to predict"}</Text>
+            <Text style={styles.heroEyebrow}>{isGenericRoom ? `You're invited to ${genericRoomLabel}` : "You're invited to predict"}</Text>
             <Text style={styles.heroTitle}>{roomTitle}</Text>
             {room.question ? <Text style={styles.heroQuestion}>{room.question}</Text> : null}
             <View style={styles.socialProofPill}>
@@ -212,7 +214,7 @@ export default function JoinRoomScreen({ navigation, route }: Props) {
             <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
               <Text style={[styles.shareTitle, { color: colors.textPrimary }]}>Forward this room</Text>
               <Text style={[styles.shareCopy, { color: colors.textSecondary }]}>
-                Anyone you forward this to joins the same Wild Cards room with the same countdown and lock time.
+                Anyone you forward this to joins the same {genericRoomLabel} room with the same countdown and lock time.
               </Text>
               <View style={styles.shareActions}>
                 <View style={styles.shareAction}>
@@ -290,7 +292,7 @@ export default function JoinRoomScreen({ navigation, route }: Props) {
           </View>
           <Text style={styles.finderNote}>
             {isGenericRoom
-              ? 'No account needed to join Wild Cards. The host attests the result, and challengers can request proof through WhatsApp.'
+              ? `No account needed to join ${genericRoomLabel}. The host attests the result, and challengers can request proof through WhatsApp.`
               : 'No account needed to play. Your guess is saved, and you can claim your Aura later.'}
           </Text>
         </>

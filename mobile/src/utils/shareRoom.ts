@@ -1,4 +1,5 @@
 import { Platform } from 'react-native';
+import { getRoomTheme } from '../config/categoryTheme';
 
 type SafePreview = {
   roomTitle?: string;
@@ -8,6 +9,8 @@ type SafePreview = {
   category?: string;
   templateKey?: string;
   roomCategory?: string;
+  subtype?: string | null;
+  scoringRule?: any;
   inviteCode?: string;
   predictionCloseTime?: string;
   lockTime?: string;
@@ -38,7 +41,9 @@ function safeChallengeLine(room: SafePreview) {
   const category = room.category ?? room.templateKey;
   if (category === 'weather_rain') return 'Beat the Forecast with me.';
   if (category === 'food_eta') return 'Beat the ETA with me.';
-  if (category === 'open_prediction') return 'Join my Wild Cards room and make your call.';
+  if (category === 'open_prediction') {
+    return `Join my ${getRoomTheme(room).label} room and make your call.`;
+  }
   if (category === 'whos_late') return 'Friendly group arrival challenge.';
   if (category === 'gym_habit') return 'Positive habit challenge.';
   if (room.routeSummary) {

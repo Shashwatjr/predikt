@@ -9,6 +9,7 @@ import { useTheme } from '../context/ThemeContext';
 import TextInputField from '../components/TextInputField';
 import api from '../services/api';
 import { buildManualWhatsAppUrl, buildSharePayload, isValidManualPhone } from '../utils/shareRoom';
+import { getRoomTheme } from '../config/categoryTheme';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'RoomCreated'>;
@@ -27,6 +28,8 @@ export default function RoomCreatedScreen({ navigation, route }: Props) {
   const creationMeta = room.scoringRule?.creationMeta ?? room.creationMeta ?? {};
   const category = room.category ?? creationMeta.category ?? room.templateKey;
   const isGenericRoom = category === 'open_prediction';
+  // Subtype-aware label (Custom Challenge or Sports) from the single source of truth.
+  const genericRoomLabel = getRoomTheme(room).label;
   const forecastSnapshot = room.baselineSnapshot ?? creationMeta.baselineSnapshot;
   const oracleBotPrediction = room.oracleBotPrediction ?? creationMeta.oracleBotPrediction;
   const expectedDurationMinutes = Math.round((room.expectedDurationSeconds ?? room.route?.estimatedDurationSeconds ?? room.journeyRoute?.estimatedDurationSeconds ?? 3600) / 60);
@@ -118,7 +121,7 @@ export default function RoomCreatedScreen({ navigation, route }: Props) {
               {isGroupJourney
                 ? 'Invite friends to join, opt in as travellers, and predict each other’s arrival time.'
                 : isGenericRoom
-                  ? 'Share the Wild Cards link below. Friends can join, predict, forward it onward, and challenge the attested result if needed.'
+                  ? `Share the ${genericRoomLabel} link below. Friends can join, predict, forward it onward, and challenge the attested result if needed.`
                   : 'Share the code below. Friends can join from the link and predict right away.'}
             </Text>
           </View>
@@ -161,7 +164,7 @@ export default function RoomCreatedScreen({ navigation, route }: Props) {
         <Text style={styles.code}>{inviteCode}</Text>
         <Text style={styles.codeHint}>
           {isGenericRoom
-            ? 'Anyone with this code can join Wild Cards. MVP rule: creator-attest result, Gems/Rizz framing, no screenshot proof upload.'
+            ? `Anyone with this code can join ${genericRoomLabel}. MVP rule: creator-attest result, Gems/Rizz framing, no screenshot proof upload.`
             : 'Anyone with this code can open the room and predict. No account needed for the first round.'}
         </Text>
       </LinearGradient>
@@ -179,7 +182,7 @@ export default function RoomCreatedScreen({ navigation, route }: Props) {
         <Text style={[styles.shareTitle, { color: colors.textPrimary }]}>Invite friends</Text>
         <Text style={[styles.shareCopy, { color: colors.textSecondary }]}>
           {isGenericRoom
-            ? 'Send the link once. Friends can join Wild Cards, pick a name, make their call, and forward the same room onward before lock.'
+            ? `Send the link once. Friends can join ${genericRoomLabel}, pick a name, make their call, and forward the same room onward before lock.`
             : 'Send the link once. Friends land straight in the join flow, pick a name, and make their guess.'}
         </Text>
         <View style={styles.shareActions}>
