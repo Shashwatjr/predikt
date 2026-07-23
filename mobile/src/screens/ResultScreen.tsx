@@ -6,6 +6,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { RootStackParamList } from '../navigation/types';
 import LeaderboardList from '../components/LeaderboardList';
 import PrimaryButton from '../components/PrimaryButton';
+import DeleteRoomButton from '../components/DeleteRoomButton';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import api, { getApiErrorMessage } from '../services/api';
@@ -54,7 +55,6 @@ export default function ResultScreen({ navigation, route }: Props) {
   const [badges, setBadges] = useState<RoomBadge[]>([]);
   const [selectedReaction, setSelectedReaction] = useState<string | null>(null);
   const [isRematching, setIsRematching] = useState(false);
-  const [isDeletingRoom, setIsDeletingRoom] = useState(false);
   const [lineCopied, setLineCopied] = useState(false);
   const [predictions, setPredictions] = useState<RoomPredictionEntry[]>(
     (initialResult?.predictionEntries as RoomPredictionEntry[] | undefined) ?? [],
@@ -225,7 +225,7 @@ export default function ResultScreen({ navigation, route }: Props) {
 
   async function shareMomentCard() {
     await shareMoment({
-      title: `☕ The Tea • ${room?.roomTitle ?? 'PREDIKT'}`,
+      title: `☕ The Tea • ${room?.roomTitle ?? 'My Prediktion'}`,
       subtitle: momentCard.subtitle,
       category: categoryLabel,
       winner: winnerHandle,
@@ -235,7 +235,7 @@ export default function ResultScreen({ navigation, route }: Props) {
       oracleLabel: oracleBotLabel,
       badge: badgeUnlocked,
       commentary: commentary?.punchline ?? momentCard.commentary,
-      cta: 'Join the next PREDIKT',
+      cta: 'Join the next Prediktion',
       linkLabel: 'Run it back?',
     });
     await api.post('/events', { eventType: 'moment_card_shared', metadata: { roomId, category: categoryKey } }).catch(() => undefined);
@@ -276,32 +276,6 @@ export default function ResultScreen({ navigation, route }: Props) {
     navigation.navigate('CreateRoom');
   }
 
-  async function handleDeleteRoom() {
-    if (isDeletingRoom) return;
-    appAlert(
-      'Delete this room?',
-      'This permanently removes this older room and its results from your account view.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete room',
-          style: 'destructive',
-          onPress: async () => {
-            setIsDeletingRoom(true);
-            try {
-              await api.delete(`/rooms/${roomId}`);
-              navigation.navigate('Home');
-            } catch (error) {
-              appAlert('Delete unavailable', getApiErrorMessage(error, 'We could not delete this room right now.'));
-            } finally {
-              setIsDeletingRoom(false);
-            }
-          },
-        },
-      ],
-    );
-  }
-
   async function handleChallengeResult() {
     try {
       const response = await api.post(`/rooms/${roomId}/disputes`, {
@@ -334,7 +308,10 @@ export default function ResultScreen({ navigation, route }: Props) {
   const genericCategoryKey =
     room?.category ?? room?.creationMeta?.category ?? room?.templateKey ?? categoryKey;
   const isGenericRoom = genericCategoryKey === 'open_prediction';
-  const isCreator = !!user?.userId && !!room?.creatorUserId && user.userId === room.creatorUserId;
+  const isCreator =
+    room?.viewerIsCreator === true ||
+    (!!user?.userId &&
+      (user.userId === room?.creatorUserId || user.userId === room?.creator?.userId));
   const genericOptions =
     Array.isArray(room?.scoringRule?.weatherOptions)
       ? room.scoringRule.weatherOptions.map((option: any) => ({
@@ -462,7 +439,7 @@ export default function ResultScreen({ navigation, route }: Props) {
           </View>
         ) : (
           <TeaCard
-            roomTitle={room?.roomTitle ?? 'PREDIKT Moment'}
+            roomTitle={room?.roomTitle ?? 'Prediktion Moment'}
             category={categoryTheme}
             winnerHandle={winnerHandle}
             neutral={isNeutralClosure}
@@ -486,7 +463,7 @@ export default function ResultScreen({ navigation, route }: Props) {
 
         {!isGenericRoom ? (
           <MomentCard
-            title={room?.roomTitle ?? 'PREDIKT Moment'}
+            title={room?.roomTitle ?? 'Prediktion Moment'}
             subtitle={momentCard.subtitle}
             badge={badgeUnlocked}
             category={categoryLabel}
@@ -496,7 +473,7 @@ export default function ResultScreen({ navigation, route }: Props) {
             differenceLabel={differenceLabel}
             oracleLabel={oracleBotLabel}
             commentary={commentary?.punchline ?? momentCard.commentary}
-            cta="Join the next PREDIKT"
+            cta="Join the next Prediktion"
           />
         ) : null}
 
@@ -597,6 +574,13 @@ export default function ResultScreen({ navigation, route }: Props) {
         ) : null}
 
         <View style={styles.ctaStack}>
+          {isCreator ? (
+            <DeleteRoomButton
+              roomId={roomId}
+              deletable={room?.deletable}
+              onDeleted={() => navigation.navigate('Home')}
+            />
+          ) : null}
           {!isGenericRoom ? (
             <PrimaryButton label={isRematching ? 'Running it back…' : 'Run it back'} onPress={handleRematch} icon="🔁" disabled={isRematching} />
           ) : null}
@@ -605,15 +589,6 @@ export default function ResultScreen({ navigation, route }: Props) {
           ) : null}
           {featureFlags.momentCardExport ? (
             <PrimaryButton label="Share Moment Card" onPress={shareMomentCard} variant="secondary" icon="✨" />
-          ) : null}
-          {isCreator ? (
-            <PrimaryButton
-              label={isDeletingRoom ? 'Deleting room…' : 'Delete room'}
-              onPress={handleDeleteRoom}
-              variant="secondary"
-              icon="🗑️"
-              disabled={isDeletingRoom}
-            />
           ) : null}
           <PrimaryButton label="Back to Home" onPress={() => navigation.navigate('Home')} variant="secondary" icon="🏠" />
         </View>

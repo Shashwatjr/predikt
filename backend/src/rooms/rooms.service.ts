@@ -151,22 +151,22 @@ export function deriveRoomSubtype(room: {
 function categoryResultShareText(category: string, inviteCode: string) {
   switch (category) {
     case 'weather_rain':
-      return 'I beat the forecast on PREDIKT. Rain Oracle unlocked.';
+      return 'I beat the forecast on My Prediktion. Rain Oracle unlocked.';
     case 'food_eta':
-      return 'I called the delivery ETA closest on PREDIKT.';
+      return 'I called the delivery ETA closest on My Prediktion.';
     case 'arrival_time':
       return 'Route Oracle unlocked. Closest guess wins Aura.';
     case 'whos_late':
       return 'Time Oracle unlocked. Group chaos, friendly only.';
     case 'gym_habit':
-      return 'Consistency Streak unlocked on PREDIKT.';
+      return 'Consistency Streak unlocked on My Prediktion.';
     default:
       return `Predict what happens next with code ${inviteCode}.`;
   }
 }
 
 function buildPinnedComment(inviteCode: string) {
-  return `Join my PREDIKT room. Code: ${inviteCode}. Predict my next milestone. Exact location is hidden for safety.`;
+  return `Join my Prediktion room. Code: ${inviteCode}. Predict my next milestone. Exact location is hidden for safety.`;
 }
 
 function buildShareKit(room: any) {
@@ -181,7 +181,7 @@ function buildShareKit(room: any) {
       `Predict what’s next in ${room.roomTitle}. Code: ${room.inviteCode}`,
     facebookPostText:
       room.facebookPostText ??
-      `Predict what’s next with me on PREDIKT. Join with code ${room.inviteCode}.`,
+      `Predict what’s next with me on My Prediktion. Join with code ${room.inviteCode}.`,
     qrCodePayload: room.qrCodePayload ?? `PREDIKT:${room.inviteCode}`,
     resultShareText:
       room.resultShareText ??
@@ -383,7 +383,7 @@ function buildShareCopy(room: any, inviteUrl: string) {
   const question = buildInviteQuestion(room);
   const category = room.category ?? room.templateKey;
   const lines = [
-    `Join my PREDIKT room: ${room.roomTitle}`,
+    `Join my Prediktion room: ${room.roomTitle}`,
     category === 'weather_rain'
       ? 'Beat the Forecast with me.'
       : room.roomCategory === 'journey' || room.roomCategory === 'delivery'
@@ -411,6 +411,10 @@ function safeRoomSummary(room: any) {
 
 @Injectable()
 export class RoomsService {
+  // Cooling-off window before a multi-participant terminal room can be deleted —
+  // gives friends time to see the result.
+  private static readonly DELETE_COOLING_OFF_MS = 24 * 60 * 60 * 1000;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
@@ -929,6 +933,8 @@ export class RoomsService {
       return {
         ...room,
         subtype,
+        viewerIsCreator: true,
+        deletable: await this.computeDeletable(room, true),
         creator: safePublicUser(room.creator),
         milestones: safeMilestones(room.milestones),
         route: room.journeyRoute,
@@ -964,6 +970,8 @@ export class RoomsService {
     return {
       ...safeRoomProjection({ ...safe, journeyRoute }, { includeInviteCode: true }),
       subtype,
+      viewerIsCreator: false,
+      deletable: { canDelete: false, availableAt: null, reason: null },
       milestones: safeMilestones(milestones),
       creator: safePublicUser(room.creator),
       benchmarks: buildArrivalBenchmarks({ ...safe, journeyRoute }),
@@ -1140,21 +1148,34 @@ export class RoomsService {
         roomTitle: true,
         creatorUserId: true,
         status: true,
+        cancelledAt: true,
+        autoClosedAt: true,
+        abandonedAt: true,
+        actualEndTime: true,
+        arrivalConfirmedAt: true,
+        updatedAt: true,
         rematches: { select: { roomId: true } },
       },
     });
     if (!room) throw new NotFoundException('Room not found');
+    // Non-creator → 403. Only the creator can ever delete.
     if (room.creatorUserId !== requestingUser.userId) {
       throw new ForbiddenException('Only the creator can delete this room.');
     }
-    // Only terminal rooms are deletable; an in-flight room is a state conflict (409).
-    if (!['completed', 'cancelled'].includes(room.status)) {
-      throw new ConflictException('Only completed or cancelled rooms can be deleted.');
-    }
     // A room that has spawned rematches/successors is a linked parent — deleting it
-    // would orphan its successors, so this is likewise a state conflict (409).
+    // would orphan its successors, so this is a state conflict (409).
     if (room.rematches.length) {
       throw new ConflictException('This room has rematches or linked successors and cannot be deleted.');
+    }
+
+    // Creator-only deletion rule: solo rooms delete immediately in any state;
+    // multi-participant rooms delete only after a 24h cooling-off once terminal.
+    // A blocked delete is a state conflict (409) carrying the precise reason.
+    const deletable = await this.computeDeletable(room, true);
+    if (!deletable.canDelete) {
+      throw new ConflictException(
+        deletable.reason ?? 'This room cannot be deleted right now.',
+      );
     }
 
     await this.prisma.$transaction(async (tx) => {
@@ -1197,10 +1218,109 @@ export class RoomsService {
       await tx.milestonePrediction.deleteMany({ where: { roomId } });
       await tx.journeyRoute.deleteMany({ where: { roomId } });
       await tx.roomMilestone.deleteMany({ where: { roomId } });
+      // Telemetry rows are room-scoped and carry no FK, so they would otherwise
+      // become orphaned pointers at a dead room_id — delete them explicitly.
+      await tx.activityEvent.deleteMany({ where: { roomId } });
+      // Support feedback is user-owned (not room-scoped) but may reference a
+      // room; keep the record for support history and null the dangling pointer.
+      await tx.userFeedback.updateMany({ where: { roomId }, data: { roomId: null } });
       await tx.predictionRoom.delete({ where: { roomId } });
     });
 
     return { success: true, roomId };
+  }
+
+  // Terminal state timestamp used to gate the 24h cooling-off for
+  // multi-participant deletes. Falls back through related close markers, then
+  // updatedAt, so a terminal room always has a defined reference point.
+  private terminalStateAt(room: {
+    status: string;
+    cancelledAt?: Date | null;
+    autoClosedAt?: Date | null;
+    abandonedAt?: Date | null;
+    actualEndTime?: Date | null;
+    arrivalConfirmedAt?: Date | null;
+    updatedAt?: Date | null;
+  }): Date | null {
+    if (room.status === 'cancelled') {
+      return room.cancelledAt ?? room.autoClosedAt ?? room.abandonedAt ?? room.updatedAt ?? null;
+    }
+    if (room.status === 'completed') {
+      return room.actualEndTime ?? room.arrivalConfirmedAt ?? room.updatedAt ?? null;
+    }
+    return null;
+  }
+
+  // Single source of truth for "can this viewer delete this room right now?",
+  // shared by DELETE /rooms/:id enforcement and the GET projection's
+  // `deletable` object so the button state and the server rule never diverge.
+  //   - Solo (no non-creator predictions): deletable in any state, immediately.
+  //   - Multi-participant + active: blocked; steer to cancel.
+  //   - Multi-participant + terminal: deletable 24h after the terminal state.
+  // "Multi-participant" = ≥1 MilestonePrediction by a non-creator; mere room
+  // membership does not count.
+  private async computeDeletable(
+    room: {
+      roomId: string;
+      creatorUserId: string;
+      status: string;
+      cancelledAt?: Date | null;
+      autoClosedAt?: Date | null;
+      abandonedAt?: Date | null;
+      actualEndTime?: Date | null;
+      arrivalConfirmedAt?: Date | null;
+      updatedAt?: Date | null;
+    },
+    isCreator: boolean,
+  ): Promise<{ canDelete: boolean; availableAt: string | null; reason: string | null }> {
+    // Non-creators never see a delete affordance.
+    if (!isCreator) {
+      return { canDelete: false, availableAt: null, reason: null };
+    }
+
+    const otherPredictions = await this.prisma.milestonePrediction.count({
+      where: { roomId: room.roomId, userId: { not: room.creatorUserId } },
+    });
+    const multiParticipant = otherPredictions > 0;
+
+    // Solo → delete anytime, immediately.
+    if (!multiParticipant) {
+      return { canDelete: true, availableAt: null, reason: null };
+    }
+
+    const isTerminal = room.status === 'completed' || room.status === 'cancelled';
+    // Multi-participant + active → block, steer to cancel.
+    if (!isTerminal) {
+      return {
+        canDelete: false,
+        availableAt: null,
+        reason:
+          "You can cancel this room, but can't delete it while friends have predictions in play.",
+      };
+    }
+
+    // Multi-participant + terminal → 24h cooling-off from the terminal state.
+    const terminalAt = this.terminalStateAt(room);
+    const availableAtMs =
+      (terminalAt?.getTime() ?? Date.now()) + RoomsService.DELETE_COOLING_OFF_MS;
+    const availableAt = new Date(availableAtMs);
+    const availableAtIso = availableAt.toISOString();
+
+    if (Date.now() >= availableAtMs) {
+      return { canDelete: true, availableAt: availableAtIso, reason: null };
+    }
+
+    const formatted =
+      availableAt.toLocaleString('en-US', {
+        timeZone: 'UTC',
+        dateStyle: 'medium',
+        timeStyle: 'short',
+      }) + ' UTC';
+    return {
+      canDelete: false,
+      availableAt: availableAtIso,
+      reason: `You can delete this room after ${formatted}. Give friends time to see the result.`,
+    };
   }
 
   async ensureJoinedMembership(roomId: string, user: User) {

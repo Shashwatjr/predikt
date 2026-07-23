@@ -6,6 +6,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Location from 'expo-location';
 import { RootStackParamList } from '../navigation/types';
 import PrimaryButton from '../components/PrimaryButton';
+import DeleteRoomButton from '../components/DeleteRoomButton';
 import ArrivalJourneyViz from '../components/ArrivalJourneyViz';
 import FoodEtaViz from '../components/FoodEtaViz';
 import { useTheme } from '../context/ThemeContext';
@@ -64,7 +65,7 @@ const startDelayOptions = [3, 5, 10, 15] as const;
 export default function LiveRoomScreen({ navigation, route }: Props) {
   const { colors } = useTheme();
   const { user } = useAuth();
-  const { roomId, isCreator, justPredicted } = route.params;
+  const { roomId, isCreator: isCreatorParam, justPredicted } = route.params;
   const [showLockedReassurance, setShowLockedReassurance] = useState(!!justPredicted);
   const [liveState, setLiveState] = useState<LiveState | null>(null);
   const [room, setRoom] = useState<any | null>(null);
@@ -87,6 +88,11 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
   const sampledCheckpoints = useRef<Set<number>>(new Set());
   const firedMilestones = useRef<Set<number>>(new Set());
   const viewerCountdownInterval = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isCreator =
+    !!isCreatorParam ||
+    room?.viewerIsCreator === true ||
+    (!!user?.userId &&
+      (user.userId === room?.creatorUserId || user.userId === room?.creator?.userId));
 
   // Pulsing LIVE dot animation
   const pulse = useRef(new Animated.Value(1)).current;
@@ -383,7 +389,7 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
       const res = await api.post(`/rooms/${roomId}/journey/cancel`, { reasonCode: 'plan_changed' });
       navigation.navigate('Result', { roomId, result: res.data });
     } catch (err: unknown) {
-      Alert.alert('Cancel failed', getApiErrorMessage(err, 'Could not close this journey fairly.'));
+      appAlert('Cancel failed', getApiErrorMessage(err, 'Could not close this journey fairly.'));
     } finally {
       setCancelling(false);
     }
@@ -629,7 +635,7 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
         ]}
       >
         <ArrivalWaitingRoom
-          title={room?.roomTitle ?? 'Arrival PREDIKT'}
+          title={room?.roomTitle ?? 'Arrival Prediktion'}
           statusLabel="Started"
           targetTime={waitingTargetTime}
           startLabel={room?.startingPointLabel ?? room?.routeSummary?.startLabel ?? 'Start'}
@@ -665,7 +671,7 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
           <Text style={styles.terminalTitle}>{isDraw ? '🏁 Called a draw' : "🏁 It's a wrap!"}</Text>
           <Text style={styles.terminalCopy}>
             {isDraw
-              ? 'This PREDIKT closed neutrally — nobody counted as a loss. Here’s the recap.'
+              ? 'This Prediktion closed neutrally — nobody counted as a loss. Here’s the recap.'
               : 'Predictions are in and the result is ready. See who made the closest guess.'}
           </Text>
           <PrimaryButton
@@ -807,7 +813,7 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
       ) : (
         <LiveStatusCard
           theme={categoryTheme}
-          title={room?.roomTitle ?? (category === 'weather_rain' ? 'Weather Room' : 'Live PREDIKT')}
+          title={room?.roomTitle ?? (category === 'weather_rain' ? 'Weather Room' : 'Live Prediktion')}
           statusLabel={(liveState?.journeyStatus ?? liveState?.status ?? 'live').replace(/_/g, ' ')}
           statusTone="live"
           progress={category !== 'weather_rain' ? pct : undefined}
@@ -1015,6 +1021,11 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
               ))}
             </View>
             <PrimaryButton label={category === 'open_prediction' ? 'Submit' : 'Declare Result & See Winners'} onPress={handleEndRoom} loading={ending} icon="🏁" />
+            <DeleteRoomButton
+              roomId={roomId}
+              deletable={room?.deletable}
+              onDeleted={() => navigation.navigate('Home')}
+            />
           </View>
         </View>
       ) : null}
@@ -1036,6 +1047,11 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
             <PrimaryButton label="Confirm Arrival" onPress={handleConfirmArrival} loading={confirmingArrival} icon="✅" />
             <PrimaryButton label="Cancel / Plan Changed" onPress={handleCancelJourney} loading={cancelling} variant="secondary" icon="🛑" />
             <PrimaryButton label="End Room & See Results" onPress={handleEndRoom} loading={ending} variant="danger" icon="🏁" />
+            <DeleteRoomButton
+              roomId={roomId}
+              deletable={room?.deletable}
+              onDeleted={() => navigation.navigate('Home')}
+            />
           </View>
         </View>
       ) : null}

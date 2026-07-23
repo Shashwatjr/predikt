@@ -373,23 +373,31 @@ describe('RoomsService.deleteRoom', () => {
     'roomMembership', 'roomCommentary', 'campaignMetric', 'roomDropRule', 'userDrop',
     'userBadge', 'userFlex', 'userReliabilityLedger', 'creditLedger', 'cloutTransaction',
     'auraTransaction', 'roomResult', 'liveLocationEvent', 'roomCheckpoint',
-    'milestonePrediction', 'journeyRoute', 'roomMilestone',
+    'milestonePrediction', 'journeyRoute', 'roomMilestone', 'activityEvent',
   ];
 
-  function deletePrisma(room: any) {
+  // `otherPredictions` = number of MilestonePredictions by non-creators, which
+  // drives the solo-vs-multi-participant branch of the deletion rule.
+  function deletePrisma(room: any, otherPredictions = 0) {
     const prisma: any = {
       predictionRoom: {
         findUnique: jest.fn().mockResolvedValue(room),
         delete: jest.fn().mockResolvedValue(room),
       },
       auditLog: { create: jest.fn().mockResolvedValue({ auditId: 'audit-1' }) },
+      // Support feedback is preserved (roomId nulled), not deleted.
+      userFeedback: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
     };
     for (const model of CHILD_MODELS) {
       prisma[model] = { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) };
     }
+    // computeDeletable counts non-creator predictions to classify the room.
+    prisma.milestonePrediction.count = jest.fn().mockResolvedValue(otherPredictions);
     prisma.$transaction = jest.fn(async (cb: any) => cb(prisma));
     return prisma;
   }
+
+  const HOUR_MS = 60 * 60 * 1000;
 
   const completedRoom = {
     roomId: 'room-1',
@@ -429,14 +437,82 @@ describe('RoomsService.deleteRoom', () => {
     expect(prisma.predictionRoom.delete).not.toHaveBeenCalled();
   });
 
-  it('rejects deleting an in-flight room with 409', async () => {
-    const prisma = deletePrisma({ ...completedRoom, status: 'live' });
+  // --- Solo (no non-creator predictions): deletable in every state ---
+  it.each([
+    'created',
+    'predictions_open',
+    'predictions_locked',
+    'live',
+    'completed',
+    'cancelled',
+  ])('lets the creator delete a solo room in %s state (immediate)', async (status) => {
+    const prisma = deletePrisma({ ...completedRoom, status }, 0);
+    const service = new RoomsService(prisma, auditService, notificationsService);
+
+    const result = await service.deleteRoom('room-1', { userId: 'creator-1' } as any);
+    expect(result).toEqual({ success: true, roomId: 'room-1' });
+    expect(prisma.predictionRoom.delete).toHaveBeenCalledWith({ where: { roomId: 'room-1' } });
+  });
+
+  // --- Multi-participant + terminal ≥24h: allowed ---
+  it('lets the creator delete a multi-participant room 24h+ after it completed', async () => {
+    const prisma = deletePrisma(
+      { ...completedRoom, status: 'completed', actualEndTime: new Date(Date.now() - 25 * HOUR_MS) },
+      2,
+    );
+    const service = new RoomsService(prisma, auditService, notificationsService);
+
+    const result = await service.deleteRoom('room-1', { userId: 'creator-1' } as any);
+    expect(result).toEqual({ success: true, roomId: 'room-1' });
+    expect(prisma.predictionRoom.delete).toHaveBeenCalledWith({ where: { roomId: 'room-1' } });
+  });
+
+  // --- Multi-participant + active: 409, steer to cancel ---
+  it('rejects deleting a multi-participant active room with the cancel-instead 409', async () => {
+    const prisma = deletePrisma({ ...completedRoom, status: 'live' }, 3);
     const service = new RoomsService(prisma, auditService, notificationsService);
 
     await expect(
       service.deleteRoom('room-1', { userId: 'creator-1' } as any),
+    ).rejects.toThrow("can't delete it while friends have predictions in play");
+    await expect(
+      service.deleteRoom('room-1', { userId: 'creator-1' } as any),
     ).rejects.toBeInstanceOf(ConflictException);
     expect(prisma.predictionRoom.delete).not.toHaveBeenCalled();
+  });
+
+  // --- Multi-participant + terminal <24h: 409 with availableAt ---
+  it('rejects deleting a multi-participant terminal room inside the 24h window', async () => {
+    const prisma = deletePrisma(
+      { ...completedRoom, status: 'completed', actualEndTime: new Date(Date.now() - 2 * HOUR_MS) },
+      2,
+    );
+    const service = new RoomsService(prisma, auditService, notificationsService);
+
+    await expect(
+      service.deleteRoom('room-1', { userId: 'creator-1' } as any),
+    ).rejects.toThrow(/You can delete this room after .*Give friends time to see the result/s);
+    expect(prisma.predictionRoom.delete).not.toHaveBeenCalled();
+  });
+
+  // --- Cascade: solo active-room delete leaves no orphan child rows ---
+  it('purges telemetry and nulls feedback pointers when deleting a solo active room', async () => {
+    const prisma = deletePrisma({ ...completedRoom, status: 'live' }, 0);
+    const service = new RoomsService(prisma, auditService, notificationsService);
+
+    await service.deleteRoom('room-1', { userId: 'creator-1' } as any);
+    // Every room-child table is swept inside the transaction. creditLedger keys
+    // the room on `sourceId` rather than `roomId`.
+    for (const model of CHILD_MODELS) {
+      const expectedWhere =
+        model === 'creditLedger' ? { sourceId: 'room-1' } : { roomId: 'room-1' };
+      expect(prisma[model].deleteMany).toHaveBeenCalledWith({ where: expectedWhere });
+    }
+    expect(prisma.activityEvent.deleteMany).toHaveBeenCalledWith({ where: { roomId: 'room-1' } });
+    expect(prisma.userFeedback.updateMany).toHaveBeenCalledWith({
+      where: { roomId: 'room-1' },
+      data: { roomId: null },
+    });
   });
 
   it('rejects deleting a room that has rematches/linked successors with 409', async () => {
@@ -531,6 +607,85 @@ describe('RoomsService privacy access matrix (findById)', () => {
     const prisma = findByIdPrisma({ visibility: 'public', roomMemberships: [] });
     const service = new RoomsService(prisma, auditService, notificationsService);
     await expect(service.findById('room-1', { userId: 'anyone' } as any)).resolves.toBeTruthy();
+  });
+});
+
+describe('RoomsService deletable projection (findById)', () => {
+  const auditService = { log: jest.fn() } as any;
+  const notificationsService = { create: jest.fn() } as any;
+  const HOUR_MS = 60 * 60 * 1000;
+
+  beforeEach(() => jest.clearAllMocks());
+
+  function deletablePrisma(roomOverrides: any, otherPredictions: number) {
+    return {
+      predictionRoom: {
+        findUnique: jest.fn().mockResolvedValue({
+          ...buildRoom(),
+          creator: {},
+          milestones: [],
+          journeyRoute: null,
+          locationEvents: [],
+          roomMemberships: [],
+          visibility: 'public',
+          ...roomOverrides,
+        }),
+      },
+      milestonePrediction: { count: jest.fn().mockResolvedValue(otherPredictions) },
+    } as any;
+  }
+
+  it('non-creator viewer always gets a locked deletable object', async () => {
+    const prisma = deletablePrisma({ visibility: 'public', status: 'completed' }, 3);
+    const service = new RoomsService(prisma, auditService, notificationsService);
+    const res: any = await service.findById('room-1', { userId: 'viewer-x' } as any);
+    expect(res.viewerIsCreator).toBe(false);
+    expect(res.deletable).toEqual({ canDelete: false, availableAt: null, reason: null });
+  });
+
+  it('solo active → canDelete true, no gate', async () => {
+    const prisma = deletablePrisma({ status: 'live' }, 0);
+    const service = new RoomsService(prisma, auditService, notificationsService);
+    const res: any = await service.findById('room-1', { userId: 'creator-1' } as any);
+    expect(res.deletable).toEqual({ canDelete: true, availableAt: null, reason: null });
+  });
+
+  it('solo terminal → canDelete true, no gate', async () => {
+    const prisma = deletablePrisma(
+      { status: 'completed', actualEndTime: new Date(Date.now() - HOUR_MS) },
+      0,
+    );
+    const service = new RoomsService(prisma, auditService, notificationsService);
+    const res: any = await service.findById('room-1', { userId: 'creator-1' } as any);
+    expect(res.deletable.canDelete).toBe(true);
+  });
+
+  it('multi active → canDelete false with cancel-instead reason, no availableAt', async () => {
+    const prisma = deletablePrisma({ status: 'live' }, 2);
+    const service = new RoomsService(prisma, auditService, notificationsService);
+    const res: any = await service.findById('room-1', { userId: 'creator-1' } as any);
+    expect(res.deletable.canDelete).toBe(false);
+    expect(res.deletable.availableAt).toBeNull();
+    expect(res.deletable.reason).toMatch(/predictions in play/);
+  });
+
+  it('multi terminal-fresh (<24h) → canDelete false with future availableAt', async () => {
+    const endedAt = new Date(Date.now() - 2 * HOUR_MS);
+    const prisma = deletablePrisma({ status: 'completed', actualEndTime: endedAt }, 2);
+    const service = new RoomsService(prisma, auditService, notificationsService);
+    const res: any = await service.findById('room-1', { userId: 'creator-1' } as any);
+    expect(res.deletable.canDelete).toBe(false);
+    expect(new Date(res.deletable.availableAt).getTime()).toBeGreaterThan(Date.now());
+    expect(res.deletable.reason).toMatch(/You can delete this room after/);
+  });
+
+  it('multi terminal-aged (≥24h) → canDelete true with past availableAt', async () => {
+    const endedAt = new Date(Date.now() - 25 * HOUR_MS);
+    const prisma = deletablePrisma({ status: 'completed', actualEndTime: endedAt }, 2);
+    const service = new RoomsService(prisma, auditService, notificationsService);
+    const res: any = await service.findById('room-1', { userId: 'creator-1' } as any);
+    expect(res.deletable.canDelete).toBe(true);
+    expect(new Date(res.deletable.availableAt).getTime()).toBeLessThanOrEqual(Date.now());
   });
 });
 

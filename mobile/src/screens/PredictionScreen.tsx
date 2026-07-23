@@ -5,6 +5,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
 import { RootStackParamList } from '../navigation/types';
 import PrimaryButton from '../components/PrimaryButton';
+import DeleteRoomButton from '../components/DeleteRoomButton';
 import { useTheme } from '../context/ThemeContext';
 import api, { getApiErrorMessage } from '../services/api';
 import InfoTip from '../components/InfoTip';
@@ -23,6 +24,7 @@ import {
 } from '../utils/benchmarks';
 import { botGuessTeaser } from '../utils/botVoice';
 import { layout, palette, radius, spacing } from '../theme/designSystem';
+import { useAuth } from '../context/AuthContext';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Prediction'>;
@@ -47,6 +49,7 @@ function benchmarkChipLabel(b: Benchmark): string {
 
 export default function PredictionScreen({ navigation, route }: Props) {
   const { colors } = useTheme();
+  const { user } = useAuth();
   const { roomId, room: roomParam, editPredictionId } = route.params;
   const [room, setRoom] = useState<any>(roomParam);
   const [loading, setLoading] = useState(false);
@@ -56,6 +59,10 @@ export default function PredictionScreen({ navigation, route }: Props) {
   const [nowTick, setNowTick] = useState<number>(() => Date.now());
   const category = room?.category ?? room?.templateKey ?? roomParam?.category ?? roomParam?.templateKey;
   const isGenericRoom = category === 'open_prediction';
+  const isCreator =
+    room?.viewerIsCreator === true ||
+    (!!user?.userId &&
+      (user.userId === room?.creatorUserId || user.userId === room?.creator?.userId));
 
   const answerType = room?.answerType ?? 'exact_time';
   // Open-prediction rooms are never the arrival/travel experience, even if the
@@ -238,7 +245,7 @@ export default function PredictionScreen({ navigation, route }: Props) {
         Animated.timing(confirmScale, { toValue: 1.05, duration: 120, useNativeDriver: true }),
         Animated.timing(confirmScale, { toValue: 1, duration: 120, useNativeDriver: true }),
       ]).start(() => {
-        navigation.navigate('LiveRoom', { roomId, isCreator: false, justPredicted: true });
+        navigation.navigate('LiveRoom', { roomId, isCreator, justPredicted: true });
       });
     } catch (err: unknown) {
       appAlert('Could not lock it in', getApiErrorMessage(err, "Your guess wasn't saved — try again."));
@@ -523,6 +530,14 @@ export default function PredictionScreen({ navigation, route }: Props) {
           icon="🎯"
         />
       </Animated.View>
+
+      {isCreator ? (
+        <DeleteRoomButton
+          roomId={roomId}
+          deletable={room?.deletable}
+          onDeleted={() => navigation.navigate('Home')}
+        />
+      ) : null}
     </ScrollView>
   );
 }
