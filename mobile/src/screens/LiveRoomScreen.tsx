@@ -6,7 +6,6 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Location from 'expo-location';
 import { RootStackParamList } from '../navigation/types';
 import PrimaryButton from '../components/PrimaryButton';
-import DeleteRoomButton from '../components/DeleteRoomButton';
 import ArrivalJourneyViz from '../components/ArrivalJourneyViz';
 import FoodEtaViz from '../components/FoodEtaViz';
 import { useTheme } from '../context/ThemeContext';
@@ -1080,11 +1079,6 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
               ))}
             </View>
             <PrimaryButton label={category === 'open_prediction' ? 'Submit' : 'Declare Result & See Winners'} onPress={handleEndRoom} loading={ending} icon="🏁" />
-            <DeleteRoomButton
-              roomId={roomId}
-              deletable={room?.deletable}
-              onDeleted={() => navigation.navigate('Home')}
-            />
           </View>
         </View>
       ) : null}
@@ -1106,11 +1100,6 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
             <PrimaryButton label="Confirm Arrival" onPress={handleConfirmArrival} loading={confirmingArrival} icon="✅" />
             <PrimaryButton label="Cancel / Plan Changed" onPress={handleCancelJourney} loading={cancelling} variant="secondary" icon="🛑" />
             <PrimaryButton label="End Room & See Results" onPress={handleEndRoom} loading={ending} variant="danger" icon="🏁" />
-            <DeleteRoomButton
-              roomId={roomId}
-              deletable={room?.deletable}
-              onDeleted={() => navigation.navigate('Home')}
-            />
           </View>
         </View>
       ) : null}

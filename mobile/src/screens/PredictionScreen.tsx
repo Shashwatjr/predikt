@@ -6,7 +6,6 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
 import { RootStackParamList } from '../navigation/types';
 import PrimaryButton from '../components/PrimaryButton';
-import DeleteRoomButton from '../components/DeleteRoomButton';
 import { useTheme } from '../context/ThemeContext';
 import api, { getApiErrorMessage } from '../services/api';
 import InfoTip from '../components/InfoTip';
@@ -568,13 +567,6 @@ export default function PredictionScreen({ navigation, route }: Props) {
         />
       </Animated.View>
 
-      {isCreator ? (
-        <DeleteRoomButton
-          roomId={roomId}
-          deletable={room?.deletable}
-          onDeleted={() => navigation.navigate('Home')}
-        />
-      ) : null}
     </ScrollView>
   );
 }

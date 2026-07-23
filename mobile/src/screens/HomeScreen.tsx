@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Modal, Pressable } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp, useFocusEffect } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -101,6 +101,7 @@ export default function HomeScreen({ navigation, route }: Props) {
   const [teaVisible, setTeaVisible] = useState(false);
   const [votePromptCategory, setVotePromptCategory] = useState<CategoryTheme | null>(null);
   const [reorderRoomId, setReorderRoomId] = useState<string | null>(null);
+  const [manageRoom, setManageRoom] = useState<any | null>(null);
   const teaTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const summary = dashboard?.summary;
   const userId = user?.userId;
@@ -429,41 +430,11 @@ export default function HomeScreen({ navigation, route }: Props) {
   }
 
   function handleRoomLongPress(room: any) {
-    const options = [
-      {
-        text: 'Shuffle position',
-        onPress: () => setReorderRoomId(room.roomId),
-      },
-      ...(room.isCreator
-        ? [
-            {
-              text: 'Delete room',
-              style: 'destructive' as const,
-              onPress: () => confirmDeleteRoom(room),
-            },
-          ]
-        : []),
-      ...(reorderRoomId === room.roomId
-        ? [
-            {
-              text: 'Done arranging',
-              onPress: () => setReorderRoomId(null),
-            },
-          ]
-        : []),
-      { text: 'Cancel', style: 'cancel' as const },
-    ];
-
-    Alert.alert(
-      'Manage this Prediktion',
-      room.isCreator
-        ? 'Choose whether to rearrange this tile or delete the room.'
-        : 'Choose whether to rearrange this tile.',
-      options,
-    );
+    setManageRoom(room);
   }
 
   function confirmDeleteRoom(room: any) {
+    setManageRoom(null);
     const deletable = room.deletable;
     if (!deletable?.canDelete) {
       const availability = deletable?.availableAt
@@ -500,6 +471,55 @@ export default function HomeScreen({ navigation, route }: Props) {
   return (
     <WebSideWingLayout leftPlacement="dashboard_left" rightPlacement="dashboard_right">
       <View style={styles.screen}>
+        <Modal visible={!!manageRoom} transparent animationType="fade" onRequestClose={() => setManageRoom(null)}>
+          <Pressable style={styles.manageBackdrop} onPress={() => setManageRoom(null)}>
+            <Pressable style={styles.manageCard} onPress={() => {}}>
+              <Text style={styles.manageTitle}>Manage this Prediktion</Text>
+              <Text style={styles.manageBody}>Choose whether to shuffle this tile or delete the room.</Text>
+              <TouchableOpacity
+                style={styles.managePrimary}
+                onPress={() => {
+                  if (manageRoom) setReorderRoomId(manageRoom.roomId);
+                  setManageRoom(null);
+                }}
+              >
+                <Text style={styles.managePrimaryText}>
+                  {reorderRoomId === manageRoom?.roomId ? 'Keep shuffling' : 'Shuffle position'}
+                </Text>
+              </TouchableOpacity>
+              {manageRoom?.isCreator ? (
+                <>
+                  <TouchableOpacity
+                    style={[
+                      styles.manageSecondary,
+                      manageRoom?.deletable?.canDelete !== true && styles.manageSecondaryDisabled,
+                    ]}
+                    disabled={manageRoom?.deletable?.canDelete !== true}
+                    onPress={() => confirmDeleteRoom(manageRoom)}
+                  >
+                    <Text
+                      style={[
+                        styles.manageSecondaryText,
+                        manageRoom?.deletable?.canDelete !== true && styles.manageSecondaryTextDisabled,
+                      ]}
+                    >
+                      Delete room
+                    </Text>
+                  </TouchableOpacity>
+                  {manageRoom?.deletable?.canDelete !== true ? (
+                    <Text style={styles.manageHintText}>
+                      {manageRoom?.deletable?.reason ?? 'Delete opens after the room hold window.'}
+                    </Text>
+                  ) : null}
+                </>
+              ) : null}
+              <TouchableOpacity style={styles.manageGhost} onPress={() => setManageRoom(null)}>
+                <Text style={styles.manageGhostText}>Cancel</Text>
+              </TouchableOpacity>
+            </Pressable>
+          </Pressable>
+        </Modal>
+
         <View style={styles.bgGlowTop} />
         <View style={styles.bgGlowBottom} />
 
@@ -1061,6 +1081,54 @@ const styles = StyleSheet.create({
   filterChipActive: { backgroundColor: 'rgba(34,211,238,0.28)', borderColor: 'rgba(34,211,238,0.65)' },
   filterChipText: { color: 'rgba(255,255,255,0.72)', fontSize: 11, fontWeight: '800' },
   filterChipTextActive: { color: '#fff' },
+  manageBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(3,8,22,0.78)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  manageCard: {
+    width: '100%',
+    maxWidth: 360,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: palette.border,
+    backgroundColor: palette.surface,
+    padding: 24,
+    gap: 12,
+  },
+  manageTitle: { color: '#fff', fontSize: 20, fontWeight: '900' },
+  manageBody: { color: 'rgba(255,255,255,0.7)', fontSize: 14, lineHeight: 20 },
+  managePrimary: {
+    borderRadius: 14,
+    backgroundColor: palette.violet,
+    paddingVertical: 14,
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  managePrimaryText: { color: '#fff', fontSize: 15, fontWeight: '900' },
+  manageSecondary: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#22d3ee',
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  manageSecondaryDisabled: {
+    borderColor: 'rgba(255,255,255,0.14)',
+    backgroundColor: 'rgba(255,255,255,0.04)',
+  },
+  manageSecondaryText: { color: '#22d3ee', fontSize: 15, fontWeight: '900' },
+  manageSecondaryTextDisabled: { color: 'rgba(255,255,255,0.4)' },
+  manageHintText: {
+    color: 'rgba(255,255,255,0.58)',
+    fontSize: 12,
+    lineHeight: 18,
+    textAlign: 'center',
+  },
+  manageGhost: { alignItems: 'center', paddingVertical: 8 },
+  manageGhostText: { color: 'rgba(255,255,255,0.66)', fontSize: 13, fontWeight: '800' },
   activePredictionList: { gap: 10 },
   demoHubHint: {
     borderRadius: 14,

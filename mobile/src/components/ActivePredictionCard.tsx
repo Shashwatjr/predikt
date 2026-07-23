@@ -70,6 +70,14 @@ export default function ActivePredictionCard({
   return (
     <Pressable onLongPress={onLongPress} delayLongPress={280}>
       <View
+        {...({
+          onContextMenu: (event: Event) => {
+            event.preventDefault();
+            onLongPress();
+          },
+        } as any)}
+      >
+      <View
         style={[
           styles.card,
           { backgroundColor: palette.surface, borderColor: showReorderActions ? colors.purple : palette.border },
@@ -139,6 +147,7 @@ export default function ActivePredictionCard({
       {showReorderActions ? (
         <Text style={styles.manageHint}>Long press another tile to manage it.</Text>
       ) : null}
+    </View>
     </View>
     </Pressable>
   );

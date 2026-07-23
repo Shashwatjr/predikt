@@ -6,7 +6,6 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { RootStackParamList } from '../navigation/types';
 import LeaderboardList from '../components/LeaderboardList';
 import PrimaryButton from '../components/PrimaryButton';
-import DeleteRoomButton from '../components/DeleteRoomButton';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import api, { getApiErrorMessage } from '../services/api';
@@ -461,13 +460,6 @@ export default function ResultScreen({ navigation, route }: Props) {
         ) : null}
 
         <View style={styles.ctaStack}>
-          {isCreator ? (
-            <DeleteRoomButton
-              roomId={roomId}
-              deletable={room?.deletable}
-              onDeleted={() => navigation.navigate('Home')}
-            />
-          ) : null}
           <PrimaryButton label="Back to Home" onPress={() => navigation.navigate('Home')} variant="secondary" icon="🏠" />
         </View>
       </ScrollView>
