@@ -30,14 +30,14 @@ const MODES: ModeSpec[] = [
     key: 'invite_only',
     icon: '👻',
     title: 'Ghost Mode',
-    copy: 'Hidden from discovery. Anyone with your link can open or join.',
+    copy: 'Hidden from discovery. Anyone with your link can peek in and join — no sign-in needed.',
     badge: 'RECOMMENDED',
   },
   {
     key: 'private',
     icon: '🔒',
     title: 'Private Mode',
-    copy: 'Hidden from discovery. Only approved members can open or join.',
+    copy: "Hidden from discovery. People must sign in to open your link, and can't see details until they join.",
   },
   {
     key: 'public',

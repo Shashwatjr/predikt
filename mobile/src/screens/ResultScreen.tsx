@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, Alert, Animated, Linking, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { AccessibilityInfo, Animated, Linking, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -28,6 +28,7 @@ import { copyToClipboard, formatLineForShare } from '../utils/shareLine';
 import { layout, palette } from '../theme/designSystem';
 import CoachMark from '../components/CoachMark';
 import RoomPredictionList, { RoomPredictionEntry } from '../components/RoomPredictionList';
+import { appAlert } from '../utils/appAlert';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Result'>;
@@ -167,7 +168,7 @@ export default function ResultScreen({ navigation, route }: Props) {
       await api.post(`/rooms/${roomId}/reactions`, { emoji });
       setSelectedReaction(emoji);
     } catch {
-      Alert.alert('Reaction not saved', 'Only participants in completed rooms can react to The Tea.');
+      appAlert('Reaction not saved', 'Only participants in completed rooms can react to The Tea.');
     }
   }
 
@@ -176,7 +177,7 @@ export default function ResultScreen({ navigation, route }: Props) {
       const res = await api.post(`/rooms/${roomId}/commentary/regenerate`);
       setCommentary(res.data);
     } catch {
-      Alert.alert('Commentary unavailable', 'This room is using safe deterministic commentary right now.');
+      appAlert('Commentary unavailable', 'This room is using safe deterministic commentary right now.');
     }
   }
 
@@ -250,7 +251,7 @@ export default function ResultScreen({ navigation, route }: Props) {
       setTimeout(() => setLineCopied(false), 2000);
     } else {
       // Native/no-clipboard fallback: surface the exact text to copy by hand.
-      Alert.alert('Copy this line', text);
+      appAlert('Copy this line', text);
     }
   }
 
@@ -264,7 +265,7 @@ export default function ResultScreen({ navigation, route }: Props) {
       await api.post('/events', { eventType: 'rematch_created', metadata: { sourceRoomId: roomId, category: categoryKey, targetRoomId: createdRoom?.roomId } }).catch(() => undefined);
       navigation.navigate('Prediction', { roomId: createdRoom?.roomId ?? roomId, room: createdRoom ?? { roomId } });
     } catch (error) {
-      Alert.alert('Rematch unavailable', getApiErrorMessage(error, 'This room cannot be rematched right now.'));
+      appAlert('Rematch unavailable', getApiErrorMessage(error, 'This room cannot be rematched right now.'));
     } finally {
       setIsRematching(false);
     }
@@ -277,7 +278,7 @@ export default function ResultScreen({ navigation, route }: Props) {
 
   async function handleDeleteRoom() {
     if (isDeletingRoom) return;
-    Alert.alert(
+    appAlert(
       'Delete this room?',
       'This permanently removes this older room and its results from your account view.',
       [
@@ -291,7 +292,7 @@ export default function ResultScreen({ navigation, route }: Props) {
               await api.delete(`/rooms/${roomId}`);
               navigation.navigate('Home');
             } catch (error) {
-              Alert.alert('Delete unavailable', getApiErrorMessage(error, 'We could not delete this room right now.'));
+              appAlert('Delete unavailable', getApiErrorMessage(error, 'We could not delete this room right now.'));
             } finally {
               setIsDeletingRoom(false);
             }
@@ -307,7 +308,7 @@ export default function ResultScreen({ navigation, route }: Props) {
         reason: 'Predictor challenge: please review this creator-attested generic-room result.',
       });
       const proofWaMeLink = response.data?.proofWaMeLink;
-      Alert.alert(
+      appAlert(
         'Challenge submitted',
         proofWaMeLink
           ? 'The creator and challenger were notified. We can open the WhatsApp proof link now.'
@@ -325,7 +326,7 @@ export default function ResultScreen({ navigation, route }: Props) {
           : undefined,
       );
     } catch (error) {
-      Alert.alert('Challenge unavailable', getApiErrorMessage(error, 'We could not submit the challenge right now.'));
+      appAlert('Challenge unavailable', getApiErrorMessage(error, 'We could not submit the challenge right now.'));
     }
   }
 
