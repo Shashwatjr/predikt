@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, View, Text, StyleSheet, ScrollView, TouchableOpacity, Share, Linking } from 'react-native';
+import * as Location from 'expo-location';
 import { appAlert } from '../utils/appAlert';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
@@ -50,7 +51,14 @@ function benchmarkChipLabel(b: Benchmark): string {
 export default function PredictionScreen({ navigation, route }: Props) {
   const { colors } = useTheme();
   const { user } = useAuth();
-  const { roomId, room: roomParam, editPredictionId } = route.params;
+  const {
+    roomId,
+    room: roomParam,
+    editPredictionId,
+    startJourneyAfterSubmit,
+    startDelayMinutes,
+    navigateToRoomCreatedAfterSubmit,
+  } = route.params;
   const [room, setRoom] = useState<any>(roomParam);
   const [loading, setLoading] = useState(false);
   // Late-join context: peers' guesses (already un-hidden once the room is live)
@@ -241,14 +249,43 @@ export default function PredictionScreen({ navigation, route }: Props) {
             : { predictedArrivalTime: predictedReachedTime },
         );
       }
+
+      const finishNavigation = () => {
+        if (navigateToRoomCreatedAfterSubmit && startJourneyAfterSubmit && isCreator && !isEditing) {
+          navigation.navigate('RoomCreated', { room: { ...room, status: 'live' } });
+          return;
+        }
+        navigation.navigate('LiveRoom', { roomId, isCreator, justPredicted: true });
+      };
+
+      if (startJourneyAfterSubmit && isCreator && !isEditing) {
+        const permission = await Location.requestForegroundPermissionsAsync();
+        if (permission.status !== 'granted') {
+          throw new Error('Location permission is needed to start the journey after your prediction.');
+        }
+        const coords = await Location.getCurrentPositionAsync({});
+        await api.post(`/rooms/${roomId}/journey/start`, {
+          startDelayMinutes: startDelayMinutes ?? 3,
+          location: {
+            lat: coords.coords.latitude,
+            lng: coords.coords.longitude,
+          },
+        });
+      }
+
       Animated.sequence([
         Animated.timing(confirmScale, { toValue: 1.05, duration: 120, useNativeDriver: true }),
         Animated.timing(confirmScale, { toValue: 1, duration: 120, useNativeDriver: true }),
       ]).start(() => {
-        navigation.navigate('LiveRoom', { roomId, isCreator, justPredicted: true });
+        finishNavigation();
       });
     } catch (err: unknown) {
-      appAlert('Could not lock it in', getApiErrorMessage(err, "Your guess wasn't saved — try again."));
+      const message = getApiErrorMessage(err, "Your guess wasn't saved — try again.");
+      if (startJourneyAfterSubmit && isCreator && !isEditing) {
+        appAlert('Could not complete setup', message);
+      } else {
+        appAlert('Could not lock it in', message);
+      }
     } finally {
       setLoading(false);
     }

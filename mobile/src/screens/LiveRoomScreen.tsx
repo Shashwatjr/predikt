@@ -60,6 +60,16 @@ interface LiveState {
   milestoneBanner?: { checkpoint: number; message: string } | null;
 }
 
+function latestAvailableCheckpointBoard(
+  boards: Record<number, CheckpointBoard | undefined>,
+): Extract<CheckpointBoard, { available: true }> | null {
+  const available = Object.values(boards).filter(
+    (board): board is Extract<CheckpointBoard, { available: true }> => !!board && board.available,
+  );
+  if (!available.length) return null;
+  return available.reduce((best, board) => (board.checkpoint > best.checkpoint ? board : best));
+}
+
 const startDelayOptions = [3, 5, 10, 15] as const;
 
 export default function LiveRoomScreen({ navigation, route }: Props) {
@@ -212,11 +222,8 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
     if (!liveState?.startTime || !liveState?.expectedDurationSeconds) return;
     const expectedArrival =
       new Date(liveState.startTime).getTime() + liveState.expectedDurationSeconds * 1000;
-    const available = Object.values(checkpointBoards).filter(
-      (b): b is Extract<CheckpointBoard, { available: true }> => !!b && b.available,
-    );
-    if (!available.length) return;
-    const latest = available.reduce((a, b) => (b.checkpoint > a.checkpoint ? b : a));
+    const latest = latestAvailableCheckpointBoard(checkpointBoards);
+    if (!latest) return;
     const drift = Math.abs(new Date(latest.projectedArrivalAt).getTime() - expectedArrival);
     if (drift > ETA_MOVE_NOTIFY_THRESHOLD_MS && !etaMovedShown.current.has(latest.checkpoint)) {
       etaMovedShown.current.add(latest.checkpoint);
@@ -492,6 +499,28 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
   const myVisiblePrediction = predictions.find(
     (entry) => entry.isCurrentUser && entry.status !== 'revoked',
   );
+  const latestCheckpointBoard = latestAvailableCheckpointBoard(checkpointBoards);
+  const checkpointStandingByUserId = new Map(
+    latestCheckpointBoard?.available
+      ? latestCheckpointBoard.standings.map((standing) => [standing.userId, standing] as const)
+      : [],
+  );
+  const rankedPredictions = [...predictions]
+    .map((entry) => {
+      const standing = entry.user?.userId ? checkpointStandingByUserId.get(entry.user.userId) : undefined;
+      return {
+        ...entry,
+        checkpointRank: standing?.rank,
+        checkpointDiffSeconds: standing?.diffSeconds,
+      };
+    })
+    .sort((a, b) => {
+      const aRank = a.checkpointRank ?? Number.MAX_SAFE_INTEGER;
+      const bRank = b.checkpointRank ?? Number.MAX_SAFE_INTEGER;
+      if (aRank !== bRank) return aRank - bRank;
+      if (!!a.isCurrentUser !== !!b.isCurrentUser) return a.isCurrentUser ? -1 : 1;
+      return 0;
+    });
 
   const checkpointList = featureFlags.checkpointLeaderboardV2 ? V2_CHECKPOINTS : V1_CHECKPOINTS;
   const anyCheckpointAvailable = checkpointList.some((cp) => checkpointBoards[cp]?.available);
@@ -625,6 +654,11 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
         },
       ].filter(Boolean)
     : [];
+  const shouldPromptCreatorPredictionInWaitingRoom =
+    showArrivalWaitingRoom &&
+    phase === 'open' &&
+    isCreator &&
+    !myPrediction;
 
   if (showArrivalWaitingRoom) {
     return (
@@ -652,6 +686,22 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
           cards={waitingCards as any}
           onHowItWorks={() => navigation.navigate('Help')}
           onGhostModeDetails={() => navigation.navigate('Help')}
+          predictionPromptTitle={
+            shouldPromptCreatorPredictionInWaitingRoom
+              ? 'Make your prediction before tracking begins'
+              : null
+          }
+          predictionPromptCopy={
+            shouldPromptCreatorPredictionInWaitingRoom
+              ? 'The countdown has already started for everyone. Add your prediction now and it will use the same timer.'
+              : null
+          }
+          predictionCtaLabel={shouldPromptCreatorPredictionInWaitingRoom ? 'Make my prediction' : null}
+          onPredictionCta={
+            shouldPromptCreatorPredictionInWaitingRoom
+              ? () => navigation.navigate('Prediction', { roomId, room })
+              : undefined
+          }
           onEnableNotifications={() =>
             Alert.alert(
               'Notifications',
@@ -739,6 +789,14 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
                 fullWidth={false}
               />
             ) : null}
+            {!isGenericRoom && phase === 'open' && !myPrediction ? (
+              <PrimaryButton
+                label={isCreator ? 'Make my prediction' : 'Predict now'}
+                onPress={() => navigation.navigate('Prediction', { roomId, room })}
+                icon="🎯"
+                fullWidth={false}
+              />
+            ) : null}
             <PrimaryButton
               label={isCreator || !isGenericRoom ? 'Invite' : 'Forward'}
               onPress={handleInviteFriends}
@@ -769,7 +827,7 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
 
       {reviewCountdownLabel ? (
         <View style={styles.reviewBanner}>
-          <Text style={styles.reviewBannerTitle}>✏️ One-minute review window</Text>
+          <Text style={styles.reviewBannerTitle}>✏️ Two-minute review window</Text>
           <Text style={styles.reviewBannerCopy}>
             {reviewCountdownLabel}. Human times stay blurred until your own prediction locks.
           </Text>
@@ -894,8 +952,9 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
             </View>
           ) : null}
           <RoomPredictionList
-            data={predictions}
+            data={rankedPredictions}
             title={isGenericRoom ? 'Prediction board' : undefined}
+            checkpointLabel={latestCheckpointBoard ? `${latestCheckpointBoard.checkpoint}%` : null}
           />
           {!isGenericRoom
             ? checkpointList.map((cp) => (

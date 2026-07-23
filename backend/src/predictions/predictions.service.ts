@@ -182,9 +182,9 @@ export class PredictionsService {
       const submittedAt = new Date();
       // Fairness rule: edits are intentionally short-lived so players can fix typos without
       // creating a long window to wait for outside signals before changing a guess.
-      // v2 shortens the review to 1 min; editability past that is governed by the
+      // v2 keeps the same 2-minute review window; editability past that is governed by the
       // 80%-checkpoint re-predict window (see getEditablePrediction).
-      const reviewMs = v2 ? 60 * 1000 : 2 * 60 * 1000;
+      const reviewMs = 2 * 60 * 1000;
       const editDeadline = v2
         ? new Date(submittedAt.getTime() + reviewMs)
         : new Date(Math.min(submittedAt.getTime() + reviewMs, room.predictionCloseTime.getTime()));

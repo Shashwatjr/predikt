@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useTheme } from '../context/ThemeContext';
 import ProgressBar from './ProgressBar';
 import { botEtaTeaser } from '../utils/botVoice';
@@ -36,21 +36,25 @@ type ActivePrediction = {
 type Props = {
   item: ActivePrediction;
   onOpen: () => void;
+  onLongPress: () => void;
   onTogglePin: () => void;
   onMoveUp: () => void;
   onMoveDown: () => void;
   disableMoveUp?: boolean;
   disableMoveDown?: boolean;
+  showReorderActions?: boolean;
 };
 
 export default function ActivePredictionCard({
   item,
   onOpen,
+  onLongPress,
   onTogglePin,
   onMoveUp,
   onMoveDown,
   disableMoveUp,
   disableMoveDown,
+  showReorderActions = false,
 }: Props) {
   const { colors } = useTheme();
   // Open-prediction rooms have no journey: skip route/ETA/progress travel framing.
@@ -64,7 +68,13 @@ export default function ActivePredictionCard({
       : null;
 
   return (
-    <View style={[styles.card, { backgroundColor: palette.surface, borderColor: palette.border }]}>
+    <Pressable onLongPress={onLongPress} delayLongPress={280}>
+      <View
+        style={[
+          styles.card,
+          { backgroundColor: palette.surface, borderColor: showReorderActions ? colors.purple : palette.border },
+        ]}
+      >
       <View style={styles.header}>
         <View style={styles.headerText}>
           <Text style={styles.title}>{item.title}</Text>
@@ -112,17 +122,25 @@ export default function ActivePredictionCard({
         <TouchableOpacity style={[styles.primaryAction, { backgroundColor: colors.purple }]} onPress={onOpen}>
           <Text style={styles.primaryActionText}>{item.quickAction.label}</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.iconAction} onPress={onTogglePin}>
-          <Text style={styles.iconActionText}>{item.pinned ? 'Unpin' : 'Pin'}</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={[styles.iconAction, disableMoveUp && styles.iconActionDisabled]} onPress={onMoveUp} disabled={disableMoveUp}>
-          <Text style={styles.iconActionText}>Up</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={[styles.iconAction, disableMoveDown && styles.iconActionDisabled]} onPress={onMoveDown} disabled={disableMoveDown}>
-          <Text style={styles.iconActionText}>Down</Text>
-        </TouchableOpacity>
+        {showReorderActions ? (
+          <>
+            <TouchableOpacity style={styles.iconAction} onPress={onTogglePin}>
+              <Text style={styles.iconActionText}>{item.pinned ? 'Unpin' : 'Pin'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.iconAction, disableMoveUp && styles.iconActionDisabled]} onPress={onMoveUp} disabled={disableMoveUp}>
+              <Text style={styles.iconActionText}>Up</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.iconAction, disableMoveDown && styles.iconActionDisabled]} onPress={onMoveDown} disabled={disableMoveDown}>
+              <Text style={styles.iconActionText}>Down</Text>
+            </TouchableOpacity>
+          </>
+        ) : null}
       </View>
+      {showReorderActions ? (
+        <Text style={styles.manageHint}>Long press another tile to manage it.</Text>
+      ) : null}
     </View>
+    </Pressable>
   );
 }
 
@@ -158,4 +176,5 @@ const styles = StyleSheet.create({
   },
   iconActionText: { color: '#fff', fontWeight: '800', fontSize: 11 },
   iconActionDisabled: { opacity: 0.45 },
+  manageHint: { color: 'rgba(255,255,255,0.56)', fontSize: 11, fontWeight: '700' },
 });

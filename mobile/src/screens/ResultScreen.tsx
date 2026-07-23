@@ -11,12 +11,8 @@ import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import api, { getApiErrorMessage } from '../services/api';
 import WebSideWingLayout from '../components/WebSideWingLayout';
-import MomentCard from '../components/MomentCard';
-import { shareMoment } from '../utils/shareMoment';
 import { CommentaryResponse, ResultPayload, RoomBadge } from '../types/engagement';
-import TeaCard from '../components/TeaCard';
 import CommentaryBubble from '../components/CommentaryBubble';
-import ReactionStrip from '../components/ReactionStrip';
 import SectionHeader from '../components/SectionHeader';
 import GuestUpgradePrompt from '../components/GuestUpgradePrompt';
 import {
@@ -42,8 +38,6 @@ type GenericSummaryRow = {
   count: number;
 };
 
-const REACTIONS = ['🔥', '🎯', '👑', '😂', '😭', '🤝', '⚡', '🌧️', '🍕', '💪'];
-
 export default function ResultScreen({ navigation, route }: Props) {
   const { colors } = useTheme();
   const { user } = useAuth();
@@ -53,8 +47,6 @@ export default function ResultScreen({ navigation, route }: Props) {
   const [room, setRoom] = useState<any>(null);
   const [commentary, setCommentary] = useState<CommentaryResponse | null>(null);
   const [badges, setBadges] = useState<RoomBadge[]>([]);
-  const [selectedReaction, setSelectedReaction] = useState<string | null>(null);
-  const [isRematching, setIsRematching] = useState(false);
   const [lineCopied, setLineCopied] = useState(false);
   const [predictions, setPredictions] = useState<RoomPredictionEntry[]>(
     (initialResult?.predictionEntries as RoomPredictionEntry[] | undefined) ?? [],
@@ -163,15 +155,6 @@ export default function ResultScreen({ navigation, route }: Props) {
     }
   }
 
-  async function sendReaction(emoji: string) {
-    try {
-      await api.post(`/rooms/${roomId}/reactions`, { emoji });
-      setSelectedReaction(emoji);
-    } catch {
-      appAlert('Reaction not saved', 'Only participants in completed rooms can react to The Tea.');
-    }
-  }
-
   async function regenerateCommentary() {
     try {
       const res = await api.post(`/rooms/${roomId}/commentary/regenerate`);
@@ -207,39 +190,11 @@ export default function ResultScreen({ navigation, route }: Props) {
           : 'a little'
       }`
     : 'No near miss this time';
-  const momentCard = buildMomentCardFromResult(
-    initialResult as ResultPayload | undefined,
-    categoryKey,
-    commentary?.personality,
-    roomSubtype,
-    subtypeLabel,
-  );
   const badgeUnlocked =
     badges.find((badge) => badge.userId === (winningRow?.userId ?? winningRow?.user?.userId))?.title
     ?? initialResult?.momentCard?.badge
     ?? initialResult?.badges?.[0]?.title
-    ?? momentCard.badge;
-  const comebackCopy = winningRow && user && (winningRow.userId ?? winningRow.user?.userId) !== user.userId
-    ? 'Comeback unlocked.'
-    : 'Run it back?';
-
-  async function shareMomentCard() {
-    await shareMoment({
-      title: `☕ The Tea • ${room?.roomTitle ?? 'My Prediktion'}`,
-      subtitle: momentCard.subtitle,
-      category: categoryLabel,
-      winner: winnerHandle,
-      predictionLabel: winningPrediction,
-      actualLabel: actualOutcome,
-      differenceLabel,
-      oracleLabel: oracleBotLabel,
-      badge: badgeUnlocked,
-      commentary: commentary?.punchline ?? momentCard.commentary,
-      cta: 'Join the next Prediktion',
-      linkLabel: 'Run it back?',
-    });
-    await api.post('/events', { eventType: 'moment_card_shared', metadata: { roomId, category: categoryKey } }).catch(() => undefined);
-  }
+    ?? (categoryKey === 'open_prediction' ? 'RIZZ up' : 'Aura unlocked');
 
   async function shareCommentaryLine() {
     const line = commentary?.punchline;
@@ -253,27 +208,6 @@ export default function ResultScreen({ navigation, route }: Props) {
       // Native/no-clipboard fallback: surface the exact text to copy by hand.
       appAlert('Copy this line', text);
     }
-  }
-
-  async function handleRematch() {
-    if (isRematching) return;
-
-    setIsRematching(true);
-    try {
-      const res = await api.post(`/rooms/${roomId}/rematch`);
-      const createdRoom = res.data;
-      await api.post('/events', { eventType: 'rematch_created', metadata: { sourceRoomId: roomId, category: categoryKey, targetRoomId: createdRoom?.roomId } }).catch(() => undefined);
-      navigation.navigate('Prediction', { roomId: createdRoom?.roomId ?? roomId, room: createdRoom ?? { roomId } });
-    } catch (error) {
-      appAlert('Rematch unavailable', getApiErrorMessage(error, 'This room cannot be rematched right now.'));
-    } finally {
-      setIsRematching(false);
-    }
-  }
-
-  async function handleComeback() {
-    await api.post('/events', { eventType: 'comeback_started', metadata: { sourceRoomId: roomId, category: categoryKey } }).catch(() => undefined);
-    navigation.navigate('CreateRoom');
   }
 
   async function handleChallengeResult() {
@@ -364,11 +298,11 @@ export default function ResultScreen({ navigation, route }: Props) {
   return (
     <WebSideWingLayout rightPlacement="result_side">
       <ScrollView contentContainerStyle={[styles.container, { backgroundColor: palette.bg, maxWidth: layout.maxContentWidth, alignSelf: 'center', width: '100%' }]}>
-        <SectionHeader title="☕ The Tea" subtitle={isNeutralClosure ? 'Fair reset — nobody counted as a loss' : categoryTheme.resultTitle} />
+        <SectionHeader title="The Tea" subtitle={isNeutralClosure ? 'Fair reset — nobody counted as a loss' : 'Clean result. Clear stakes.'} />
         <CoachMark
           storageKey="coachmark:result:the_tea"
           title="The Tea"
-          body="The reveal. See who nailed it and what Chaos Bot said."
+          body="The reveal. See the call, the finish, and who took the upside."
         />
 
         {/* The reward: the Chaos Bot punchline leads, oversized, with the copy/share
@@ -382,13 +316,6 @@ export default function ResultScreen({ navigation, route }: Props) {
               punchline={commentary.punchline}
               onShareLine={shareCommentaryLine}
               shareCopied={lineCopied}
-            />
-            <PrimaryButton
-              label={commentary?.canRegenerate === false ? 'Commentary Locked' : 'Refresh Commentary'}
-              onPress={regenerateCommentary}
-              variant="secondary"
-              icon="🌀"
-              disabled={commentary?.canRegenerate === false}
             />
           </Animated.View>
         ) : null}
@@ -438,45 +365,12 @@ export default function ResultScreen({ navigation, route }: Props) {
             <RoomPredictionList data={genericPredictions} title="Prediction board" />
           </View>
         ) : (
-          <TeaCard
-            roomTitle={room?.roomTitle ?? 'Prediktion Moment'}
-            category={categoryTheme}
-            winnerHandle={winnerHandle}
-            neutral={isNeutralClosure}
-            metrics={[
-              { label: 'Winner', value: winnerHandle },
-              { label: 'Predicted', value: winningPrediction },
-              { label: 'Actual', value: actualOutcome },
-              { label: 'Difference', value: differenceLabel },
-              { label: 'Near miss', value: biggestNearMiss },
-              { label: 'Badge', value: badgeUnlocked },
-            ]}
-            oracleLabel={oracleBotLabel}
-            badge={badgeUnlocked}
-            auraEarned={dotBonus ? undefined : auraEarned}
-          />
+          <></>
         )}
 
         {!isGenericRoom && dotBonus ? (
           <Text style={[styles.dotBonus, { color: colors.green }]}>Dot Bonus unlocked: {dotBonus}</Text>
         ) : null}
-
-        {!isGenericRoom ? (
-          <MomentCard
-            title={room?.roomTitle ?? 'Prediktion Moment'}
-            subtitle={momentCard.subtitle}
-            badge={badgeUnlocked}
-            category={categoryLabel}
-            handle={winnerHandle}
-            predictionLabel={winningPrediction}
-            actualLabel={actualOutcome}
-            differenceLabel={differenceLabel}
-            oracleLabel={oracleBotLabel}
-            commentary={commentary?.punchline ?? momentCard.commentary}
-            cta="Join the next Prediktion"
-          />
-        ) : null}
-
         {!isGenericRoom && winningRow ? (
           <View style={styles.winnerWrapper}>
             <Animated.View style={{ transform: [{ scale: winnerScale }] }}>
@@ -537,13 +431,6 @@ export default function ResultScreen({ navigation, route }: Props) {
         {/* Guest's Tea has resolved — offer to keep their Aura before they bounce. */}
         <GuestUpgradePrompt variant="result" />
 
-        {!isGenericRoom ? (
-          <>
-            <SectionHeader title="React + Rematch" subtitle={comebackCopy} />
-            <ReactionStrip reactions={REACTIONS} onReact={sendReaction} selected={selectedReaction} />
-          </>
-        ) : null}
-
         {isGenericRoom && !isCreator ? (
           <PrimaryButton
             label="Challenge Creator-Attest"
@@ -580,15 +467,6 @@ export default function ResultScreen({ navigation, route }: Props) {
               deletable={room?.deletable}
               onDeleted={() => navigation.navigate('Home')}
             />
-          ) : null}
-          {!isGenericRoom ? (
-            <PrimaryButton label={isRematching ? 'Running it back…' : 'Run it back'} onPress={handleRematch} icon="🔁" disabled={isRematching} />
-          ) : null}
-          {!isGenericRoom ? (
-            <PrimaryButton label="Start a Comeback" onPress={handleComeback} variant="secondary" icon="⚡" />
-          ) : null}
-          {featureFlags.momentCardExport ? (
-            <PrimaryButton label="Share Moment Card" onPress={shareMomentCard} variant="secondary" icon="✨" />
           ) : null}
           <PrimaryButton label="Back to Home" onPress={() => navigation.navigate('Home')} variant="secondary" icon="🏠" />
         </View>
@@ -637,82 +515,6 @@ function formatActualOutcome(result: any) {
     return String(result.actualOutcome).replace(/_/g, ' ');
   }
   return new Date(result.actualOutcome).toLocaleString();
-}
-
-function buildMomentCardFromResult(
-  result: ResultPayload | undefined,
-  category: string,
-  personality?: string | null,
-  subtype?: string | null,
-  subtypeLabel?: string | null,
-) {
-  if (result?.momentCard?.badge || result?.momentCard?.shareText) {
-    return {
-      badge: result.momentCard.badge ?? result.momentCard.titles?.[0] ?? 'Closest Guess',
-      subtitle: result.momentCard.shareText ?? fallbackOpenPredictionSubtitle(category, subtype),
-      commentary: `${personality ?? 'Oracle'} energy says the result is ready to share.`,
-    };
-  }
-  return buildFallbackMomentCard(category, personality, subtype, subtypeLabel);
-}
-
-function fallbackOpenPredictionSubtitle(category: string, subtype?: string | null) {
-  if (category !== 'open_prediction') return 'Closest guess wins Aura';
-  return subtype === 'sports'
-    ? 'Match Oracle unlocked. Correct picks earn Aura.'
-    : 'Prediction Pro unlocked. Correct picks earn Aura.';
-}
-
-function buildFallbackMomentCard(
-  category: string,
-  personality?: string | null,
-  subtype?: string | null,
-  subtypeLabel?: string | null,
-) {
-  switch (category) {
-    case 'weather_rain':
-      return {
-        badge: 'Rain Oracle',
-        subtitle: 'Forecast Beater',
-        commentary: `${personality ?? 'Oracle'} energy says the forecast was beat fairly.`,
-      };
-    case 'food_eta':
-      return {
-        badge: 'Beat the ETA',
-        subtitle: 'Delivery Oracle',
-        commentary: `${personality ?? 'Chaos'} energy says the delivery arc stayed dramatic.`,
-      };
-    case 'whos_late':
-      return {
-        badge: 'Group Chaos',
-        subtitle: 'Time Oracle',
-        commentary: `${personality ?? 'Best Friend'} energy says tradition was respectfully maintained.`,
-      };
-    case 'gym_habit':
-      return {
-        badge: 'Pattern Breaker',
-        subtitle: 'Comeback Solo',
-        commentary: `${personality ?? 'Best Friend'} energy says progress still deserves a screenshot.`,
-      };
-    case 'open_prediction':
-      return {
-        badge:
-          subtype === 'sports'
-            ? 'Match Oracle'
-            : subtypeLabel ?? 'Prediction Pro',
-        subtitle: fallbackOpenPredictionSubtitle(category, subtype),
-        commentary:
-          subtype === 'sports'
-            ? `${personality ?? 'Oracle'} energy says the final whistle is in and the right call just earned Aura.`
-            : `${personality ?? 'Oracle'} energy says the result is in and the right call just earned Aura.`,
-      };
-    default:
-      return {
-        badge: 'Route Oracle',
-        subtitle: 'Closest guess wins Aura',
-        commentary: `${personality ?? 'Chaos'} energy says the route had opinions and the winner had receipts.`,
-      };
-  }
 }
 
 const styles = StyleSheet.create({

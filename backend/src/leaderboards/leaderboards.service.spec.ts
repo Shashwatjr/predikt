@@ -79,6 +79,18 @@ describe('LeaderboardsService.checkpointLeaderboard', () => {
     expect(board.standings[0].userId).toBe('early-submit');
   });
 
+  it('includes the creator in provisional checkpoint standings', async () => {
+    const predictions = predictionsFor([
+      { userId: 'host', time: '2026-07-16T18:40:30.000Z', submittedAt: '2026-07-16T16:50:00.000Z' },
+      { userId: 'guest', time: '2026-07-16T18:43:00.000Z', submittedAt: '2026-07-16T17:00:00.000Z' },
+    ]);
+    const service = makeService(buildRoom(), predictions);
+
+    const board = await service.checkpointLeaderboard('room-1', 50, viewer);
+    if (!board.available) throw new Error('expected available board');
+    expect(board.standings.map((s) => s.userId)).toEqual(['host', 'guest']);
+  });
+
   it('hides standings while predictions are still open', async () => {
     const service = makeService(buildRoom({ status: 'predictions_open' }), []);
     const board = await service.checkpointLeaderboard('room-1', 50, viewer);

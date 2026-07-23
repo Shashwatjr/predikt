@@ -18,6 +18,7 @@ type Props = {
   deletable?: RoomDeletable | null;
   /** Called after a successful delete (e.g. navigate Home). */
   onDeleted: () => void;
+  compact?: boolean;
 };
 
 /**
@@ -26,7 +27,7 @@ type Props = {
  * the server `reason` plus a device-timezone availability line so the two never
  * drift from the DELETE /rooms/:id enforcement. Render this only for creators.
  */
-export default function DeleteRoomButton({ roomId, deletable, onDeleted }: Props) {
+export default function DeleteRoomButton({ roomId, deletable, onDeleted, compact = false }: Props) {
   const { colors } = useTheme();
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -67,12 +68,13 @@ export default function DeleteRoomButton({ roomId, deletable, onDeleted }: Props
         variant="secondary"
         icon="🗑️"
         disabled={isDeleting || !canDelete}
+        fullWidth={!compact}
       />
       {reason ? (
-        <Text style={[styles.helper, { color: colors.textSecondary }]}>{reason}</Text>
+        <Text style={[styles.helper, compact && styles.helperCompact, { color: colors.textSecondary }]}>{reason}</Text>
       ) : null}
       {availability ? (
-        <Text style={[styles.helper, { color: colors.textSecondary }]}>{availability}</Text>
+        <Text style={[styles.helper, compact && styles.helperCompact, { color: colors.textSecondary }]}>{availability}</Text>
       ) : null}
     </View>
   );
@@ -81,4 +83,5 @@ export default function DeleteRoomButton({ roomId, deletable, onDeleted }: Props
 const styles = StyleSheet.create({
   wrap: { gap: 6 },
   helper: { fontSize: 12, lineHeight: 17, textAlign: 'center', paddingHorizontal: 8 },
+  helperCompact: { textAlign: 'left', paddingHorizontal: 0 },
 });

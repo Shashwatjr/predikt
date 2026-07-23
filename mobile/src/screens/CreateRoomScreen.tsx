@@ -909,7 +909,13 @@ export default function CreateRoomScreen({ navigation, route }: Props) {
         category: 'arrival_time',
         mode: selectedMode,
       });
-      navigation.navigate('RoomCreated', { room: res.data });
+      navigation.navigate('Prediction', {
+        roomId: res.data.roomId,
+        room: res.data,
+        startJourneyAfterSubmit: true,
+        startDelayMinutes,
+        navigateToRoomCreatedAfterSubmit: true,
+      });
     } catch (err: unknown) {
       const message = getApiErrorMessage(err, 'Could not create the room. Try again in a moment.');
       setCreateError(message);

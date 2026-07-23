@@ -6,7 +6,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { RootStackParamList } from '../navigation/types';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
-import { getApiErrorMessage } from '../services/api';
+import api, { getApiErrorMessage } from '../services/api';
 import { fetchRoom } from '../services/dashboard';
 import { useDashboardData } from '../hooks/useDashboardData';
 import DashboardOnboardingOverlay from '../components/DashboardOnboardingOverlay';
@@ -100,6 +100,7 @@ export default function HomeScreen({ navigation, route }: Props) {
   const [todaysTea, setTodaysTea] = useState<TodaysTea | null>(null);
   const [teaVisible, setTeaVisible] = useState(false);
   const [votePromptCategory, setVotePromptCategory] = useState<CategoryTheme | null>(null);
+  const [reorderRoomId, setReorderRoomId] = useState<string | null>(null);
   const teaTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const summary = dashboard?.summary;
   const userId = user?.userId;
@@ -336,7 +337,11 @@ export default function HomeScreen({ navigation, route }: Props) {
       }
 
       if (normalizedStatus === 'predictions_open') {
-        navigation.navigate('Prediction', { roomId, room: fullRoom });
+        if (room.rawRoom?.hasSubmittedPrediction) {
+          navigation.navigate('LiveRoom', { roomId, isCreator });
+        } else {
+          navigation.navigate('Prediction', { roomId, room: fullRoom });
+        }
         return;
       }
 
@@ -421,6 +426,75 @@ export default function HomeScreen({ navigation, route }: Props) {
       next.splice(targetIndex, 0, picked);
       return next;
     });
+  }
+
+  function handleRoomLongPress(room: any) {
+    const options = [
+      {
+        text: 'Shuffle position',
+        onPress: () => setReorderRoomId(room.roomId),
+      },
+      ...(room.isCreator
+        ? [
+            {
+              text: 'Delete room',
+              style: 'destructive' as const,
+              onPress: () => confirmDeleteRoom(room),
+            },
+          ]
+        : []),
+      ...(reorderRoomId === room.roomId
+        ? [
+            {
+              text: 'Done arranging',
+              onPress: () => setReorderRoomId(null),
+            },
+          ]
+        : []),
+      { text: 'Cancel', style: 'cancel' as const },
+    ];
+
+    Alert.alert(
+      'Manage this Prediktion',
+      room.isCreator
+        ? 'Choose whether to rearrange this tile or delete the room.'
+        : 'Choose whether to rearrange this tile.',
+      options,
+    );
+  }
+
+  function confirmDeleteRoom(room: any) {
+    const deletable = room.deletable;
+    if (!deletable?.canDelete) {
+      const availability = deletable?.availableAt
+        ? `\n\nAvailable after ${new Date(deletable.availableAt).toLocaleString()}.`
+        : '';
+      Alert.alert(
+        'Delete unavailable',
+        `${deletable?.reason ?? 'This room cannot be deleted right now.'}${availability}`,
+      );
+      return;
+    }
+
+    Alert.alert('Delete this room?', "This can't be undone.", [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete room',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await api.delete(`/rooms/${room.roomId}`);
+            if (reorderRoomId === room.roomId) setReorderRoomId(null);
+            await loadDashboard({ silent: true });
+          } catch (error) {
+            Alert.alert(
+              'Delete unavailable',
+              getApiErrorMessage(error, 'We could not delete this room right now.'),
+            );
+          }
+        },
+      },
+    ]);
   }
 
   return (
@@ -579,12 +653,14 @@ export default function HomeScreen({ navigation, route }: Props) {
                 <ActivePredictionCard
                   key={room.roomId}
                   item={room}
+                  onLongPress={() => handleRoomLongPress(room)}
                   onOpen={() => openRoom({ roomId: room.roomId, rawRoom: room })}
                   onTogglePin={() => togglePin(room.roomId)}
                   onMoveUp={() => moveRoom(room.roomId, -1)}
                   onMoveDown={() => moveRoom(room.roomId, 1)}
                   disableMoveUp={index === 0}
                   disableMoveDown={index === filteredActivePredictions.length - 1}
+                  showReorderActions={reorderRoomId === room.roomId}
                 />
               ))}
             </View>

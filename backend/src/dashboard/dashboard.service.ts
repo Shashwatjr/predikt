@@ -581,6 +581,7 @@ export class DashboardService {
     const category = room.category ?? room.templateKey ?? null;
     const isOpenPrediction = category === 'open_prediction';
     const subtype = deriveRoomSubtype(room);
+    const isCreator = room.creatorUserId === userId;
 
     return {
       roomId: room.roomId,
@@ -594,8 +595,8 @@ export class DashboardService {
       category,
       subtype,
       visibility: room.visibility,
-      isCreator: room.creatorUserId === userId,
-      userRole: membership?.role ?? (room.creatorUserId === userId ? 'creator' : 'participant'),
+      isCreator,
+      userRole: membership?.role ?? (isCreator ? 'creator' : 'participant'),
       participantCount: participantIds.size,
       hasSubmittedPrediction: userPredictions.length > 0,
       predictionsLocked: room.status !== 'predictions_open',
@@ -623,11 +624,84 @@ export class DashboardService {
       quickAction: this.buildQuickAction(
         normalizedStatus,
         room.journeyStatus,
-        room.creatorUserId === userId,
+        isCreator,
         room.category ?? room.templateKey ?? null,
+        userPredictions.length > 0,
       ),
+      deletable: this.computeDashboardDeletable(room, isCreator),
       pinned: preference?.pinned ?? false,
       displayOrder: preference?.displayOrder ?? fallbackOrder,
+    };
+  }
+
+  private terminalStateAt(room: {
+    status: string;
+    cancelledAt?: Date | null;
+    autoClosedAt?: Date | null;
+    abandonedAt?: Date | null;
+    actualEndTime?: Date | null;
+    arrivalConfirmedAt?: Date | null;
+    updatedAt?: Date | null;
+  }): Date | null {
+    if (room.status === 'cancelled') {
+      return room.cancelledAt ?? room.autoClosedAt ?? room.abandonedAt ?? room.updatedAt ?? null;
+    }
+    if (room.status === 'completed') {
+      return room.actualEndTime ?? room.arrivalConfirmedAt ?? room.updatedAt ?? null;
+    }
+    return null;
+  }
+
+  private computeDashboardDeletable(
+    room: ActivePredictionRoom,
+    isCreator: boolean,
+  ): { canDelete: boolean; availableAt: string | null; reason: string | null } {
+    if (!isCreator) {
+      return { canDelete: false, availableAt: null, reason: null };
+    }
+
+    const otherPredictions = room.milestonePredictions.filter(
+      (prediction) => prediction.userId !== room.creatorUserId,
+    ).length;
+    const multiParticipant = otherPredictions > 0;
+
+    if (!multiParticipant) {
+      return { canDelete: true, availableAt: null, reason: null };
+    }
+
+    const isTerminal = room.status === 'completed' || room.status === 'cancelled';
+    if (!isTerminal) {
+      return {
+        canDelete: false,
+        availableAt: null,
+        reason:
+          "You can cancel this room, but can't delete it while friends have predictions in play.",
+      };
+    }
+
+    const deleteCoolingOffMs = 24 * 60 * 60 * 1000;
+    const terminalAt = this.terminalStateAt(room);
+    const availableAtMs = (terminalAt?.getTime() ?? Date.now()) + deleteCoolingOffMs;
+    const availableAt = new Date(availableAtMs);
+    const availableAtIso = availableAt.toISOString();
+
+    if (Date.now() >= availableAtMs) {
+      return { canDelete: true, availableAt: availableAtIso, reason: null };
+    }
+
+    const formatted = availableAt.toLocaleString('en-US', {
+      timeZone: 'UTC',
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    });
+
+    return {
+      canDelete: false,
+      availableAt: availableAtIso,
+      reason: `You can delete this room after ${formatted} UTC.`,
     };
   }
 
@@ -701,6 +775,7 @@ export class DashboardService {
     journeyStatus: string,
     isCreator: boolean,
     category: string | null,
+    hasSubmittedPrediction: boolean,
   ) {
     // Hub CTAs stay brand-consistent ("Open My Prediktion") across open / live / closed
     // rooms; routing still depends on status via targetScreen.
@@ -711,7 +786,7 @@ export class DashboardService {
 
     if (category === 'open_prediction') {
       if (status === 'predictions_open') {
-        return openPredikt('Prediction');
+        return openPredikt(hasSubmittedPrediction ? 'LiveRoom' : 'Prediction');
       }
       if (status === 'predictions_locked' || status === 'live') {
         return openPredikt('LiveRoom');
@@ -729,7 +804,7 @@ export class DashboardService {
       return openPredikt('Result');
     }
     if (status === 'predictions_open') {
-      return openPredikt('Prediction');
+      return openPredikt(hasSubmittedPrediction ? 'LiveRoom' : 'Prediction');
     }
     if (status === 'predictions_locked' || status === 'live') {
       return openPredikt('LiveRoom');

@@ -20,11 +20,14 @@ export interface RoomPredictionEntry {
     prediktHandle?: string | null;
     avatarKey?: string | null;
   } | null;
+  checkpointRank?: number;
+  checkpointDiffSeconds?: number;
 }
 
 interface Props {
   data: RoomPredictionEntry[];
   title?: string;
+  checkpointLabel?: string | null;
 }
 
 function initials(name?: string | null): string {
@@ -34,7 +37,13 @@ function initials(name?: string | null): string {
   return (parts[0][0] + (parts[1]?.[0] ?? '')).toUpperCase();
 }
 
-export default function RoomPredictionList({ data, title }: Props) {
+function offBy(diffSeconds: number): string {
+  if (diffSeconds < 60) return `${diffSeconds}s off`;
+  const mins = Math.round(diffSeconds / 60);
+  return `${mins} min off`;
+}
+
+export default function RoomPredictionList({ data, title, checkpointLabel }: Props) {
   const { colors } = useTheme();
   if (!data.length) return null;
 
@@ -43,6 +52,11 @@ export default function RoomPredictionList({ data, title }: Props) {
       <Text style={[styles.header, { color: colors.textSecondary }]}>
         {title ?? `In this room · ${data.length} ${data.length === 1 ? 'guess' : 'guesses'}`}
       </Text>
+      {checkpointLabel ? (
+        <Text style={[styles.subheader, { color: colors.textMuted }]}>
+          Ranked by closest to the projected ETA at {checkpointLabel}.
+        </Text>
+      ) : null}
       {data.map((entry) => {
         const isCurrent = !!entry.isCurrentUser;
         const name = entry.user?.name ?? 'My Prediktion user';
@@ -66,6 +80,7 @@ export default function RoomPredictionList({ data, title }: Props) {
 
             <View style={styles.info}>
               <Text style={[styles.name, { color: colors.textPrimary }]} numberOfLines={1}>
+                {entry.checkpointRank ? <Text style={{ color: colors.textMuted }}>#{entry.checkpointRank} </Text> : null}
                 {name}
                 {isCurrent ? <Text style={{ color: colors.purple }}> (you)</Text> : null}
               </Text>
@@ -78,6 +93,11 @@ export default function RoomPredictionList({ data, title }: Props) {
                 <View style={[styles.rizzTag, { backgroundColor: colors.amber + '22', borderColor: colors.amber + '66' }]}>
                   <Text style={[styles.rizzText, { color: colors.amber }]}>Rizz-tier · no Aura</Text>
                 </View>
+              ) : null}
+              {entry.checkpointDiffSeconds != null ? (
+                <Text style={[styles.rankNote, { color: colors.textMuted }]}>
+                  {offBy(entry.checkpointDiffSeconds)} vs projected ETA
+                </Text>
               ) : null}
             </View>
 
@@ -108,6 +128,7 @@ export default function RoomPredictionList({ data, title }: Props) {
 const styles = StyleSheet.create({
   wrap: { gap: 4, marginTop: 8 },
   header: { fontSize: 12, fontWeight: '800', letterSpacing: 0.4, textTransform: 'uppercase', marginBottom: 2 },
+  subheader: { fontSize: 11, lineHeight: 16, marginBottom: 4 },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -129,6 +150,7 @@ const styles = StyleSheet.create({
   name: { fontWeight: '700', fontSize: 14 },
   choice: { marginTop: 3, fontSize: 12, lineHeight: 17, fontWeight: '600', textTransform: 'capitalize' },
   choiceValue: { fontWeight: '800' },
+  rankNote: { marginTop: 3, fontSize: 11, fontWeight: '700' },
   rizzTag: { alignSelf: 'flex-start', marginTop: 3, borderRadius: 6, borderWidth: 1, paddingHorizontal: 6, paddingVertical: 1 },
   rizzText: { fontSize: 10, fontWeight: '800' },
   chip: { borderRadius: 10, paddingHorizontal: 10, paddingVertical: 5 },

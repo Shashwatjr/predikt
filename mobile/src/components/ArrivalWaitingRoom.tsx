@@ -38,6 +38,10 @@ type Props = {
   onHowItWorks?: () => void;
   onGhostModeDetails?: () => void;
   onEnableNotifications?: () => void;
+  predictionPromptTitle?: string | null;
+  predictionPromptCopy?: string | null;
+  predictionCtaLabel?: string | null;
+  onPredictionCta?: (() => void) | undefined;
 };
 
 function useCountdown(targetTime: Date | null): number {
@@ -80,6 +84,10 @@ export default function ArrivalWaitingRoom({
   onHowItWorks,
   onGhostModeDetails,
   onEnableNotifications,
+  predictionPromptTitle,
+  predictionPromptCopy,
+  predictionCtaLabel,
+  onPredictionCta,
 }: Props) {
   const seconds = useCountdown(targetTime);
   const mm = String(Math.floor(seconds / 60)).padStart(2, '0');
@@ -233,6 +241,20 @@ export default function ArrivalWaitingRoom({
         </View>
         <Text style={styles.setEmoji}>⏳</Text>
       </LinearGradient>
+
+      {predictionCtaLabel && onPredictionCta ? (
+        <View style={styles.predictCard}>
+          <Text style={styles.predictTitle}>
+            {predictionPromptTitle ?? 'Your prediction is open now'}
+          </Text>
+          <Text style={styles.predictCopy}>
+            {predictionPromptCopy ?? 'Make your call while the countdown keeps running.'}
+          </Text>
+          <TouchableOpacity style={styles.predictButton} onPress={onPredictionCta}>
+            <Text style={styles.predictButtonText}>{predictionCtaLabel}</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
 
       {/* Notify footer */}
       {onEnableNotifications ? (
@@ -423,6 +445,24 @@ const styles = StyleSheet.create({
   setCountdown: { color: palette.violetLight, fontSize: 40, fontWeight: '900', letterSpacing: 1 },
   setFoot: { color: palette.textSecondary, fontSize: 12, textAlign: 'center', marginTop: spacing.sm },
   setEmoji: { fontSize: 56 },
+  predictCard: {
+    borderRadius: radius.xl,
+    borderWidth: 1,
+    borderColor: 'rgba(34,211,238,0.28)',
+    backgroundColor: CARD_BG,
+    padding: spacing.lg,
+    gap: spacing.sm,
+  },
+  predictTitle: { color: palette.textPrimary, fontSize: 18, fontWeight: '900' },
+  predictCopy: { color: palette.textSecondary, fontSize: 13, lineHeight: 19 },
+  predictButton: {
+    alignSelf: 'flex-start',
+    borderRadius: radius.pill,
+    backgroundColor: palette.cyan,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+  },
+  predictButtonText: { color: palette.bg, fontSize: 13, fontWeight: '900' },
 
   notifyRow: {
     flexDirection: 'row',
