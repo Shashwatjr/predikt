@@ -968,7 +968,7 @@ export class RoutesService {
     const distanceMeters = routeEstimate.distanceMeters;
     const estimatedDurationSeconds = routeEstimate.durationSeconds;
     const defaultSafetyDelayMinutes = routeSafetyDelay(body);
-    const suggestedRoomTitle = `Arrival PREDIKT: ${start.label} → ${destination.label}`;
+    const suggestedRoomTitle = `Arrival Prediktion: ${start.label} → ${destination.label}`;
     const suggestedQuestion = `When will I reach ${destination.label}?`;
     const suggestedLockTime = new Date(Date.now() + 15 * 60 * 1000).toISOString();
 

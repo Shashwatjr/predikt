@@ -1,8 +1,8 @@
-# PREDIKT
+# My Prediktion
 
 > **Predict what’s next.**
 
-PREDIKT is the interactive layer for real-world live events, where every journey, challenge, or stream becomes a prediction game among friends, followers, and communities.
+My Prediktion is the interactive layer for real-world live events, where every journey, challenge, or stream becomes a prediction game among friends, followers, and communities.
 
 Current MVP: milestone-based journey prediction. A creator opens a room, adds milestones, viewers predict reached times, the app awards Aura for accuracy and Clout for activity, and eligible Drops can be unlocked after play.
 

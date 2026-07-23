@@ -26,7 +26,7 @@ export default function AdminLoginScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.card}>
-        <Text style={styles.title}>PREDIKT Admin</Text>
+        <Text style={styles.title}>My Prediktion Admin</Text>
         <Text style={styles.subtitle}>Private beta operations portal</Text>
         <TextInputField label="Email" value={email} onChangeText={setEmail} autoCapitalize="none" />
         <TextInputField

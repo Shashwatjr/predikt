@@ -220,7 +220,7 @@ export default function RoomCreatedScreen({ navigation, route }: Props) {
         <View style={[styles.shareCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <Text style={[styles.shareTitle, { color: colors.textPrimary }]}>Manual WhatsApp invite</Text>
           <Text style={[styles.shareCopy, { color: colors.textSecondary }]}>
-            PREDIKT does not upload your contacts. This opens WhatsApp on your device.
+            My Prediktion does not upload your contacts. This opens WhatsApp on your device.
           </Text>
           <TextInputField
             label="Phone number"

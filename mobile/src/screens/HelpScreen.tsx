@@ -44,7 +44,7 @@ const safetyItems = [
   'Block users you do not want to interact with.',
   'Dispute a result if the outcome looks wrong.',
   'Friendly banter is welcome, but harassment is not.',
-  'PREDIKT keeps predictions social, privacy-safe, and friendly.',
+  'My Prediktion keeps predictions social, privacy-safe, and friendly.',
 ];
 
 const predictionOptions = [
@@ -61,7 +61,7 @@ const faq = [
   ['What happens after the room locks?', 'Predictions stay frozen, hidden guesses are revealed later, and the result decides who was closest.'],
   ['What is Dot Bonus?', 'Dot Bonus rewards predictions that land especially close to the actual result.'],
   ['What is a Rematch?', 'A Rematch starts a new round with the same group after results are revealed.'],
-  ['Why do I need a PREDIKT handle?', 'Your handle makes leaderboards, follows, and social identity easier to recognize.'],
+  ['Why do I need a Prediktion handle?', 'Your handle makes leaderboards, follows, and social identity easier to recognize.'],
 ];
 
 function HelpCard({
@@ -90,15 +90,15 @@ export default function HelpScreen({ navigation, route }: Props) {
     <ScrollView contentContainerStyle={[styles.container, { backgroundColor: colors.bg }]}>
       <LinearGradient colors={colors.gradPrimary} style={styles.hero}>
         <Text style={styles.heroEyebrow}>Help</Text>
-        <Text style={styles.heroTitle}>How PREDIKT Works</Text>
+        <Text style={styles.heroTitle}>How My Prediktion Works</Text>
         <Text style={styles.heroBody}>
           Beginner-friendly help for Prediction Rooms, Aura, Clout, Credits, fair locks, and privacy-safe route play.
         </Text>
       </LinearGradient>
 
-      <HelpCard title="What is PREDIKT?">
+      <HelpCard title="What is My Prediktion?">
         <Text style={[styles.copy, { color: colors.textSecondary }]}>
-          PREDIKT lets you create Prediction Rooms with friends and see who gets closest.
+          My Prediktion lets you create Prediction Rooms with friends and see who gets closest.
         </Text>
       </HelpCard>
 
@@ -112,7 +112,7 @@ export default function HelpScreen({ navigation, route }: Props) {
           • Choose what people should predict. For journey rooms, select Start and Destination, then choose Arrival Time, Journey Duration, or Beat ETA.
         </Text>
         <Text style={[styles.bulletRow, { color: colors.textSecondary }]}>
-          • PREDIKT suggests options so you do not have to build the room manually.
+          • My Prediktion suggests options so you do not have to build the room manually.
         </Text>
       </HelpCard>
 
@@ -178,6 +178,12 @@ export default function HelpScreen({ navigation, route }: Props) {
         <Text style={[styles.bulletRow, { color: colors.textSecondary }]}>• Progress is delayed before viewers see updates.</Text>
         <Text style={[styles.bulletRow, { color: colors.textSecondary }]}>• Route status is approximate in participant and public views.</Text>
         <Text style={[styles.bulletRow, { color: colors.textSecondary }]}>• Exact GPS is not shown in public or participant view.</Text>
+      </HelpCard>
+
+      <HelpCard title="Deleting a room">
+        <Text style={[styles.copy, { color: colors.textSecondary }]}>
+          As the creator, you can delete a room anytime if you're the only one who predicted. If friends submitted predictions, you can delete 24 hours after the room ends — enough time for everyone to see the result. Before then, cancel (visible to all) rather than delete.
+        </Text>
       </HelpCard>
 
       <HelpCard title="Safety and community">

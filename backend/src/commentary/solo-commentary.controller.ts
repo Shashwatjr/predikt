@@ -12,7 +12,7 @@ import {
 /**
  * Serves solo micro-prediction commentary to the app. Public + template-only
  * (no user data, no LLM) — the app renders the returned line and attributes it to
- * "{personality} on PREDIKT".
+ * "{personality} on My Prediktion".
  */
 @Controller('commentary')
 export class SoloCommentaryController {

@@ -63,11 +63,11 @@ function formatLockTime(room: SafePreview) {
 export function buildSharePayload(room: SafePreview) {
   const category = room.category ?? room.templateKey;
   const inviteCode = room.inviteCode ?? '';
-  const title = room.roomTitle ?? room.title ?? 'PREDIKT Room';
+  const title = room.roomTitle ?? room.title ?? 'Prediktion Room';
   const inviteUrl = buildInviteUrl(inviteCode);
   const lockTime = formatLockTime(room);
   const body = [
-    `Join my PREDIKT room: ${title}`,
+    `Join my Prediktion room: ${title}`,
     safeChallengeLine(room),
     category === 'open_prediction' ? 'Best call earns Gems. Late heat is pure Rizz.' : 'Closest guess wins Aura.',
     `Room code: ${inviteCode}`,

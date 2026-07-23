@@ -128,7 +128,7 @@ export default function JoinRoomScreen({ navigation, route }: Props) {
   const isGenericRoom = (room?.category ?? room?.templateKey) === 'open_prediction';
   const genericRoomLabel = categoryTheme.label; // subtype-aware: Custom Challenge or Sports
   const roomTitle =
-    room?.title ?? room?.roomTitle ?? (isGenericRoom ? `A ${genericRoomLabel} room` : 'A PREDIKT challenge');
+    room?.title ?? room?.roomTitle ?? (isGenericRoom ? `A ${genericRoomLabel} room` : 'A Prediktion challenge');
   const sharePayload = useMemo(
     () => (room ? buildSharePayload({ ...room, roomTitle, inviteCode: room.inviteCode ?? code }) : null),
     [room, roomTitle, code],

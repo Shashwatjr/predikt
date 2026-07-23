@@ -16,14 +16,14 @@ async function main() {
   const user = await prisma.user.upsert({
     where: { email },
     update: {
-      name: 'PREDIKT Demo',
+      name: 'My Prediktion Demo',
       prediktHandle: 'predikt.demo',
       passwordHash,
       isGuest: false,
     },
     create: {
       email,
-      name: 'PREDIKT Demo',
+      name: 'My Prediktion Demo',
       prediktHandle: 'predikt.demo',
       passwordHash,
       isGuest: false,

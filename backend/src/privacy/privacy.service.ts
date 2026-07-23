@@ -93,10 +93,10 @@ export class PrivacyService {
   policy(slug: string) {
     const policies: Record<string, Record<string, unknown>> = {
       privacy: {
-        title: 'PREDIKT Privacy Policy',
+        title: 'My Prediktion Privacy Policy',
         version: 'mvp-2026-07',
         summary:
-          'PREDIKT uses data to run social prediction rooms. Exact location is used for verification where needed and is not shown in participant or public views.',
+          'My Prediktion uses data to run social prediction rooms. Exact location is used for verification where needed and is not shown in participant or public views.',
         principles: [
           'Ghost Mode and delayed approximate location are the default.',
           'No public route history, live trail, or exact GPS coordinates.',
@@ -105,10 +105,10 @@ export class PrivacyService {
         ],
       },
       terms: {
-        title: 'PREDIKT Terms',
+        title: 'My Prediktion Terms',
         version: 'mvp-2026-07',
         summary:
-          'PREDIKT is a privacy-safe social prediction app. Aura is reputation, Clout is social influence, and Credits are feature unlocks.',
+          'My Prediktion is a privacy-safe social prediction app. Aura is reputation, Clout is social influence, and Credits are feature unlocks.',
       },
       'community-guidelines': {
         title: 'Community Guidelines',
@@ -120,7 +120,7 @@ export class PrivacyService {
         title: 'Safety Policy',
         version: 'mvp-2026-07',
         summary:
-          'PREDIKT is for social predictions only. Credits are in-app feature unlocks and are not transferable or withdrawable.',
+          'My Prediktion is for social predictions only. Credits are in-app feature unlocks and are not transferable or withdrawable.',
       },
     };
     return policies[slug] ?? policies.privacy;

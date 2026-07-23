@@ -292,7 +292,7 @@ export default function HomeScreen({ navigation, route }: Props) {
               <SkeletonBlock width={120} height={92} radius={14} />
             </View>
 
-            {/* Active predictions (Live PREDIKTs) */}
+            {/* Active predictions (Live Prediktions) */}
             <SkeletonBlock width="38%" height={16} style={{ marginTop: 6 }} />
             <View style={{ gap: 12 }}>
               <SkeletonCard lines={2} />
@@ -432,7 +432,7 @@ export default function HomeScreen({ navigation, route }: Props) {
         <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
           <AppHeader
             greeting={user?.name ? `Hey, ${user.name.split(' ')[0]}` : 'Hey there'}
-            subtitle="What can you PREDIKT today?"
+            subtitle="What can you Predikt today?"
             aura={totalAura}
             streak={summary?.currentStreak ?? user?.currentStreak}
             unreadCount={unreadNotifications}
@@ -487,7 +487,7 @@ export default function HomeScreen({ navigation, route }: Props) {
             >
               <LinearGradient colors={['#1da1ff', '#06B6D4']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.primaryCta}>
                 <Text style={styles.ctaIcon}>⚡</Text>
-                <Text style={styles.primaryCtaText}>Start a PREDIKT</Text>
+                <Text style={styles.primaryCtaText}>Start a Prediktion</Text>
               </LinearGradient>
             </TouchableOpacity>
             <TouchableOpacity style={[styles.secondaryCta, styles.ctaFlex]} onPress={() => navigation.navigate('JoinRoom')}>
@@ -536,7 +536,7 @@ export default function HomeScreen({ navigation, route }: Props) {
             })}
           </View>
 
-          <SectionHeader title="Live PREDIKTs" live={hasLiveHubActivity} />
+          <SectionHeader title="Live Prediktions" live={hasLiveHubActivity} />
 
           {demoAccount ? (
             <DemoWalkthroughBanner
@@ -590,9 +590,9 @@ export default function HomeScreen({ navigation, route }: Props) {
             </View>
           ) : activePredictions.length === 0 ? (
             <EmptyState
-              title="Create your first PREDIKT"
+              title="Create your first Prediktion"
               body="Start a room or join one with a code to fill your live hub."
-              primaryLabel="Start a PREDIKT"
+              primaryLabel="Start a Prediktion"
               secondaryLabel="Join with Code"
               onPrimary={() => navigation.navigate('CreateRoom')}
               onSecondary={() => navigation.navigate('JoinRoom')}
@@ -710,10 +710,10 @@ export default function HomeScreen({ navigation, route }: Props) {
           {/* MVP cleanup: weekly personality/story surface — hidden until weeklyStory ships. */}
           {featureFlags.weeklyStory ? (
             <>
-              <SectionHeader title="Today's PREDIKTs" subtitle={dashboard?.dailyChallenge?.title ?? 'Beat the Forecast · Food ETA · Who\'s Late'} />
+              <SectionHeader title="Today's Prediktions" subtitle={dashboard?.dailyChallenge?.title ?? 'Beat the Forecast · Food ETA · Who\'s Late'} />
 
               <View style={[styles.weeklyCard, { borderColor: palette.border }]}>
-                <Text style={styles.weeklyTitle}>This Week in PREDIKT</Text>
+                <Text style={styles.weeklyTitle}>This Week in My Prediktion</Text>
                 <Text style={styles.weeklyPersonality}>
                   {(summary?.currentStreak ?? 0) >= 3 ? 'Comeback Merchant' : weeklyAura > 50 ? 'Route Whisperer' : 'The Human Edge'}
                 </Text>
@@ -725,7 +725,7 @@ export default function HomeScreen({ navigation, route }: Props) {
           ) : null}
 
           <LinearGradient colors={['#06B6D4', '#1d4ed8', '#0ea5e9']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.createCard}>
-            <Text style={styles.createTitle}>Create your first PREDIKT{'\n'}in 30 seconds</Text>
+            <Text style={styles.createTitle}>Create your first Prediktion{'\n'}in 30 seconds</Text>
             <TouchableOpacity style={styles.createButton} onPress={() => navigation.navigate('CreateRoom')}>
               <Text style={styles.createButtonText}>Create Room</Text>
               <Text style={styles.createBolt}>ϟ</Text>

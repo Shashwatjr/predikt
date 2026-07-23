@@ -564,7 +564,7 @@ export class LifecycleService {
       roomId,
       type: 'journey_cancelled',
       title: 'Plan changed',
-      body: 'This PREDIKT was closed fairly after a plan change. Your prediction was not counted as a loss.',
+      body: 'This Prediktion was closed fairly after a plan change. Your prediction was not counted as a loss.',
       severity: 'warning',
       actionLabel: 'View result',
       actionTarget: `room:${roomId}:result`,
@@ -1252,22 +1252,22 @@ export class LifecycleService {
       case 'weather_rain':
         return {
           titles: ['Rain Oracle', 'Forecast Beater', 'Monsoon Streak'],
-          shareText: 'I beat the forecast on PREDIKT. Rain Oracle unlocked.',
+          shareText: 'I beat the forecast on My Prediktion. Rain Oracle unlocked.',
         };
       case 'food_eta':
         return {
           titles: ['ETA Master', 'Beat the ETA', 'Delivery Oracle'],
-          shareText: 'I called the delivery ETA closest on PREDIKT.',
+          shareText: 'I called the delivery ETA closest on My Prediktion.',
         };
       case 'whos_late':
         return {
           titles: ['Time Oracle', 'Comeback Crew', 'Group Chaos'],
-          shareText: 'Time Oracle unlocked on PREDIKT.',
+          shareText: 'Time Oracle unlocked on My Prediktion.',
         };
       case 'gym_habit':
         return {
           titles: ['Pattern Breaker', 'Consistency Streak', 'Comeback Solo'],
-          shareText: 'Consistency Streak unlocked on PREDIKT.',
+          shareText: 'Consistency Streak unlocked on My Prediktion.',
         };
       default:
         return {

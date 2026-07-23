@@ -142,7 +142,7 @@ export default function LandingScreen({ navigation }: Props) {
   const [votePromptCategory, setVotePromptCategory] = useState<CategoryTheme | null>(null);
   const feedRef = useRef<ScrollView | null>(null);
   const { width } = useWindowDimensions();
-  // The desktop shell already shows PREDIKT branding in its left rail, so the
+  // The desktop shell already shows My Prediktion branding in its left rail, so the
   // in-content header collapses to just its actions there to avoid a double logo.
   const isDesktop = Platform.OS === 'web' && width >= 1024;
 
@@ -230,7 +230,7 @@ export default function LandingScreen({ navigation }: Props) {
               end={{ x: 1, y: 0 }}
               style={styles.brandLogoGradient}
             >
-              <Text style={styles.brandLogoText}>PREDIKT</Text>
+              <Text style={styles.brandLogoText}>My Prediktion</Text>
             </LinearGradient>
             <Text style={styles.tagline}>by Kriviksha · predict · play · connect</Text>
           </View>
@@ -266,7 +266,7 @@ export default function LandingScreen({ navigation }: Props) {
           <Text style={styles.headlineAccent}>Serious fun.</Text>
         </Text>
         <Text style={styles.subtext}>
-          PREDIKT turns arrivals, food ETAs, and daily calls into quick social challenges — squad up with friends or go solo and build your streak.
+          My Prediktion turns arrivals, food ETAs, and daily calls into quick social challenges — squad up with friends or go solo and build your streak.
         </Text>
         <View style={styles.heroHighlight}>
           <Text style={styles.heroHighlightTitle}>Clear, quick, playful</Text>

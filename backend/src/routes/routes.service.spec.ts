@@ -40,7 +40,7 @@ describe('RoutesService route preview', () => {
       west: expect.any(Number),
     });
     expect(preview.etaLabel).toContain('min');
-    expect(preview.suggestedRoomTitle).toContain('Arrival PREDIKT');
+    expect(preview.suggestedRoomTitle).toContain('Arrival Prediktion');
   });
 
   it('route creation stores expected duration and baseline snapshot', async () => {

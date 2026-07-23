@@ -10,7 +10,7 @@ async function bootstrap() {
 
   const port = config.get<string>('PORT') ?? '3000';
   await app.listen(port);
-  console.log(`PREDIKT API running on port ${port}`);
+  console.log(`My Prediktion API running on port ${port}`);
 }
 
 bootstrap();

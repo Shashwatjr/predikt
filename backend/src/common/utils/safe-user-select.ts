@@ -60,7 +60,7 @@ export const SAFE_SELF_USER_SELECT = {
 export function publicDisplayName(user: any) {
   if (!user) return null;
   if (user.prediktHandle) return `@${user.prediktHandle}`;
-  return user.creatorProfile?.displayName ?? user.name ?? 'PREDIKT user';
+  return user.creatorProfile?.displayName ?? user.name ?? 'My Prediktion user';
 }
 
 export function safePublicUser(user: any): any {

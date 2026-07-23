@@ -932,12 +932,12 @@ export default function CreateRoomScreen({ navigation, route }: Props) {
     if (!placeholderPreset) return '';
     if (selectedCategory === 'food_eta') {
       return placeholderTitle.trim()
-        ? `Delivery ETA PREDIKT: ${placeholderTitle.trim()}`
+        ? `Delivery ETA Prediktion: ${placeholderTitle.trim()}`
         : placeholderPreset.title;
     }
     if (selectedCategory === 'gym_habit') {
       return placeholderLabel.trim()
-        ? `${placeholderLabel.trim()} PREDIKT`
+        ? `${placeholderLabel.trim()} Prediktion`
         : placeholderPreset.title;
     }
     return placeholderPreset.title;
@@ -1239,7 +1239,7 @@ export default function CreateRoomScreen({ navigation, route }: Props) {
           </View>
         </View>
         <Text style={styles.heroHeadline}>
-          What do you want to <Text style={styles.heroHeadlineAccent}>PREDIKT?</Text>
+          What do you want to <Text style={styles.heroHeadlineAccent}>Predikt?</Text>
         </Text>
         <Text style={styles.heroSubline}>
           Pick a moment, invite friends, closest guess wins <Text style={styles.heroAura}>Aura.</Text>
@@ -1524,7 +1524,7 @@ export default function CreateRoomScreen({ navigation, route }: Props) {
               ) : null}
 
               {createError ? <Text style={[styles.errorText, { color: colors.red }]}>{createError}</Text> : null}
-              <PrimaryButton label="Create PREDIKT" onPress={handleCreateArrivalRoom} loading={createLoading} icon="🎯" />
+              <PrimaryButton label="Create Prediktion" onPress={handleCreateArrivalRoom} loading={createLoading} icon="🎯" />
             </View>
           ) : null}
         </View>
@@ -1618,7 +1618,7 @@ export default function CreateRoomScreen({ navigation, route }: Props) {
           ) : null}
 
           {createError ? <Text style={[styles.errorText, { color: colors.red }]}>{createError}</Text> : null}
-          <PrimaryButton label="Create PREDIKT" onPress={handleCreateWeatherRoom} loading={createLoading} icon="🌧️" />
+          <PrimaryButton label="Create Prediktion" onPress={handleCreateWeatherRoom} loading={createLoading} icon="🌧️" />
         </View>
       ) : null}
 
@@ -1777,7 +1777,7 @@ export default function CreateRoomScreen({ navigation, route }: Props) {
           ) : null}
 
           {createError ? <Text style={[styles.errorText, { color: colors.red }]}>{createError}</Text> : null}
-          <PrimaryButton label="Create PREDIKT" onPress={handleCreatePlaceholderRoom} loading={createLoading} icon="✨" />
+          <PrimaryButton label="Create Prediktion" onPress={handleCreatePlaceholderRoom} loading={createLoading} icon="✨" />
         </View>
       ) : null}
 

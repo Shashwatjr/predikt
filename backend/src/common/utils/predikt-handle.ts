@@ -15,14 +15,14 @@ export function validatePrediktHandle(handle: string | null) {
   if (handle === null) return;
   if (!HANDLE_REGEX.test(handle)) {
     throw new BadRequestException(
-      'PREDIKT handle must be 3-30 characters and use only lowercase letters, numbers, underscores, and dots.',
+      'Prediktion handle must be 3-30 characters and use only lowercase letters, numbers, underscores, and dots.',
     );
   }
 }
 
 export function assertHandleAvailable(isTaken: boolean) {
   if (isTaken) {
-    throw new ConflictException('PREDIKT handle is already taken.');
+    throw new ConflictException('Prediktion handle is already taken.');
   }
 }
 
@@ -34,7 +34,7 @@ export function displayIdentity(user: {
   if (user.prediktHandle) return `@${user.prediktHandle}`;
   if (user.name) return user.name;
   if (user.email) return user.email.split('@')[0];
-  return 'PREDIKT User';
+  return 'My Prediktion User';
 }
 
 export function buildHandleSuggestions(name: string, existingHandles: Set<string>) {

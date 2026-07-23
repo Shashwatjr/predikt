@@ -1,5 +1,5 @@
 /**
- * PREDIKT × Kriviksha brand palette.
+ * My Prediktion × Kriviksha brand palette.
  * Corporate midnight base with energetic gaming accents.
  * Mirrors CSS custom properties used on web surfaces.
  */

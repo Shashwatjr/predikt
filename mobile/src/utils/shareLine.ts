@@ -1,19 +1,19 @@
 import { Platform } from 'react-native';
 
 /**
- * The screenshot/share loop is PREDIKT's growth mechanic: a Chaos Bot line copied
+ * The screenshot/share loop is My Prediktion's growth mechanic: a Chaos Bot line copied
  * into a group chat. One brand attribution keeps every shared line recognisable.
  */
 /** Fallback attribution when a personality name is missing. */
-export const CHAOS_BOT_ATTRIBUTION = 'Chaos Bot on PREDIKT';
+export const CHAOS_BOT_ATTRIBUTION = 'Chaos Bot on My Prediktion';
 
-/** `{PersonalityName} on PREDIKT`, falling back to "Chaos Bot" when unknown. */
+/** `{PersonalityName} on My Prediktion`, falling back to "Chaos Bot" when unknown. */
 export function attributionFor(personality?: string | null): string {
   const name = personality && personality.trim() ? personality.trim() : 'Chaos Bot';
-  return `${name} on PREDIKT`;
+  return `${name} on My Prediktion`;
 }
 
-/** Formats a line for pasting into a chat: `"line" — {Personality} on PREDIKT` */
+/** Formats a line for pasting into a chat: `"line" — {Personality} on My Prediktion` */
 export function formatLineForShare(line: string, personality?: string | null): string {
   const trimmed = line.trim().replace(/^["“”]+|["“”]+$/g, '');
   return `"${trimmed}" — ${attributionFor(personality)}`;

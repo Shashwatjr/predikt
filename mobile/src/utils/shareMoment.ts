@@ -26,7 +26,7 @@ export async function shareMoment(payload: {
     payload.badge,
     payload.commentary,
     payload.cta,
-    payload.linkLabel ?? 'Join the next PREDIKT',
+    payload.linkLabel ?? 'Join the next Prediktion',
   ].filter(Boolean).join('\n');
 
   await Share.share({ title: payload.title, message: text });

@@ -92,7 +92,7 @@ export function sanitizeInput(input: CommentaryInput) {
 export function buildNeutralCommentary() {
   return {
     headline: 'Fair reset, no drama',
-    punchline: 'Plans changed. This PREDIKT closed fairly, and nobody’s prediction counted as a loss.',
+    punchline: 'Plans changed. This Prediktion closed fairly, and nobody’s prediction counted as a loss.',
     supportingLine: 'Everyone gets a fair reset.',
   };
 }

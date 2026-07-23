@@ -1,4 +1,4 @@
-// ─── PREDIKT Design Tokens ──────────────────────────────────────────────────
+// ─── My Prediktion Design Tokens ──────────────────────────────────────────────────
 // Single source of truth for all colors, typography and spacing.
 // Screens and components import { useTheme } from '../context/ThemeContext'
 // and reference c.bg, c.surface, c.purple, etc.

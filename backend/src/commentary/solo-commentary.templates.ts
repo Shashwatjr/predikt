@@ -1,7 +1,7 @@
 /**
  * Chaos Bot — solo micro-prediction responses (weather / commute / day pattern).
  *
- * The reward in PREDIKT is Chaos Bot's line, not the score. These solo lines live
+ * The reward in My Prediktion is Chaos Bot's line, not the score. These solo lines live
  * here — one place for the voice — and are served to the app via GET /commentary/solo.
  *
  * Voice: subtle sarcasm, warm not cruel, ONE sharp quotable line. Never punch down —
@@ -21,7 +21,7 @@ export type SoloCommentaryTemplate = {
   line: string;
 };
 
-/** Brand voice name used for attribution: "— Chaos Bot on PREDIKT". */
+/** Brand voice name used for attribution: "— Chaos Bot on My Prediktion". */
 export const SOLO_COMMENTARY_PERSONALITY = 'Chaos Bot';
 
 export const SOLO_DOMAINS: SoloPredictionDomain[] = ['weather', 'commute', 'day_pattern', 'any'];

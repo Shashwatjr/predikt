@@ -59,7 +59,7 @@ async function ensurePilotUser() {
 async function main() {
   const user = await ensurePilotUser();
 
-  console.log('PREDIKT pilot account ready.');
+  console.log('My Prediktion pilot account ready.');
   console.log('');
   console.log('  Email:    ', PILOT_ACCOUNT.email);
   console.log('  Password: ', PILOT_ACCOUNT.password);

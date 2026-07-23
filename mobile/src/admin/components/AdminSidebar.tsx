@@ -25,7 +25,7 @@ export default function AdminSidebar({ active, onNavigate, adminName, onLogout }
   return (
     <View style={styles.sidebar}>
       <View style={styles.brandBlock}>
-        <Text style={styles.brand}>PREDIKT Admin</Text>
+        <Text style={styles.brand}>My Prediktion Admin</Text>
         <Text style={styles.subtitle}>Private beta operations</Text>
       </View>
       <ScrollView style={styles.nav}>

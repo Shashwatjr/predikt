@@ -1,5 +1,5 @@
 /**
- * PREDIKT landing-surface palette.
+ * My Prediktion landing-surface palette.
  *
  * The landing page (LandingScreen + LandingDashboardLayout) is theme-aware:
  * a warm "sunrise" identity in light mode and the in-app "midnight" identity

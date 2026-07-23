@@ -86,7 +86,7 @@ describe('DashboardService active predictions', () => {
       pinned: true,
       displayOrder: 4,
       hasSubmittedPrediction: true,
-      quickAction: { label: 'View Live', targetScreen: 'LiveRoom' },
+      quickAction: { label: 'Open My Prediktion', targetScreen: 'LiveRoom' },
       routeSummary: {
         startLabel: 'Home',
         destinationLabel: 'Office',
@@ -136,7 +136,7 @@ describe('DashboardService active predictions', () => {
 
     expect(card.status).toBe('result_ready');
     expect(card.liveProgress.progressPercentApprox).toBe(100);
-    expect(card.quickAction).toEqual({ label: 'View Results', targetScreen: 'Result' });
+    expect(card.quickAction).toEqual({ label: 'Open My Prediktion', targetScreen: 'Result' });
   });
 
   it('uses subtype-aware labels for sports open-prediction rooms', async () => {
@@ -178,7 +178,7 @@ describe('DashboardService active predictions', () => {
 
     expect(card.subtype).toBe('sports');
     expect(card.liveProgress.statusLabel).toBe('Final result revealed');
-    expect(card.quickAction).toEqual({ label: 'View Results', targetScreen: 'Result' });
+    expect(card.quickAction).toEqual({ label: 'Open My Prediktion', targetScreen: 'Result' });
   });
 
   it('shows joined rooms before the user submits a prediction', async () => {
@@ -220,7 +220,7 @@ describe('DashboardService active predictions', () => {
 
     expect(card.hasSubmittedPrediction).toBe(false);
     expect(card.userRole).toBe('participant');
-    expect(card.quickAction).toEqual({ label: 'Predict Now', targetScreen: 'Prediction' });
+    expect(card.quickAction).toEqual({ label: 'Open My Prediktion', targetScreen: 'Prediction' });
   });
 
   it('persists room ordering for joined rooms', async () => {

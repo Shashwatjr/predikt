@@ -45,7 +45,7 @@ export default function RoomPredictionList({ data, title }: Props) {
       </Text>
       {data.map((entry) => {
         const isCurrent = !!entry.isCurrentUser;
-        const name = entry.user?.name ?? 'PREDIKT user';
+        const name = entry.user?.name ?? 'My Prediktion user';
         const choiceLabel = entry.selectedOptionKey
           ? String(entry.selectedOptionKey).replace(/_/g, ' ')
           : null;

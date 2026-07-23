@@ -121,7 +121,7 @@ export class ModerationService {
     if (!body.reason) throw new BadRequestException('Dispute reason is required');
 
     const defaultProofWaMeLink = `https://wa.me/?text=${encodeURIComponent(
-      `Challenge for "${room.roomTitle}" on Myprediktion.\n\nReason: ${body.reason}\n\nHost attested the result inside the app. Please reply here with your proof or context.`,
+      `Challenge for "${room.roomTitle}" on My Prediktion.\n\nReason: ${body.reason}\n\nHost attested the result inside the app. Please reply here with your proof or context.`,
     )}`;
     const proofWaMeLink =
       typeof body.proofWaMeLink === 'string' && body.proofWaMeLink.trim()

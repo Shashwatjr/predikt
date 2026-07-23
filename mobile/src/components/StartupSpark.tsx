@@ -249,7 +249,7 @@ export default function StartupSpark({ payload, appReady, onDone }: Props) {
           <View style={styles.logoBadge}>
             <Text style={styles.logoText}>P</Text>
           </View>
-          <Text style={styles.wordmark}>PREDIKT</Text>
+          <Text style={styles.wordmark}>My Prediktion</Text>
         </Animated.View>
 
         <Animated.View style={[styles.sparkCard, { opacity: cardOpacity, transform: [{ translateY: cardTranslate }] }]}>
@@ -260,7 +260,7 @@ export default function StartupSpark({ payload, appReady, onDone }: Props) {
               {rotation.mode === 'vote' ? (
                 <>
                   <Text style={styles.cardTitle}>Help choose tomorrow&apos;s Spark.</Text>
-                  <Text style={styles.cardBody}>Tap one. PREDIKT will keep the ambition tiny.</Text>
+                  <Text style={styles.cardBody}>Tap one. My Prediktion will keep the ambition tiny.</Text>
                   <View style={styles.voteGrid}>
                     {rotation.choices.map((choice) => {
                       const selected = localState?.voteChoice === choice.key;

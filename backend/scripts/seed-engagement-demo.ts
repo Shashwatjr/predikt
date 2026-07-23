@@ -264,9 +264,9 @@ async function createGenericCategoryRoom(input: {
       confidenceLevel: input.category === 'weather_rain' ? 'medium' : null,
       resultShareText:
         input.category === 'weather_rain'
-          ? 'I beat the forecast on PREDIKT. Rain Oracle unlocked.'
+          ? 'I beat the forecast on My Prediktion. Rain Oracle unlocked.'
           : input.category === 'food_eta'
-            ? 'I called the delivery ETA closest on PREDIKT.'
+            ? 'I called the delivery ETA closest on My Prediktion.'
             : undefined,
     },
     create: {
@@ -318,9 +318,9 @@ async function createGenericCategoryRoom(input: {
       confidenceLevel: input.category === 'weather_rain' ? 'medium' : undefined,
       resultShareText:
         input.category === 'weather_rain'
-          ? 'I beat the forecast on PREDIKT. Rain Oracle unlocked.'
+          ? 'I beat the forecast on My Prediktion. Rain Oracle unlocked.'
           : input.category === 'food_eta'
-            ? 'I called the delivery ETA closest on PREDIKT.'
+            ? 'I called the delivery ETA closest on My Prediktion.'
             : undefined,
     },
   });
@@ -361,7 +361,7 @@ async function upsertMembership(roomId: string, userId: string, role: 'creator' 
 }
 
 async function main() {
-  const owner = await upsertUser('test@predikt.ai', 'Predikt Demo', 'predikt.demo');
+  const owner = await upsertUser('test@predikt.ai', 'My Prediktion Demo', 'predikt.demo');
   const friends = await Promise.all([
     upsertUser('shashwat@predikt.ai', 'Shashwat', 'shashwat'),
     upsertUser('rahul@predikt.ai', 'Rahul', 'rahul'),
@@ -652,7 +652,7 @@ async function main() {
       generatedByUserId: owner.userId,
       personality: 'Oracle',
       headline: 'Fair reset',
-      punchline: 'Plans changed. This PREDIKT closed fairly, and nobody’s prediction counted as a loss.',
+      punchline: 'Plans changed. This Prediktion closed fairly, and nobody’s prediction counted as a loss.',
       supportingLine: 'Everyone gets a fair reset.',
       safetyMode: 'neutral',
       provider: 'templates',
@@ -665,7 +665,7 @@ async function main() {
       generatedByUserId: owner.userId,
       personality: 'Oracle',
       headline: 'Fair reset',
-      punchline: 'Plans changed. This PREDIKT closed fairly, and nobody’s prediction counted as a loss.',
+      punchline: 'Plans changed. This Prediktion closed fairly, and nobody’s prediction counted as a loss.',
       supportingLine: 'Everyone gets a fair reset.',
       safetyMode: 'neutral',
       provider: 'templates',

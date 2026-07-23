@@ -106,7 +106,7 @@ export default function ProfileScreen() {
     try {
       const updatedUser = await saveProfileIdentity({ name: name.trim(), prediktHandle: prediktHandle.trim() });
       updateUser(updatedUser);
-      Alert.alert('Profile updated', 'Your display name and PREDIKT handle are saved.');
+      Alert.alert('Profile updated', 'Your display name and Prediktion handle are saved.');
     } catch (err: unknown) {
       Alert.alert('Save failed', getApiErrorMessage(err, 'Please review your handle and try again.'));
     } finally {
@@ -257,7 +257,7 @@ export default function ProfileScreen() {
         />
         <TextInputField label="Display name" value={name} onChangeText={setName} placeholder="Your name" />
         <TextInputField
-          label="PREDIKT handle"
+          label="Prediktion handle"
           value={prediktHandle}
           onChangeText={setPrediktHandle}
           autoCapitalize="none"
@@ -455,7 +455,7 @@ export default function ProfileScreen() {
               {featureFlags.notifications ? (
                 <PrimaryButton label="Notifications" onPress={() => navigation.navigate('Notifications')} variant="secondary" />
               ) : null}
-              <PrimaryButton label="Help and How PREDIKT Works" onPress={() => navigation.navigate('Help', { allowReplayTour: true })} variant="ghost" />
+              <PrimaryButton label="Help and How My Prediktion Works" onPress={() => navigation.navigate('Help', { allowReplayTour: true })} variant="ghost" />
               <PrimaryButton label="Replay Guided Tour" onPress={() => navigation.navigate('Home', { replayOnboarding: true })} variant="secondary" />
               <PrimaryButton label="Privacy Policy" onPress={() => navigation.navigate('Legal', { slug: 'privacy', title: 'Privacy Policy' })} variant="ghost" />
               <PrimaryButton label="Terms" onPress={() => navigation.navigate('Legal', { slug: 'terms', title: 'Terms' })} variant="ghost" />

@@ -23,7 +23,7 @@ export default function SponsoredPlacementCard({ placement }: Props) {
         </View>
       ) : null}
       <Text style={[styles.note, { color: colors.textMuted }]}>
-        Separate from PREDIKT results.
+        Separate from My Prediktion results.
       </Text>
     </View>
   );

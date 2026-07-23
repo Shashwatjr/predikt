@@ -151,7 +151,7 @@ async function seedAdmin() {
     where: { email: adminEmail },
     update: { roleId: superAdminRole.roleId, passwordHash: adminHash },
     create: {
-      name: 'PREDIKT Admin',
+      name: 'My Prediktion Admin',
       email: adminEmail,
       passwordHash: adminHash,
       roleId: superAdminRole.roleId,
@@ -342,10 +342,10 @@ async function main() {
       creatorSocialHandle: '@aaravlive',
       socialLiveUrl: 'https://instagram.com/live/demo',
       pinnedCommentText:
-        'Join my PREDIKT room 🎯 Code: DEMO1. Predict my next milestone. Exact location is hidden for safety.',
+        'Join my Prediktion room 🎯 Code: DEMO1. Predict my next milestone. Exact location is hidden for safety.',
       shareCardTitle: 'Airport Dash',
       shareCardSubtitle: 'Predict what’s next.',
-      instagramStoryText: 'Predict my next milestone on PREDIKT. Code: DEMO1',
+      instagramStoryText: 'Predict my next milestone on My Prediktion. Code: DEMO1',
       facebookPostText: 'Join my live prediction room with code DEMO1',
       qrCodePayload: 'PREDIKT:DEMO1',
       resultShareText: 'Predict right. Build Aura. Earn Clout.',

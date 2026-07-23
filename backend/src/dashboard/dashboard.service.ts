@@ -160,7 +160,7 @@ export class DashboardService {
     recommendations.push('Join 1 active room to earn participation Clout.');
     recommendations.push('Predict all milestones in a room to boost your score.');
     if (!user.prediktHandle) {
-      recommendations.push('Set your PREDIKT handle to appear on leaderboards.');
+      recommendations.push('Set your Prediktion handle to appear on leaderboards.');
     }
     return { recommendations };
   }
@@ -515,7 +515,7 @@ export class DashboardService {
       activityEventId: event.activityEventId,
       eventType: event.eventType,
       message: event.message,
-      actor: event.user?.prediktHandle ? `@${event.user.prediktHandle}` : event.user?.name ?? 'PREDIKT user',
+      actor: event.user?.prediktHandle ? `@${event.user.prediktHandle}` : event.user?.name ?? 'My Prediktion user',
       createdAt: event.createdAt,
     }));
   }
@@ -623,7 +623,6 @@ export class DashboardService {
       quickAction: this.buildQuickAction(
         normalizedStatus,
         room.journeyStatus,
-        userPredictions.length > 0,
         room.creatorUserId === userId,
         room.category ?? room.templateKey ?? null,
       ),
@@ -700,45 +699,42 @@ export class DashboardService {
   private buildQuickAction(
     status: string,
     journeyStatus: string,
-    hasPrediction: boolean,
     isCreator: boolean,
     category: string | null,
   ) {
+    // Hub CTAs stay brand-consistent ("Open My Prediktion") across open / live / closed
+    // rooms; routing still depends on status via targetScreen.
+    const openPredikt = (targetScreen: 'Prediction' | 'LiveRoom' | 'Result') => ({
+      label: 'Open My Prediktion',
+      targetScreen,
+    });
+
     if (category === 'open_prediction') {
-      if (status === 'predictions_open' && !hasPrediction) {
-        return { label: 'Predikt', targetScreen: 'Prediction' };
-      }
       if (status === 'predictions_open') {
-        return { label: 'Predikt', targetScreen: 'Prediction' };
+        return openPredikt('Prediction');
       }
       if (status === 'predictions_locked' || status === 'live') {
-        return { label: 'Open Room', targetScreen: 'LiveRoom' };
+        return openPredikt('LiveRoom');
       }
-      return { label: 'View Results', targetScreen: 'Result' };
+      return openPredikt('Result');
     }
 
     if (isCreator && ['scheduled', 'open', 'locked'].includes(journeyStatus)) {
-      return { label: 'Start Journey', targetScreen: 'LiveRoom' };
+      return openPredikt('LiveRoom');
     }
     if (isCreator && ['live', 'inactive', 'overdue'].includes(journeyStatus)) {
-      return { label: 'Confirm Arrival', targetScreen: 'LiveRoom' };
+      return openPredikt('LiveRoom');
     }
     if (['auto_closed', 'abandoned', 'plan_changed', 'cancelled_by_host'].includes(journeyStatus)) {
-      return { label: 'View Closed Room', targetScreen: 'Result' };
-    }
-    if (status === 'predictions_open' && !hasPrediction) {
-      return { label: 'Predict Now', targetScreen: 'Prediction' };
+      return openPredikt('Result');
     }
     if (status === 'predictions_open') {
-      return { label: 'Open Room', targetScreen: 'Prediction' };
+      return openPredikt('Prediction');
     }
-    if (status === 'predictions_locked') {
-      return { label: 'Waiting for Lock', targetScreen: 'LiveRoom' };
+    if (status === 'predictions_locked' || status === 'live') {
+      return openPredikt('LiveRoom');
     }
-    if (status === 'live') {
-      return { label: 'View Live', targetScreen: 'LiveRoom' };
-    }
-    return { label: 'View Results', targetScreen: 'Result' };
+    return openPredikt('Result');
   }
 
   private buildLifecycleLabel(room: ActivePredictionRoom) {
