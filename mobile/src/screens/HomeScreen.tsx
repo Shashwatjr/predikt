@@ -46,7 +46,7 @@ type Props = {
 type DemoChoice = 'Yes' | 'No' | 'Exact time';
 type HomeTab = NavTab;
 type ActivePredictionFilter = 'all' | 'needs_prediction' | 'live_now' | 'result_ready' | 'created_by_me';
-type CreateRoomPresetCategory = NonNullable<RootStackParamList['CreateRoom']>['presetCategory'];
+type CreateRoomPresetCategory = NonNullable<NonNullable<RootStackParamList['CreateRoom']>['presetCategory']>;
 
 const fallbackLiveRooms = [
   {
@@ -151,7 +151,8 @@ export default function HomeScreen({ navigation, route }: Props) {
 
       const alreadyCompleted = await hasCompletedDashboardOnboarding();
       if (!alreadyCompleted && active) {
-        setTourVisible(true);
+        await completeDashboardOnboarding();
+        setTourVisible(false);
       }
     }
 
@@ -442,7 +443,7 @@ export default function HomeScreen({ navigation, route }: Props) {
         <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
           <AppHeader
             greeting={user?.name ? `Hey, ${user.name.split(' ')[0]}` : 'Hey there'}
-            subtitle="What can you PREDIKT today?"
+            subtitle="What moment do you want to turn into a game today?"
             aura={totalAura}
             streak={summary?.currentStreak ?? user?.currentStreak}
             unreadCount={unreadNotifications}
@@ -457,32 +458,28 @@ export default function HomeScreen({ navigation, route }: Props) {
             <View style={styles.heroGlowOrbSmall} />
             <View style={styles.heroBadgeRow}>
               <View style={styles.heroBadge}>
-                <Text style={styles.heroBadgeText}>MVP PILOT</Text>
+                <Text style={styles.heroBadgeText}>BEST FIRST MOVE</Text>
               </View>
               <View style={[styles.heroBadge, styles.heroBadgeGhost]}>
-                <Text style={styles.heroBadgeGhostText}>Predict. Compete. Earn Aura.</Text>
+                <Text style={styles.heroBadgeGhostText}>Create a room and share it with friends</Text>
               </View>
             </View>
             <Text style={styles.heroHeadline}>Hey, {user?.name ? user.name.split(' ')[0] : 'MVP'} 👋</Text>
-            <Text style={styles.heroCopy}>Predict moments, beat the crowd, and stack Aura across live rooms, quick ETA calls, and friendly faceoffs.</Text>
+            <Text style={styles.heroCopy}>Create one playful room, send the link, and come back for The Tea. Aura and badges will make sense once you have a result.</Text>
           </LinearGradient>
 
           <View style={styles.metricsRow}>
             <View style={styles.metricCard}>
               <Text style={styles.metricValue}>{activePredictions.length}</Text>
-              <Text style={styles.metricLabel}>Active Predictions</Text>
+              <Text style={styles.metricLabel}>Rooms in play</Text>
             </View>
             <View style={styles.metricCard}>
               <Text style={styles.metricValue}>#{summary?.rankAmongFollowing ?? demoRank}</Text>
-              <Text style={styles.metricLabel}>Rank This Week</Text>
-            </View>
-            <View style={styles.metricCard}>
-              <Text style={styles.metricValue}>{summary?.currentStreak ?? user?.currentStreak ?? 0}</Text>
-              <Text style={styles.metricLabel}>Day Streak</Text>
+              <Text style={styles.metricLabel}>Weekly rank</Text>
             </View>
             <View style={styles.metricCard}>
               <Text style={styles.metricValue}>{totalAura}</Text>
-              <Text style={styles.metricLabel}>Aura Earned</Text>
+              <Text style={styles.metricLabel}>Aura so far</Text>
             </View>
           </View>
 
@@ -497,13 +494,18 @@ export default function HomeScreen({ navigation, route }: Props) {
             >
               <LinearGradient colors={['#1da1ff', '#06B6D4']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.primaryCta}>
                 <Text style={styles.ctaIcon}>⚡</Text>
-                <Text style={styles.primaryCtaText}>Start a PREDIKT</Text>
+                <Text style={styles.primaryCtaText}>Start a Prediktion</Text>
               </LinearGradient>
             </TouchableOpacity>
             <TouchableOpacity style={[styles.secondaryCta, styles.ctaFlex]} onPress={() => navigation.navigate('JoinRoom')}>
               <Text style={styles.ctaIcon}>🔗</Text>
               <Text style={styles.secondaryCtaText}>Join with Code</Text>
             </TouchableOpacity>
+          </View>
+
+          <View style={styles.nextMoveCard}>
+            <Text style={styles.sectionTitle}>What to do next</Text>
+            <Text style={styles.mutedText}>Start one quick room, share it in the group chat, then come back for the reveal.</Text>
           </View>
 
           <SectionHeader title="Choose a category" subtitle="Jump straight into the kind of moment you want to call" />
@@ -523,9 +525,14 @@ export default function HomeScreen({ navigation, route }: Props) {
               );
               }
               const enabled = isCategoryEnabled(theme.key);
-              const presetCategory = (
-                ['arrival_time', 'food_eta', 'open_prediction', 'gym_habit'] as const
-              ).includes(theme.key as CreateRoomPresetCategory)
+              const allowedPresetCategories: readonly CreateRoomPresetCategory[] = [
+                'arrival_time',
+                'food_eta',
+                'open_prediction',
+                'gym_habit',
+                'sports_prediction',
+              ];
+              const presetCategory = allowedPresetCategories.includes(theme.key as CreateRoomPresetCategory)
                 ? (theme.key as CreateRoomPresetCategory)
                 : undefined;
               return (
@@ -546,7 +553,7 @@ export default function HomeScreen({ navigation, route }: Props) {
             })}
           </View>
 
-          <SectionHeader title="Live PREDIKTs" live={hasLiveHubActivity} />
+          <SectionHeader title="Live My Prediktion rooms" live={hasLiveHubActivity} />
 
           {demoAccount ? (
             <DemoWalkthroughBanner
@@ -600,9 +607,9 @@ export default function HomeScreen({ navigation, route }: Props) {
             </View>
           ) : activePredictions.length === 0 ? (
             <EmptyState
-              title="Create your first PREDIKT"
+              title="Create your first My Prediktion"
               body="Start a room or join one with a code to fill your live hub."
-              primaryLabel="Start a PREDIKT"
+              primaryLabel="Start a Prediktion"
               secondaryLabel="Join with Code"
               onPrimary={() => navigation.navigate('CreateRoom')}
               onSecondary={() => navigation.navigate('JoinRoom')}
@@ -735,21 +742,12 @@ export default function HomeScreen({ navigation, route }: Props) {
           ) : null}
 
           <LinearGradient colors={['#06B6D4', '#1d4ed8', '#0ea5e9']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.createCard}>
-            <Text style={styles.createTitle}>Create your first PREDIKT{'\n'}in 30 seconds</Text>
+            <Text style={styles.createTitle}>Create your first My Prediktion{'\n'}in 30 seconds</Text>
             <TouchableOpacity style={styles.createButton} onPress={() => navigation.navigate('CreateRoom')}>
-              <Text style={styles.createButtonText}>Create Room</Text>
+              <Text style={styles.createButtonText}>Start a Prediktion</Text>
               <Text style={styles.createBolt}>ϟ</Text>
             </TouchableOpacity>
           </LinearGradient>
-
-          {(dashboard?.recommendations ?? []).length > 0 ? (
-            <View style={styles.nextMoveCard}>
-              <Text style={styles.sectionTitle}>Your next move</Text>
-              {(dashboard?.recommendations ?? []).slice(0, 3).map((item, index) => (
-                <Text key={`${item}-${index}`} style={styles.mutedText}>• {item}</Text>
-              ))}
-            </View>
-          ) : null}
 
           <TouchableOpacity style={styles.logoutButton} onPress={logout}>
             <Text style={styles.logoutText}>Log Out</Text>

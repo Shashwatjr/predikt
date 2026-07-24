@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { AccessibilityInfo, Animated, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, Defs, G, LinearGradient as SvgGradient, Path, Stop, Text as SvgText } from 'react-native-svg';
 import { palette, radius, spacing, typography } from '../theme/designSystem';
+import { getTravelStageFromProgress } from '../utils/travelProgress';
 
 /**
  * Arrival visualization — SVG only, never a map. A dotted route curves from a start
@@ -87,12 +88,13 @@ export default function ArrivalJourneyViz({
   const dot = pointAt(t);
   const angle = tangentAngleAt(t);
   const dashOffset = TOTAL_LEN * (1 - t);
+  const stageLabel = getTravelStageFromProgress(clamped, 'guest');
 
   return (
     <View style={styles.card}>
       <View style={styles.header}>
         <Text style={styles.title}>On the way</Text>
-        {status ? <Text style={styles.status}>{status.replace(/_/g, ' ')}</Text> : null}
+        <Text style={styles.status}>{stageLabel}</Text>
       </View>
 
       <Svg viewBox="0 0 320 100" width="100%" height={96}>
@@ -138,9 +140,10 @@ export default function ArrivalJourneyViz({
 
       <Text style={styles.eta}>
         {etaMinutes != null
-          ? `~ ${etaMinutes} min to go · ${Math.round(clamped)}%`
-          : `${Math.round(clamped)}% of the way`}
+          ? `${stageLabel} · ~ ${etaMinutes} min to go`
+          : stageLabel}
       </Text>
+      {status ? <Text style={styles.safety}>System status: {status.replace(/_/g, ' ')}</Text> : null}
       {safetyMessage ? <Text style={styles.safety}>{safetyMessage}</Text> : null}
     </View>
   );

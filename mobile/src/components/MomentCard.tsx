@@ -22,7 +22,7 @@ export default function MomentCard({ title, subtitle, badge, category, handle, p
   return (
     <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
       <View style={styles.topRow}>
-        <Text style={[styles.logo, { color: colors.purpleLight }]}>PREDIKT</Text>
+        <Text style={[styles.logo, { color: colors.purpleLight }]}>My Prediktion</Text>
         <Text style={[styles.badge, { color: colors.green }]}>{badge}</Text>
       </View>
       <Text style={[styles.category, { color: colors.textSecondary }]}>{category}</Text>

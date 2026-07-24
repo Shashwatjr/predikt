@@ -23,6 +23,7 @@ export default function RoomCreatedScreen({ navigation, route }: Props) {
   const [manualPhone, setManualPhone] = useState('');
   const [showManualShare, setShowManualShare] = useState(false);
   const [showRoomDetails, setShowRoomDetails] = useState(false);
+  const [lastCopiedLabel, setLastCopiedLabel] = useState<string | null>(null);
   const sharePayload = useMemo(() => buildSharePayload({ ...room, inviteCode }), [room, inviteCode]);
   const creationMeta = room.scoringRule?.creationMeta ?? room.creationMeta ?? {};
   const category = room.category ?? creationMeta.category ?? room.templateKey;
@@ -30,6 +31,16 @@ export default function RoomCreatedScreen({ navigation, route }: Props) {
   const forecastSnapshot = room.baselineSnapshot ?? creationMeta.baselineSnapshot;
   const oracleBotPrediction = room.oracleBotPrediction ?? creationMeta.oracleBotPrediction;
   const expectedDurationMinutes = Math.round((room.expectedDurationSeconds ?? room.route?.estimatedDurationSeconds ?? room.journeyRoute?.estimatedDurationSeconds ?? 3600) / 60);
+  const plannedStartAt = room.journeyScheduledStartAt ? new Date(room.journeyScheduledStartAt) : null;
+  const predictionCloseAt = room.predictionCloseTime ? new Date(room.predictionCloseTime) : null;
+  const expectedArrivalAt =
+    plannedStartAt && Number.isFinite(expectedDurationMinutes)
+      ? new Date(plannedStartAt.getTime() + expectedDurationMinutes * 60 * 1000)
+      : null;
+  const formatDateTime = (value: Date | null) =>
+    value && !Number.isNaN(value.getTime())
+      ? value.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+      : 'Set on room';
   const detailRows = [
     { icon: '🏷️', label: 'Room', value: sharePayload.shareTitle },
     category === 'weather_rain'
@@ -48,13 +59,19 @@ export default function RoomCreatedScreen({ navigation, route }: Props) {
       ? { icon: '✅', label: 'Options', value: (creationMeta.options ?? room.options ?? []).map((option: string) => option.replace(/_/g, ' ')).join(' / ') }
       : null,
     room.answerType !== 'multiple_choice'
-      ? { icon: '⏱️', label: 'Expected', value: `${expectedDurationMinutes} min` }
+      ? { icon: '⏱️', label: 'Journey time', value: `${expectedDurationMinutes} min` }
       : null,
-    { icon: '🔒', label: 'Lock', value: room.predictionCloseTime ? new Date(room.predictionCloseTime).toLocaleString() : 'Set on room' },
+    room.answerType !== 'multiple_choice'
+      ? { icon: '🕒', label: 'Provider arrival', value: formatDateTime(expectedArrivalAt) }
+      : null,
+    room.answerType !== 'multiple_choice'
+      ? { icon: '🚦', label: 'Planned start', value: formatDateTime(plannedStartAt) }
+      : null,
+    { icon: '🔒', label: 'Predictions close', value: formatDateTime(predictionCloseAt) },
     room.answerType !== 'multiple_choice'
       ? { icon: '⌛', label: 'Close', value: room.autoCloseAt ? new Date(room.autoCloseAt).toLocaleString() : 'After journey time + grace' }
       : null,
-    { icon: '🔒', label: 'Privacy', value: category === 'weather_rain' ? 'No exact address or live map' : 'Location shown with delay for safety' },
+    { icon: '🔒', label: 'Privacy', value: category === 'weather_rain' ? 'No exact address or live map' : 'Friends see delayed progress, not your exact location' },
   ].filter(Boolean);
 
   async function trackShare(action: string, channel: string) {
@@ -70,7 +87,8 @@ export default function RoomCreatedScreen({ navigation, route }: Props) {
       if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(value);
         await trackShare('room_shared', label === 'Invite link' ? 'link' : 'copy');
-        Alert.alert(`${label} copied`, value);
+        setLastCopiedLabel(label);
+        Alert.alert(`${label} copied`, 'Your invite is ready to paste into the group chat.');
         return;
       }
       await Share.share({ message: value, title: label });
@@ -118,8 +136,8 @@ export default function RoomCreatedScreen({ navigation, route }: Props) {
               {isGroupJourney
                 ? 'Invite friends to join, opt in as travellers, and predict each other’s arrival time.'
                 : isGenericRoom
-                  ? 'Share the Wild Cards link below. Friends can join, predict, forward it onward, and challenge the attested result if needed.'
-                  : 'Share the code below. Friends can join from the link and predict right away.'}
+                ? 'Share the Wild Cards link below. Friends can join, predict, forward it onward, and challenge the attested result if needed.'
+                  : 'Your room is live. Share the invite now so friends can join and predict before the lock time.'}
             </Text>
           </View>
         </View>
@@ -158,6 +176,7 @@ export default function RoomCreatedScreen({ navigation, route }: Props) {
       >
         <Text style={styles.codeLabel}>Invite Code</Text>
         <Text style={styles.roomTitleHero}>{sharePayload.shareTitle}</Text>
+        <Text style={styles.codeStatus}>Status: Predictions are open</Text>
         <Text style={styles.code}>{inviteCode}</Text>
         <Text style={styles.codeHint}>
           {isGenericRoom
@@ -165,6 +184,15 @@ export default function RoomCreatedScreen({ navigation, route }: Props) {
             : 'Anyone with this code can open the room and predict. No account needed for the first round.'}
         </Text>
       </LinearGradient>
+
+      {lastCopiedLabel ? (
+        <View style={[styles.feedbackBanner, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <Text style={[styles.feedbackTitle, { color: colors.textPrimary }]}>{lastCopiedLabel} copied</Text>
+          <Text style={[styles.feedbackCopy, { color: colors.textSecondary }]}>
+            Next: share it now, let friends lock their guesses, then come back for the journey and The Tea.
+          </Text>
+        </View>
+      ) : null}
 
       <View style={styles.copyGrid}>
         <View style={styles.copyAction}>
@@ -176,7 +204,7 @@ export default function RoomCreatedScreen({ navigation, route }: Props) {
       </View>
 
       <View style={[styles.shareCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-        <Text style={[styles.shareTitle, { color: colors.textPrimary }]}>Invite friends</Text>
+        <Text style={[styles.shareTitle, { color: colors.textPrimary }]}>Invite friends now</Text>
         <Text style={[styles.shareCopy, { color: colors.textSecondary }]}>
           {isGenericRoom
             ? 'Send the link once. Friends can join Wild Cards, pick a name, make their call, and forward the same room onward before lock.'
@@ -217,7 +245,7 @@ export default function RoomCreatedScreen({ navigation, route }: Props) {
         <View style={[styles.shareCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <Text style={[styles.shareTitle, { color: colors.textPrimary }]}>Manual WhatsApp invite</Text>
           <Text style={[styles.shareCopy, { color: colors.textSecondary }]}>
-            PREDIKT does not upload your contacts. This opens WhatsApp on your device.
+            My Prediktion does not upload your contacts. This opens WhatsApp on your device.
           </Text>
           <TextInputField
             label="Phone number"
@@ -303,8 +331,12 @@ const styles = StyleSheet.create({
   },
   codeLabel: { color: 'rgba(255,255,255,0.7)', fontSize: 13, fontWeight: '600', marginBottom: 8 },
   roomTitleHero: { color: '#ffffff', fontSize: 18, fontWeight: '900', textAlign: 'center', marginBottom: 8 },
+  codeStatus: { color: 'rgba(255,255,255,0.82)', fontSize: 13, fontWeight: '700', marginBottom: 8 },
   code: { color: '#ffffff', fontSize: 52, fontWeight: '900', letterSpacing: 10, marginBottom: 8 },
   codeHint: { color: 'rgba(255,255,255,0.6)', fontSize: 12, textAlign: 'center' },
+  feedbackBanner: { width: '100%', borderRadius: 18, borderWidth: 1, padding: 16, marginBottom: 14 },
+  feedbackTitle: { fontSize: 14, fontWeight: '900', marginBottom: 4 },
+  feedbackCopy: { fontSize: 13, lineHeight: 19 },
   copyGrid: { width: '100%', flexDirection: 'row', gap: 12, marginBottom: 12 },
   copyAction: { flex: 1 },
   shareCard: { width: '100%', borderRadius: 18, borderWidth: 1, padding: 16, marginBottom: 16 },

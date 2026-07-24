@@ -120,7 +120,7 @@ export default function LandingDashboardLayout({
             <Text style={styles.brandMarkText}>P</Text>
           </View>
           <View>
-            <Text style={styles.brandName}>PREDIKT</Text>
+            <Text style={styles.brandName}>My Prediktion</Text>
             <Text style={styles.brandParent}>by Kriviksha</Text>
           </View>
         </View>

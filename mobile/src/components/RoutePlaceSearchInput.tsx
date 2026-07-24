@@ -3,6 +3,7 @@ import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import TextInputField from './TextInputField';
 import { useTheme } from '../context/ThemeContext';
 import api, { getApiErrorMessage } from '../services/api';
+import PrimaryButton from './PrimaryButton';
 
 export interface PlaceSuggestion {
   placeId: string;
@@ -45,6 +46,7 @@ export default function RoutePlaceSearchInput({
   const [mapsConfig, setMapsConfig] = useState<MapsConfig | null>(null);
   const [searchProvider, setSearchProvider] = useState<string | null>(null);
   const [focused, setFocused] = useState(false);
+  const [searchAttempt, setSearchAttempt] = useState(0);
   const blurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -88,6 +90,13 @@ export default function RoutePlaceSearchInput({
         setLoading(true);
         setError(null);
       }
+      const timeout = setTimeout(() => {
+        if (!active) return;
+        setLoading(false);
+        setSuggestions([]);
+        setSearchProvider(null);
+        setError('Search is taking longer than expected. Retry or add a city name.');
+      }, 6000);
       try {
         const res = await api.get('/routes/place-search', {
           params: { query: value.trim() },
@@ -96,6 +105,9 @@ export default function RoutePlaceSearchInput({
         if (active) {
           setSuggestions(res.data?.suggestions ?? []);
           setSearchProvider(res.data?.searchProvider ?? null);
+          if ((res.data?.suggestions ?? []).length === 0) {
+            setError('No places found yet. Add a landmark or city to narrow it down.');
+          }
         }
       } catch (err: unknown) {
         if (active) {
@@ -109,6 +121,7 @@ export default function RoutePlaceSearchInput({
           setSearchProvider(null);
         }
       } finally {
+        clearTimeout(timeout);
         if (active) setLoading(false);
       }
     }
@@ -121,7 +134,7 @@ export default function RoutePlaceSearchInput({
       active = false;
       clearTimeout(timer);
     };
-  }, [value]);
+  }, [searchAttempt, value]);
 
   const showDropdown =
     focused &&
@@ -150,6 +163,10 @@ export default function RoutePlaceSearchInput({
     blurTimerRef.current = setTimeout(() => {
       setFocused(false);
     }, 160);
+  }
+
+  function retrySearch() {
+    setSearchAttempt((current) => current + 1);
   }
 
   return (
@@ -195,12 +212,18 @@ export default function RoutePlaceSearchInput({
             <Text style={[styles.dropdownStatus, { color: colors.textSecondary }]}>Searching places…</Text>
           ) : null}
           {error ? (
-            <Text style={[styles.dropdownStatus, { color: colors.red }]}>{error}</Text>
+            <View style={styles.statusBlock}>
+              <Text style={[styles.dropdownStatus, { color: colors.red }]}>{error}</Text>
+              <PrimaryButton label="Retry search" onPress={retrySearch} variant="secondary" fullWidth={false} />
+            </View>
           ) : null}
           {!loading && !error && suggestions.length === 0 ? (
-            <Text style={[styles.dropdownStatus, { color: colors.textMuted }]}>
-              No places found. Try adding a city, e.g. Yelahanka Bangalore.
-            </Text>
+            <View style={styles.statusBlock}>
+              <Text style={[styles.dropdownStatus, { color: colors.textMuted }]}>
+                No places found. Try adding a city, e.g. Yelahanka Bangalore.
+              </Text>
+              <PrimaryButton label="Retry search" onPress={retrySearch} variant="secondary" fullWidth={false} />
+            </View>
           ) : null}
           {suggestions.map((suggestion, index) => (
             <Pressable
@@ -258,6 +281,10 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     paddingHorizontal: 14,
     paddingVertical: 12,
+  },
+  statusBlock: {
+    alignItems: 'flex-start',
+    paddingBottom: 12,
   },
   item: {
     paddingHorizontal: 14,

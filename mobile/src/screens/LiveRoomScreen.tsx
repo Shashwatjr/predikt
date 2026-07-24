@@ -22,6 +22,7 @@ import { deriveArrivalBenchmarks, formatClock } from '../utils/benchmarks';
 import { botGuessTeaser, botEtaTeaser } from '../utils/botVoice';
 import { layout, palette } from '../theme/designSystem';
 import { featureFlags } from '../config/featureFlags';
+import { getTravelStage, getTravelStageFromProgress } from '../utils/travelProgress';
 
 // v2 (checkpoint_leaderboard_v2): six time-based checkpoints; v1 samples 50/80.
 const V2_CHECKPOINTS = [20, 40, 60, 80, 90, 100];
@@ -434,6 +435,7 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
   }
 
   const pct = liveState?.progressPercentage ?? 0;
+  const travelStage = getTravelStage(pct);
   const secondsUntilStart = !isCreator && viewerCountdownSeconds != null
     ? viewerCountdownSeconds
     : isCreator && liveState?.startTime
@@ -620,7 +622,7 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
       >
         <ArrivalWaitingRoom
           title={room?.roomTitle ?? 'Arrival PREDIKT'}
-          statusLabel="Started"
+          statusLabel={getTravelStageFromProgress(20, 'creator')}
           targetTime={waitingTargetTime}
           startLabel={room?.startingPointLabel ?? room?.routeSummary?.startLabel ?? 'Start'}
           destinationLabel={room?.destinationLabel ?? room?.routeSummary?.destinationLabel ?? 'Destination'}
@@ -686,10 +688,10 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
                 ? `${lockCountdownLabel} — get your guess in before it closes.`
                 : 'Lock in your guess before predictions close.'
               : phase === 'locked'
-                ? 'Guesses are locked in — no more changes. Now we watch.'
+              ? 'Guesses are locked in — no more changes. Now we watch.'
                 : isGenericRoom
                   ? 'Voting is live. Make your call before the timer ends.'
-                  : 'Guesses are locked. Live progress is rolling in below.'}
+                  : 'Guesses are locked. Delayed progress updates will roll in below.'}
           </Text>
         </View>
       )}
@@ -781,10 +783,10 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
         <LiveStatusCard
           theme={categoryTheme}
           title={room?.roomTitle ?? (category === 'weather_rain' ? 'Weather Room' : 'Live PREDIKT')}
-          statusLabel={(liveState?.journeyStatus ?? liveState?.status ?? 'live').replace(/_/g, ' ')}
+          statusLabel={category === 'weather_rain' ? (liveState?.journeyStatus ?? liveState?.status ?? 'live').replace(/_/g, ' ') : getTravelStageFromProgress(pct, isCreator ? 'creator' : 'guest')}
           statusTone="live"
           progress={category !== 'weather_rain' ? pct : undefined}
-          etaLabel={liveState?.etaMinutes != null ? `${liveState.etaMinutes} min` : trackingCountdownLabel ?? (minutesUntilStart > 0 ? `Starts in ${minutesUntilStart} min` : undefined)}
+          etaLabel={liveState?.etaMinutes != null ? `${liveState.etaMinutes} min remaining` : trackingCountdownLabel ?? (minutesUntilStart > 0 ? `Starts in ${minutesUntilStart} min` : undefined)}
           oracleLabel={room?.baselineLabel ?? room?.oracleBotPrediction?.label}
           lifecycleNote={liveState?.waitingForDelayedStart && !isCreator ? (trackingCountdownLabel ?? 'Waiting to start.') : (liveState?.lifecycleMessage ?? liveState?.safetyMessage)}
         />
@@ -805,7 +807,7 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
       {!isGenericRoom ? (
         <View style={[styles.privacyPill, { backgroundColor: colors.purpleDim }]}>
           <Text style={[styles.privacyText, { color: colors.purpleLight }]}>
-            🔒 Ghost Mode on · exact GPS and raw movement are hidden · {liveState?.safetyMessage ?? 'Only approximate progress is shown.'}
+            🔒 Ghost Mode on · exact location stays hidden · progress is delayed and shared only at key moments.
           </Text>
         </View>
       ) : null}
@@ -820,7 +822,11 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
           <Text style={[styles.creatorTitle, { color: colors.textPrimary }]}>
             {category === 'weather_rain' ? 'Weather Room Status' : 'Journey Status'}
           </Text>
-          <Text style={[styles.statusLine, { color: colors.purpleLight }]}>{(liveState.journeyStatus ?? liveState.status).replace(/_/g, ' ')}</Text>
+          <Text style={[styles.statusLine, { color: colors.purpleLight }]}>
+            {category === 'weather_rain'
+              ? (liveState.journeyStatus ?? liveState.status).replace(/_/g, ' ')
+              : `${travelStage.creatorLabel} · ${travelStage.checkpoint}%`}
+          </Text>
           <Text style={[styles.startDelayCopy, { color: colors.textSecondary }]}>
             {category === 'weather_rain'
               ? 'Declare the actual rain outcome when the time window ends. Oracle Bot is a benchmark, not a guarantee.'
@@ -923,7 +929,7 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
       {!isCreator && liveState?.waitingForDelayedStart && trackingCountdownLabel && !isGenericRoom && category !== 'weather_rain' ? (
         <View style={[styles.creatorCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <LinearGradient colors={[colors.purple + '30', 'transparent']} style={styles.creatorHeader}>
-            <Text style={[styles.creatorTitle, { color: colors.textPrimary }]}>Start Journey</Text>
+            <Text style={[styles.creatorTitle, { color: colors.textPrimary }]}>Journey starting soon</Text>
           </LinearGradient>
           <View style={styles.creatorBody}>
             <Text style={[styles.startDelayCopy, { color: colors.textSecondary }]}>
@@ -936,10 +942,9 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
       {/* Live visualization — SVG only, never a map */}
       {!isGenericRoom && liveProgressPending ? (
         <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <Text style={[styles.creatorTitle, { color: colors.textPrimary }]}>🚦 The journey has begun</Text>
+          <Text style={[styles.creatorTitle, { color: colors.textPrimary }]}>🚦 {getTravelStageFromProgress(20, 'creator')}</Text>
           <Text style={[styles.startDelayCopy, { color: colors.textSecondary, marginBottom: 0 }]}>
-            Live progress will appear here shortly — hang tight. Guesses are already locked, so
-            there's nothing to do but watch.
+            Live progress will appear here shortly — hang tight. Guests see delayed checkpoint updates, not a live trail.
           </Text>
         </View>
       ) : !isGenericRoom && liveState && category === 'food_eta' ? (
@@ -999,14 +1004,12 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
           </LinearGradient>
           <View style={styles.creatorBody}>
             <Text style={[styles.startDelayCopy, { color: colors.textSecondary }]}>
-              {featureFlags.checkpointLeaderboardV2
-                ? 'Progress runs on the route timer with private checkpoints at 20/40/60/80/90% and arrival, each doing one GPS + ETA read.'
-                : 'Progress now runs on the route timer with private checkpoints at 0%, 50%, 80%, and arrival.'}
+              Your room runs on private checkpoints at 20%, 40%, 60%, 80%, 90%, and arrival. Friends only see delayed stage updates.
             </Text>
             {staysOpenUntilLabel ? (
               <Text style={[styles.startDelayCopy, { color: colors.purpleLight }]}>{staysOpenUntilLabel}</Text>
             ) : null}
-            <PrimaryButton label="Confirm Arrival" onPress={handleConfirmArrival} loading={confirmingArrival} icon="✅" />
+            <PrimaryButton label="Confirm arrival" onPress={handleConfirmArrival} loading={confirmingArrival} icon="✅" />
             <PrimaryButton label="Cancel / Plan Changed" onPress={handleCancelJourney} loading={cancelling} variant="secondary" icon="🛑" />
             <PrimaryButton label="End Room & See Results" onPress={handleEndRoom} loading={ending} variant="danger" icon="🏁" />
           </View>

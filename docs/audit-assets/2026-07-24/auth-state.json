@@ -1,0 +1,26 @@
+{
+  "cookies": [],
+  "origins": [
+    {
+      "origin": "https://predikt-alpha.vercel.app",
+      "localStorage": [
+        {
+          "name": "predikt.startup-spark.state.v1",
+          "value": "{\"lastShownDate\":\"2026-07-24\",\"templateKey\":\"kindness-02\",\"dismissed\":true,\"completed\":true,\"voteChoice\":null,\"createdAt\":\"2026-07-24T04:34:13.750Z\"}"
+        },
+        {
+          "name": "predikt.auth.session.v1",
+          "value": "{\"accessToken\":\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJjZjZlNTU1YS1jZGM0LTQ0N2MtYTA2Mi1lMmU3MjY1ODFjMDEiLCJlbWFpbCI6InRlc3RlckBwcmVkaWt0LmFpIiwidG9rZW5UeXBlIjoiYWNjZXNzIiwiaWF0IjoxNzg0ODY3NjU4LCJleHAiOjE3ODQ4Njg1NTh9.T3UhvzaH3k-QEPep37a-wwFk01pp2xJqVvwylbOIaso\",\"accessTokenExpiresAt\":\"2026-07-24T04:49:18.514Z\",\"refreshToken\":\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJjZjZlNTU1YS1jZGM0LTQ0N2MtYTA2Mi1lMmU3MjY1ODFjMDEiLCJzaWQiOiI3NzBmMzBlOTQwZGNjMmNjMTVmNjAwMzllNWQzZmVhMCIsInRva2VuVHlwZSI6InJlZnJlc2giLCJpYXQiOjE3ODQ4Njc2NTgsImV4cCI6MTc4NzQ1OTY1OH0.PV9u7GUkwhEx-bd-ULgZ4Fve-1RPpVHtIovPwWOPS18\",\"refreshTokenExpiresAt\":\"2026-08-23T04:34:18.514Z\",\"user\":{\"userId\":\"cf6e555a-cdc4-447c-a062-e2e726581c01\",\"name\":\"Pilot\",\"email\":\"tester@predikt.ai\",\"isGuest\":false,\"prediktHandle\":\"tester1\",\"avatarKey\":null,\"selectedBackgroundKey\":null,\"totalAura\":0,\"weeklyAura\":0,\"cloutBalance\":0,\"creditBalance\":30,\"lifetimeCloutEarned\":0,\"predictionAccuracyScore\":0,\"roomsCreatedCount\":0,\"predictionsMadeCount\":0,\"winsCount\":0,\"currentStreak\":0,\"longestStreak\":0,\"termsAcceptedAt\":null,\"privacyAcceptedAt\":null,\"marketingOptIn\":false,\"aiPersonalisationOptOut\":false,\"commentaryEnabled\":true,\"aiCommentaryOptOut\":false,\"preferredCommentaryPersonality\":null,\"commentaryToneLevel\":\"playful\",\"locationConsentStatus\":null,\"createdAt\":\"2026-07-24T04:32:43.952Z\",\"updatedAt\":\"2026-07-24T04:32:43.952Z\"}}"
+        },
+        {
+          "name": "predikt.todays-tea.cf6e555a-cdc4-447c-a062-e2e726581c01.2026-07-24",
+          "value": "true"
+        },
+        {
+          "name": "predikt.onboarding.dashboard.v1.completed",
+          "value": "true"
+        }
+      ]
+    }
+  ]
+}

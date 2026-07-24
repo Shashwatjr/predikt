@@ -17,7 +17,7 @@ interface Props {
 
 const steps: DashboardOnboardingStep[] = [
   {
-    title: 'Welcome to PREDIKT',
+    title: 'Welcome to My Prediktion',
     body: 'This is your prediction arena. Create rooms, join challenges, and see who gets closest.',
     sectionLabel: 'Dashboard overview',
   },
@@ -53,7 +53,7 @@ const steps: DashboardOnboardingStep[] = [
   },
   {
     title: 'Prediction Options',
-    body: 'PREDIKT gives you simple choices like Arrival Time, Duration, or Yes/No so creating a room is fast.',
+    body: 'My Prediktion gives you simple choices like Arrival Time, Duration, or Yes/No so creating a room is fast.',
     sectionLabel: 'Guided setup',
   },
   {

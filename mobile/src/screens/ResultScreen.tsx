@@ -211,7 +211,7 @@ export default function ResultScreen({ navigation, route }: Props) {
 
   async function shareMomentCard() {
     await shareMoment({
-      title: `☕ The Tea • ${room?.roomTitle ?? 'PREDIKT'}`,
+      title: `☕ The Tea • ${room?.roomTitle ?? 'My Prediktion'}`,
       subtitle: 'Closest guess wins Aura',
       category: categoryLabel,
       winner: winnerHandle,
@@ -221,7 +221,7 @@ export default function ResultScreen({ navigation, route }: Props) {
       oracleLabel: oracleBotLabel,
       badge: badgeUnlocked,
       commentary: commentary?.punchline ?? momentCard.commentary,
-      cta: 'Join the next PREDIKT',
+      cta: 'Join the next My Prediktion',
       linkLabel: 'Run it back?',
     });
     await api.post('/events', { eventType: 'moment_card_shared', metadata: { roomId, category: categoryKey } }).catch(() => undefined);
@@ -354,28 +354,6 @@ export default function ResultScreen({ navigation, route }: Props) {
           body="The reveal. See who nailed it and what Chaos Bot said."
         />
 
-        {/* The reward: the Chaos Bot punchline leads, oversized, with the copy/share
-            affordance attached — above the shareable screenshot below. */}
-        {commentary ? (
-          <Animated.View style={{ opacity: commentaryOpacity, transform: [{ translateY: commentaryRise }] }}>
-            <CommentaryBubble
-              hero
-              personality={commentary.personality}
-              headline={commentary.headline}
-              punchline={commentary.punchline}
-              onShareLine={shareCommentaryLine}
-              shareCopied={lineCopied}
-            />
-            <PrimaryButton
-              label={commentary?.canRegenerate === false ? 'Commentary Locked' : 'Refresh Commentary'}
-              onPress={regenerateCommentary}
-              variant="secondary"
-              icon="🌀"
-              disabled={commentary?.canRegenerate === false}
-            />
-          </Animated.View>
-        ) : null}
-
         {isGenericRoom ? (
           <View style={[styles.genericTeaCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <Text style={[styles.genericTeaTitle, { color: colors.textPrimary }]}>
@@ -402,7 +380,7 @@ export default function ResultScreen({ navigation, route }: Props) {
           </View>
         ) : (
           <TeaCard
-            roomTitle={room?.roomTitle ?? 'PREDIKT Moment'}
+            roomTitle={room?.roomTitle ?? 'My Prediktion moment'}
             category={categoryTheme}
             winnerHandle={winnerHandle}
             neutral={isNeutralClosure}
@@ -426,7 +404,7 @@ export default function ResultScreen({ navigation, route }: Props) {
 
         {!isGenericRoom ? (
           <MomentCard
-            title={room?.roomTitle ?? 'PREDIKT Moment'}
+            title={room?.roomTitle ?? 'My Prediktion moment'}
             subtitle={momentCard.subtitle}
             badge={badgeUnlocked}
             category={categoryLabel}
@@ -436,7 +414,7 @@ export default function ResultScreen({ navigation, route }: Props) {
             differenceLabel={differenceLabel}
             oracleLabel={oracleBotLabel}
             commentary={commentary?.punchline ?? momentCard.commentary}
-            cta="Join the next PREDIKT"
+            cta="Join the next My Prediktion"
           />
         ) : null}
 
@@ -467,6 +445,26 @@ export default function ResultScreen({ navigation, route }: Props) {
               +{auraEarned} Aura
             </Animated.Text>
           </View>
+        ) : null}
+
+        {commentary ? (
+          <Animated.View style={{ opacity: commentaryOpacity, transform: [{ translateY: commentaryRise }] }}>
+            <CommentaryBubble
+              hero
+              personality={commentary.personality}
+              headline={commentary.headline}
+              punchline={commentary.punchline}
+              onShareLine={shareCommentaryLine}
+              shareCopied={lineCopied}
+            />
+            <PrimaryButton
+              label={commentary?.canRegenerate === false ? 'Commentary Locked' : 'Refresh Commentary'}
+              onPress={regenerateCommentary}
+              variant="secondary"
+              icon="🌀"
+              disabled={commentary?.canRegenerate === false}
+            />
+          </Animated.View>
         ) : null}
 
         {!isGenericRoom && podiumTop3.length >= 2 ? (
@@ -538,10 +536,10 @@ export default function ResultScreen({ navigation, route }: Props) {
 
         <View style={styles.ctaStack}>
           {!isGenericRoom ? (
-            <PrimaryButton label={isRematching ? 'Running it back…' : 'Run it back'} onPress={handleRematch} icon="🔁" disabled={isRematching} />
+            <PrimaryButton label={isRematching ? 'Scheduling next round...' : 'Schedule the next round'} onPress={handleRematch} icon="🔁" disabled={isRematching} />
           ) : null}
           {!isGenericRoom ? (
-            <PrimaryButton label="Start a Comeback" onPress={handleComeback} variant="secondary" icon="⚡" />
+            <PrimaryButton label="Start a different room" onPress={handleComeback} variant="secondary" icon="⚡" />
           ) : null}
           {featureFlags.momentCardExport ? (
             <PrimaryButton label="Share Moment Card" onPress={shareMomentCard} variant="secondary" icon="✨" />

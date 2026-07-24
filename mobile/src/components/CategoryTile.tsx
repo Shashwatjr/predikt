@@ -9,6 +9,8 @@ type Props = {
   selected?: boolean;
   onPress: () => void;
   compact?: boolean;
+  centered?: boolean;
+  fill?: boolean;
   badge?: string;
   /**
    * Locked = the category exists in the theme but isn't selectable yet. It stays
@@ -18,11 +20,17 @@ type Props = {
   locked?: boolean;
 };
 
-export default function CategoryTile({ theme, selected, onPress, compact, badge, locked }: Props) {
+export default function CategoryTile({ theme, selected, onPress, compact, centered, fill, badge, locked }: Props) {
   const scale = useRef(new Animated.Value(1)).current;
 
   return (
-    <Animated.View style={{ transform: [{ scale }], flex: compact ? undefined : 1, minWidth: compact ? 140 : undefined }}>
+    <Animated.View
+      style={{
+        transform: [{ scale }],
+        flex: fill ? 1 : compact ? undefined : 1,
+        minWidth: compact ? 140 : undefined,
+      }}
+    >
       <Pressable
         onPress={onPress}
         onPressIn={() => Animated.spring(scale, { toValue: 0.96, useNativeDriver: true, ...motion.spring }).start()}
@@ -46,10 +54,10 @@ export default function CategoryTile({ theme, selected, onPress, compact, badge,
               <Text style={styles.badgeText}>{badge}</Text>
             </View>
           ) : null}
-          <Text style={[styles.icon, locked && styles.dimmed]}>{theme.icon}</Text>
-          <Text style={[styles.label, locked && styles.dimmed]}>{compact ? theme.quickStartLabel : theme.label}</Text>
+          <Text style={[styles.icon, centered && styles.centeredText, locked && styles.dimmed]}>{theme.icon}</Text>
+          <Text style={[styles.label, centered && styles.centeredText, locked && styles.dimmed]}>{compact ? theme.quickStartLabel : theme.label}</Text>
           {!compact ? (
-            <Text style={[styles.hint, locked && styles.dimmed]} numberOfLines={2}>
+            <Text style={[styles.hint, centered && styles.centeredText, locked && styles.dimmed]} numberOfLines={2}>
               {locked ? 'Coming soon — tap to vote for it.' : theme.emptyStateCopy}
             </Text>
           ) : null}
@@ -96,5 +104,6 @@ const styles = StyleSheet.create({
   icon: { fontSize: 28 },
   label: { color: palette.textPrimary, ...typography.bodyBold },
   hint: { color: palette.textSecondary, ...typography.caption },
+  centeredText: { textAlign: 'center' },
   dimmed: { opacity: 0.85 },
 });

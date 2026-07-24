@@ -80,7 +80,7 @@ export default function LoginScreen({ navigation }: Props) {
           <Text style={[styles.betaPillText, { color: p.coral }]}>BETA</Text>
         </View>
         <LinearGradient colors={p.gradPrimary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.logoGradient}>
-          <Text style={[styles.logoText, { color: p.onSurfaceDark }]}>PREDIKT</Text>
+          <Text style={[styles.logoText, { color: p.onSurfaceDark }]}>My Prediktion</Text>
         </LinearGradient>
         <Text style={[styles.tagline, { color: p.textSoft }]}>Predict what's next. Early beta build.</Text>
       </View>

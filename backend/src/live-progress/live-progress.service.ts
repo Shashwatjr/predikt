@@ -320,13 +320,22 @@ export class LiveProgressService {
 
   private buildMilestoneBanner(progressPercentage: number) {
     if (progressPercentage >= 100) {
-      return { checkpoint: 100, message: 'Just arrived. The Tea is brewing.' };
+      return { checkpoint: 100, message: 'Arrived. The Tea is ready.' };
+    }
+    if (progressPercentage >= 90) {
+      return { checkpoint: 90, message: 'Final stretch. Arrival is close now.' };
     }
     if (progressPercentage >= 80) {
-      return { checkpoint: 80, message: 'Final approach. Anyone want to change their answer? (Too late.)' };
+      return { checkpoint: 80, message: 'Getting close. The reveal is warming up.' };
     }
-    if (progressPercentage >= 50) {
-      return { checkpoint: 50, message: 'Halfway there. Guesses are looking cocky.' };
+    if (progressPercentage >= 60) {
+      return { checkpoint: 60, message: 'Past halfway. The room can feel the finish line.' };
+    }
+    if (progressPercentage >= 40) {
+      return { checkpoint: 40, message: 'Making progress. Predictions are officially sweating.' };
+    }
+    if (progressPercentage >= 20) {
+      return { checkpoint: 20, message: 'Journey underway. Friends can follow the delayed ride.' };
     }
     return null;
   }

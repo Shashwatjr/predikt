@@ -63,7 +63,7 @@ export default function RegisterScreen({ navigation }: Props) {
           <Text style={[styles.betaPillText, { color: p.coral }]}>BETA</Text>
         </View>
         <LinearGradient colors={p.gradPrimary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.logoGradient}>
-          <Text style={[styles.logoText, { color: p.onSurfaceDark }]}>PREDIKT</Text>
+          <Text style={[styles.logoText, { color: p.onSurfaceDark }]}>My Prediktion</Text>
         </LinearGradient>
         <Text style={[styles.tagline, { color: p.textSoft }]}>Create your account for the beta.</Text>
       </View>
@@ -79,7 +79,7 @@ export default function RegisterScreen({ navigation }: Props) {
           placeholder="you@example.com"
         />
         <TextInputField
-          label="PREDIKT Handle"
+          label="Prediktion Handle"
           value={prediktHandle}
           onChangeText={setPrediktHandle}
           autoCapitalize="none"

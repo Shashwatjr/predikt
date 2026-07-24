@@ -40,9 +40,9 @@ export default function LiveStatusCard({
         <StatusPill label={statusLabel} tone={statusTone} />
       </View>
       {typeof progress === 'number' ? <ProgressBar percentage={progress} label="Approximate progress" /> : null}
-      {etaLabel ? <Text style={styles.meta}>ETA: {etaLabel}</Text> : null}
+      {etaLabel ? <Text style={styles.meta}>Provider journey read: {etaLabel}</Text> : null}
       {myPredictionLabel ? <Text style={[styles.prediction, { color: theme.primaryColor }]}>My prediction: {myPredictionLabel}</Text> : null}
-      {oracleLabel ? <Text style={styles.meta}>Oracle Bot: {oracleLabel}</Text> : null}
+      {oracleLabel ? <Text style={styles.meta}>Benchmark: {oracleLabel}</Text> : null}
       {typeof participantCount === 'number' ? <Text style={styles.meta}>{participantCount} participants</Text> : null}
       {lifecycleNote ? <Text style={styles.note}>{lifecycleNote}</Text> : null}
     </View>

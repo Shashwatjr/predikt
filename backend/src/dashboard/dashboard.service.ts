@@ -71,10 +71,11 @@ function formatMinutesLabel(totalMinutes: number | null) {
 function progressStatusLabel(progress: number, roomStatus: string) {
   if (roomStatus === 'completed') return 'Result ready';
   if (progress <= 0) return 'Not started';
-  if (progress < 15) return 'Just started';
-  if (progress < 40) return 'Around 25%';
-  if (progress < 65) return 'Halfway';
-  if (progress < 95) return 'Near destination';
+  if (progress <= 20) return 'Journey underway';
+  if (progress <= 40) return 'Making progress';
+  if (progress <= 60) return 'Past halfway';
+  if (progress <= 80) return 'Getting close';
+  if (progress <= 90) return 'Nearly there';
   return 'Arrived';
 }
 

@@ -19,12 +19,19 @@ export default function RoutePreviewCard({ preview, compact = false }: Props) {
   if (!preview) return null;
 
   const warning = Array.isArray(preview.warnings) ? preview.warnings[0] : null;
+  const plannedStartAt = preview.suggestedStartTime ? new Date(preview.suggestedStartTime) : null;
+  const providerArrivalAt = preview.suggestedArrivalTime ? new Date(preview.suggestedArrivalTime) : null;
+  const lockAt = preview.suggestedLockTime ? new Date(preview.suggestedLockTime) : null;
+  const formatDateTime = (value: Date | null) =>
+    value && !Number.isNaN(value.getTime())
+      ? value.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+      : '—';
 
   if (compact) {
     return (
       <View style={[styles.compactStrip, { backgroundColor: colors.surfaceHigh, borderColor: colors.border }]}>
         <View style={styles.compactMetric}>
-          <Text style={[styles.compactLabel, { color: colors.textSecondary }]}>ETA</Text>
+          <Text style={[styles.compactLabel, { color: colors.textSecondary }]}>Journey time</Text>
           <Text style={[styles.compactValue, { color: colors.textPrimary }]}>
             {preview.etaLabel ?? preview.estimatedDurationLabel}
           </Text>
@@ -62,7 +69,7 @@ export default function RoutePreviewCard({ preview, compact = false }: Props) {
       </Text>
       <View style={styles.metricGrid}>
         <View style={[styles.metric, { backgroundColor: colors.surfaceHigh }]}>
-          <Text style={[styles.metricLabel, { color: colors.textSecondary }]}>Approx. ETA</Text>
+          <Text style={[styles.metricLabel, { color: colors.textSecondary }]}>Journey time</Text>
           <Text style={[styles.metricValue, { color: colors.textPrimary }]}>
             {preview.etaLabel ?? preview.estimatedDurationLabel}
           </Text>
@@ -78,6 +85,17 @@ export default function RoutePreviewCard({ preview, compact = false }: Props) {
           </Text>
         </View>
       </View>
+      <View style={styles.summaryStack}>
+        <Text style={[styles.copy, { color: colors.textSecondary }]}>
+          Provider arrival: {formatDateTime(providerArrivalAt)}
+        </Text>
+        <Text style={[styles.copy, { color: colors.textSecondary }]}>
+          Planned start: {formatDateTime(plannedStartAt)}
+        </Text>
+        <Text style={[styles.copy, { color: colors.textSecondary }]}>
+          Predictions close: {formatDateTime(lockAt)}
+        </Text>
+      </View>
       <Text style={[styles.copy, { color: colors.textSecondary }]}>
         {preview.providerLabel ?? 'Maps'} · {preview.isApproximate ? 'Approx. estimate' : 'High confidence estimate'}
       </Text>
@@ -85,10 +103,10 @@ export default function RoutePreviewCard({ preview, compact = false }: Props) {
       {oracleLabel ? <Text style={[styles.copyStrong, { color: colors.purpleLight }]}>{oracleLabel}</Text> : null}
       <View style={[styles.safetyBox, { backgroundColor: colors.greenDim }]}>
         <Text style={[styles.safetyText, { color: colors.green }]}>
-          Ghost Mode is on. Friends see progress, not your exact route.
+          Friends see delayed journey progress, not your exact location.
         </Text>
         <Text style={[styles.safetyText, { color: colors.green }]}>
-          Predictions lock before journey starts. Accuracy wins. Speed does not.
+          The game runs on key checkpoints, not continuous tracking.
         </Text>
       </View>
     </View>
@@ -103,6 +121,7 @@ const styles = StyleSheet.create({
   metric: { flex: 1, minWidth: 130, borderRadius: 14, padding: 12 },
   metricLabel: { fontSize: 11, fontWeight: '900', textTransform: 'uppercase', marginBottom: 4 },
   metricValue: { fontSize: 16, fontWeight: '900' },
+  summaryStack: { gap: 2 },
   copy: { fontSize: 13, lineHeight: 18 },
   copyStrong: { fontSize: 13, lineHeight: 18, fontWeight: '900' },
   safetyBox: { borderRadius: 14, padding: 12, gap: 4 },

@@ -21,7 +21,7 @@ export default function AppHeader({ greeting, subtitle, aura, streak, onNotifica
           <Text style={styles.logoP}>P</Text>
         </View>
         <View style={styles.brandText}>
-          <Text style={styles.wordmark}>PREDIKT</Text>
+          <Text style={styles.wordmark}>My Prediktion</Text>
           {greeting ? <Text style={styles.greeting}>{greeting}</Text> : subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
         </View>
       </View>

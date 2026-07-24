@@ -19,11 +19,12 @@ import StepProgress from '../components/StepProgress';
 import CategoryTile from '../components/CategoryTile';
 import CategoryVotePrompt from '../components/CategoryVotePrompt';
 import ModeCard from '../components/ModeCard';
-import PrivacyModeSelector from '../components/PrivacyModeSelector';
+import PrivacyModeSelector, { PrivacyVisibility } from '../components/PrivacyModeSelector';
 import { getCategoryTheme, CATEGORY_LIST, CategoryTheme } from '../config/categoryTheme';
 import { featureFlags, isCategoryEnabled } from '../config/featureFlags';
 import { voteCategoryInterest } from '../utils/categoryInterest';
 import { layout, palette } from '../theme/designSystem';
+import { getTravelStageFromProgress } from '../utils/travelProgress';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'CreateRoom'>;
@@ -373,7 +374,7 @@ export default function CreateRoomScreen({ navigation, route }: Props) {
   const [locatingStart, setLocatingStart] = useState(false);
   const [startDelayMinutes, setStartDelayMinutes] = useState(3);
   const [travelMode, setTravelMode] = useState<TravelMode>('car');
-  const [visibility, setVisibility] = useState<(typeof visibilities)[number]>('invite_only');
+  const [visibility, setVisibility] = useState<PrivacyVisibility>('invite_only');
   const [predictionClosesAt, setPredictionClosesAt] = useState(makeDefaultCloseAt);
   const [titleOverride, setTitleOverride] = useState('');
   const [questionOverride, setQuestionOverride] = useState('');
@@ -1234,7 +1235,7 @@ export default function CreateRoomScreen({ navigation, route }: Props) {
           </View>
         </View>
         <Text style={styles.heroHeadline}>
-          What do you want to <Text style={styles.heroHeadlineAccent}>PREDIKT?</Text>
+          What do you want to <Text style={styles.heroHeadlineAccent}>predict?</Text>
         </Text>
         <Text style={styles.heroSubline}>
           Pick a moment, invite friends, closest guess wins <Text style={styles.heroAura}>Aura.</Text>
@@ -1268,7 +1269,7 @@ export default function CreateRoomScreen({ navigation, route }: Props) {
                 }
                 return getCategoryTheme(tile.key);
               })
-              .filter((theme): theme is CategoryTheme => Boolean(theme) && isCategoryEnabled(theme.key)),
+              .filter((theme): theme is CategoryTheme => theme != null && isCategoryEnabled(theme.key)),
           ].map((theme) => {
             if (theme === sportsCategoryTheme) {
               return (
@@ -1410,7 +1411,7 @@ export default function CreateRoomScreen({ navigation, route }: Props) {
                 {questionOverride.trim() || preview.suggestedQuestion}
               </Text>
               <Text style={[styles.privacyNote, { color: colors.green }]}>
-                Ghost Mode on · Accuracy wins. Speed does not.
+                Friends predict when you will arrive. They see delayed progress, not your exact location.
               </Text>
 
               <TouchableOpacity onPress={() => setShowAdvancedOptions((value) => !value)}>
@@ -1472,6 +1473,9 @@ export default function CreateRoomScreen({ navigation, route }: Props) {
                       </TouchableOpacity>
                     ))}
                   </View>
+                  <Text style={[styles.fieldHint, { color: colors.textMuted }]}>
+                    Viewers first see {getTravelStageFromProgress(20)} after the privacy delay.
+                  </Text>
 
                   <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Prediction type</Text>
                   <View style={styles.predictionGrid}>
@@ -1519,7 +1523,7 @@ export default function CreateRoomScreen({ navigation, route }: Props) {
               ) : null}
 
               {createError ? <Text style={[styles.errorText, { color: colors.red }]}>{createError}</Text> : null}
-              <PrimaryButton label="Create PREDIKT" onPress={handleCreateArrivalRoom} loading={createLoading} icon="🎯" />
+              <PrimaryButton label="Start a Prediktion" onPress={handleCreateArrivalRoom} loading={createLoading} icon="🎯" />
             </View>
           ) : null}
         </View>
@@ -1613,7 +1617,7 @@ export default function CreateRoomScreen({ navigation, route }: Props) {
           ) : null}
 
           {createError ? <Text style={[styles.errorText, { color: colors.red }]}>{createError}</Text> : null}
-          <PrimaryButton label="Create PREDIKT" onPress={handleCreateWeatherRoom} loading={createLoading} icon="🌧️" />
+          <PrimaryButton label="Start a Prediktion" onPress={handleCreateWeatherRoom} loading={createLoading} icon="🌧️" />
         </View>
       ) : null}
 
@@ -1772,7 +1776,7 @@ export default function CreateRoomScreen({ navigation, route }: Props) {
           ) : null}
 
           {createError ? <Text style={[styles.errorText, { color: colors.red }]}>{createError}</Text> : null}
-          <PrimaryButton label="Create PREDIKT" onPress={handleCreatePlaceholderRoom} loading={createLoading} icon="✨" />
+          <PrimaryButton label="Start a Prediktion" onPress={handleCreatePlaceholderRoom} loading={createLoading} icon="✨" />
         </View>
       ) : null}
 
@@ -2050,6 +2054,7 @@ const styles = StyleSheet.create({
   addOptionButtonText: { fontSize: 13, fontWeight: '800' },
   advancedToggle: { fontSize: 13, fontWeight: '800', paddingVertical: 4 },
   advancedStack: { gap: 10 },
+  fieldHint: { fontSize: 12, lineHeight: 17 },
   lockFieldWrap: { gap: 8 },
   lockTimeBlock: {
     borderRadius: 16,

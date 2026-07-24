@@ -22,7 +22,7 @@ type Props = {
 /**
  * The Tea's commentary. The punchline is the hero: it is the line users screenshot
  * into group chats, so it renders large and self-contained with attribution, giving
- * a WhatsApp screenshot a natural crop around the quote + "— Chaos Bot on PREDIKT".
+ * a WhatsApp screenshot a natural crop around the quote + "— Chaos Bot on My Prediktion".
  */
 export default function CommentaryBubble({
   personality,
@@ -36,7 +36,7 @@ export default function CommentaryBubble({
   return (
     <View style={[styles.bubble, hero && styles.bubbleHero]}>
       <View style={styles.header}>
-        <Text style={styles.brand}>PREDIKT</Text>
+        <Text style={styles.brand}>My Prediktion</Text>
         <Text style={styles.personality}>{personality}</Text>
       </View>
 

@@ -33,9 +33,9 @@ const playModes: Array<{
   {
     key: 'friends',
     icon: '👥',
-    label: 'Squad Up',
+    label: 'Play with Friends',
     tag: 'GROUP',
-    copy: 'Create a lobby, share the code, and see who reads the moment best.',
+    copy: 'Start a room, share the code, and see who reads the moment best.',
   },
   {
     key: 'solo',
@@ -132,7 +132,7 @@ export default function LandingScreen({ navigation }: Props) {
   const styles = useMemo(() => makeStyles(p), [p]);
   const enabledFeatures = MVP_FEATURES.filter((key) => isCategoryEnabled(key));
   const [activeFeature, setActiveFeature] = useState<MvpFeatureKey>(enabledFeatures[0] ?? 'arrival_time');
-  const [activeMode, setActiveMode] = useState<PlayMode>('solo');
+  const [activeMode, setActiveMode] = useState<PlayMode>('friends');
   const [activeNav, setActiveNav] = useState<LandingNavKey>('home');
   const [tickerIndex, setTickerIndex] = useState(0);
   const [showJoinCode, setShowJoinCode] = useState(false);
@@ -230,7 +230,7 @@ export default function LandingScreen({ navigation }: Props) {
               end={{ x: 1, y: 0 }}
               style={styles.brandLogoGradient}
             >
-              <Text style={styles.brandLogoText}>PREDIKT</Text>
+              <Text style={styles.brandLogoText}>My Prediktion</Text>
             </LinearGradient>
             <Text style={styles.tagline}>by Kriviksha · predict · play · connect</Text>
           </View>
@@ -255,22 +255,22 @@ export default function LandingScreen({ navigation }: Props) {
         <View style={styles.heroBubbleSmall} />
         <View style={styles.heroBadgeRow}>
           <View style={styles.badgePurple}>
-            <Text style={styles.badgePurpleText}>SOLO MODE</Text>
+            <Text style={styles.badgePurpleText}>WITH FRIENDS OR SOLO</Text>
           </View>
           <View style={styles.badgeCyan}>
             <Text style={styles.badgeCyanText}>NO BETTING · NO GPS</Text>
           </View>
         </View>
         <Text style={styles.headline}>
-          Everyday moments.{'\n'}
-          <Text style={styles.headlineAccent}>Serious fun.</Text>
+          Turn everyday moments{'\n'}
+          <Text style={styles.headlineAccent}>into stories worth talking about.</Text>
         </Text>
         <Text style={styles.subtext}>
-          PREDIKT turns arrivals, food ETAs, and daily calls into quick social challenges — squad up with friends or go solo and build your streak.
+          My Prediktion is a social prediction game for friends. Create a room, invite your people, closest guess wins Aura, and The Tea tells the story. No betting.
         </Text>
         <View style={styles.heroHighlight}>
-          <Text style={styles.heroHighlightTitle}>Clear, quick, playful</Text>
-          <Text style={styles.heroHighlightCopy}>Create a room, lock your guess, and wait for the reveal. No clutter. No weird setup.</Text>
+          <Text style={styles.heroHighlightTitle}>Create, share, predict, reveal</Text>
+          <Text style={styles.heroHighlightCopy}>Guests can join without signing up, so the fun starts fast and the reveal is worth sharing.</Text>
         </View>
         <View style={styles.heroStats}>
           <View style={styles.statChip}>
@@ -289,18 +289,18 @@ export default function LandingScreen({ navigation }: Props) {
         <View style={styles.heroCtas}>
           <TouchableOpacity style={styles.ctaPrimaryWrap} onPress={handleCreateFlow}>
             <LinearGradient colors={p.gradPrimary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.ctaPrimary}>
-              <Text style={styles.ctaPrimaryText}>Create Lobby</Text>
+              <Text style={styles.ctaPrimaryText}>Start a Prediktion</Text>
             </LinearGradient>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.ctaSecondary} onPress={handleSoloFlow}>
-            <Text style={styles.ctaSecondaryText}>{isAuthenticated ? 'Play Solo' : 'Sign in for Solo'}</Text>
+          <TouchableOpacity style={styles.ctaSecondary} onPress={() => setShowJoinCode((current) => !current)}>
+            <Text style={styles.ctaSecondaryText}>Join with a code</Text>
           </TouchableOpacity>
         </View>
       </View>
 
       <View style={styles.sectionHead}>
-        <Text style={styles.sectionEyebrow}>PLAY YOUR WAY</Text>
-        <Text style={styles.sectionTitle}>Squad, solo, or bot</Text>
+        <Text style={styles.sectionEyebrow}>WAYS TO PLAY</Text>
+        <Text style={styles.sectionTitle}>Start with friends. Solo is there when you want it.</Text>
       </View>
       <View style={styles.modeRow}>
         {playModes.map((mode) => {
