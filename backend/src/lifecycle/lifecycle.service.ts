@@ -44,6 +44,7 @@ const START_VISIBILITY_DELAY_MS = 2 * 60 * 1000;
 const START_VERIFY_DISTANCE_METERS = 2000;
 const ARRIVAL_CONFIRM_DISTANCE_METERS = 2000;
 const CHECKPOINT_MILESTONES = [50, 80] as const;
+const NO_SHOW_RIZZ_PENALTY = 5;
 const RELIABILITY_POINTS: Record<string, number> = {
   journey_completed_verified: 2,
   cancelled_before_lock: 0,
@@ -1540,6 +1541,10 @@ export class LifecycleService {
       });
     });
 
+    if (journeyStatus === 'abandoned' && reliabilityEventType === 'no_show_abandoned') {
+      await this.applyNoShowRizzPenalty(room.creatorUserId, room.roomId);
+    }
+
     await this.adjustReliability(room.creatorUserId, room.roomId, reliabilityEventType, message);
     await this.compensateParticipants(room.roomId, message);
     await this.auditService.log({
@@ -1558,12 +1563,45 @@ export class LifecycleService {
       body:
         journeyStatus === 'auto_closed'
           ? 'Nobody ever confirmed arrival, so we called this one a draw. Your guess stays off the record — no loss counted.'
-          : 'The journey never actually got moving, so this one is a clean draw. Nobody wins, nobody loses.',
+          : 'The journey never actually got moving, so this one was cancelled as a no-show. Nobody wins, and the host takes a small Rizz hit.',
       severity: 'warning',
       actionLabel: 'View result',
       actionTarget: `room:${room.roomId}:result`,
       metadata: { journeyStatus },
       idempotencyKey: `${journeyStatus}:${room.roomId}`,
+    });
+  }
+
+  private async applyNoShowRizzPenalty(userId: string, roomId: string) {
+    const account = await this.prisma.rewardAccount.findUnique({
+      where: { userId },
+      select: { rizzBalance: true },
+    });
+    const deduction = Math.min(account?.rizzBalance ?? 0, NO_SHOW_RIZZ_PENALTY);
+    if (deduction <= 0) return;
+
+    await this.rewardService.grant({
+      userId,
+      rewardType: 'RIZZ',
+      reasonCode: RewardReason.RIZZ_ADMIN_ADJUSTMENT,
+      amount: -deduction,
+      sourceType: 'room',
+      sourceId: roomId,
+      idempotencyKey: `rizz_no_show:${roomId}:${userId}`,
+      metadata: { reason: 'Journey never started within 10 minutes of scheduled start' },
+    });
+
+    await this.notificationsService.create({
+      userId,
+      roomId,
+      type: 'rizz_updated',
+      title: 'Rizz updated',
+      body: `This room never started, so ${deduction} Rizz was removed.`,
+      severity: 'warning',
+      actionLabel: 'View room',
+      actionTarget: `room:${roomId}:result`,
+      metadata: { delta: -deduction, reason: 'no_show_abandoned' },
+      idempotencyKey: `rizz_no_show_notice:${roomId}:${userId}`,
     });
   }
 

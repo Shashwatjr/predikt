@@ -49,6 +49,9 @@ describe('LifecycleService journey fairness', () => {
   it('marks a never-started room as abandoned after the cutoff', async () => {
     const updateMany = jest.fn();
     const update = jest.fn();
+    const rewardService = {
+      grant: jest.fn().mockResolvedValue({ applied: true }),
+    } as any;
     const prisma = {
       predictionRoom: {
         findUnique: jest
@@ -75,12 +78,15 @@ describe('LifecycleService journey fairness', () => {
         create: jest.fn(),
         count: jest.fn().mockResolvedValue(1),
       },
+      rewardAccount: {
+        findUnique: jest.fn().mockResolvedValue({ rizzBalance: 12 }),
+      },
       creditLedger: { findUnique: jest.fn(), count: jest.fn().mockResolvedValue(0), create: jest.fn() },
       user: { update: jest.fn() },
       auraTransaction: { create: jest.fn() },
     } as any;
 
-    const service = new LifecycleService(prisma, auditService, notificationsService, badgeService, { grant: jest.fn().mockResolvedValue({ applied: true }) } as any);
+    const service = new LifecycleService(prisma, auditService, notificationsService, badgeService, rewardService);
     await service.evaluateRoomLifecycle('room-2', { actorType: 'system', actorId: null });
 
     expect(updateMany).toHaveBeenCalled();
@@ -94,6 +100,15 @@ describe('LifecycleService journey fairness', () => {
       expect.objectContaining({
         type: 'journey_abandoned',
         title: 'Called it a draw',
+      }),
+    );
+    expect(rewardService.grant).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: 'host-1',
+        rewardType: 'RIZZ',
+        reasonCode: 'RIZZ_ADMIN_ADJUSTMENT',
+        amount: -5,
+        idempotencyKey: 'rizz_no_show:room-2:host-1',
       }),
     );
   });

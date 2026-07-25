@@ -1081,10 +1081,9 @@ export class RoutesService {
     const journeyScheduledStartAt = body.predictionClosesAt
       ? new Date(body.predictionClosesAt)
       : new Date(Date.now() + 5 * 60 * 1000);
-    const noStartCutoffAt = new Date(
-      journeyScheduledStartAt.getTime() +
-        Math.min(30 * 60 * 1000, Math.max(15 * 60 * 1000, Math.round(gracePeriodSeconds / 2) * 1000)),
-    );
+    // If the host does not actually start the journey within 10 minutes of the
+    // scheduled kickoff, we treat it as a no-show and close the room fairly.
+    const noStartCutoffAt = new Date(journeyScheduledStartAt.getTime() + 10 * 60 * 1000);
     const autoCloseAt = new Date(
       journeyScheduledStartAt.getTime() + (expectedDurationSeconds + gracePeriodSeconds) * 1000,
     );

@@ -59,6 +59,7 @@ describe('RoutesService route preview', () => {
     expect(roomsService.createFromRoute).toHaveBeenCalledWith(
       expect.objectContaining({
         expectedDurationSeconds: expect.any(Number),
+        noStartCutoffAt: expect.any(String),
         baselineSource: 'osm',
         baselineLabel: 'OpenStreetMap',
         baselineSnapshot: expect.objectContaining({
@@ -80,6 +81,10 @@ describe('RoutesService route preview', () => {
       }),
       expect.objectContaining({ userId: 'u1' }),
     );
+    const payload = (roomsService.createFromRoute as jest.Mock).mock.calls[0][0];
+    const scheduledStartMs = new Date(payload.journeyScheduledStartAt).getTime();
+    const cutoffMs = new Date(payload.noStartCutoffAt).getTime();
+    expect(cutoffMs - scheduledStartMs).toBe(10 * 60 * 1000);
   });
 
   it('uses Google Places autocomplete from GOOGLE_MAPS_API_KEY for place search', async () => {
