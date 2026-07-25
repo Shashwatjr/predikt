@@ -42,7 +42,7 @@ import { fetchRewardsMe, RewardsMe } from '../services/rewards';
 
 type Stats = ProfileStats;
 
-function StatChip({
+function MiniStat({
   icon,
   label,
   value,
@@ -54,10 +54,10 @@ function StatChip({
   accent: string;
 }) {
   return (
-    <View style={[styles.chip, { borderLeftColor: accent }]}>
-      <Text style={styles.chipIcon}>{icon}</Text>
-      <Text style={[styles.chipValue, { color: accent }]}>{value}</Text>
-      <Text style={styles.chipLabel}>{label}</Text>
+    <View style={styles.miniStat}>
+      <Text style={styles.miniStatIcon}>{icon}</Text>
+      <Text style={[styles.miniStatValue, { color: accent }]}>{value}</Text>
+      <Text style={styles.miniStatLabel}>{label}</Text>
     </View>
   );
 }
@@ -296,16 +296,26 @@ export default function ProfileScreen() {
         </View>
       </View>
 
-      {rewards ? (
+      {rewards || stats ? (
         <View style={[cardStyle(), { gap: spacing.sm }]}>
           <SectionHeader title="Your rewards" subtitle="Tap a chip to see what it means." />
-          <RewardChips
-            aura={rewards.aura.balance}
-            rizz={rewards.rizz.balance}
-            gems={rewards.gems.balance}
-            variant="labeled"
-          />
-          {rewards.recentEntries.length > 0 ? (
+          {rewards ? (
+            <RewardChips
+              aura={rewards.aura.balance}
+              rizz={rewards.rizz.balance}
+              gems={rewards.gems.balance}
+              variant="labeled"
+            />
+          ) : null}
+          {stats ? (
+            <View style={styles.miniStatRow}>
+              <MiniStat icon="📈" label="Weekly Aura" value={stats.weeklyAura} accent={colors.green} />
+              <MiniStat icon="💠" label="Clout" value={stats.cloutBalance} accent={colors.amber} />
+              <MiniStat icon="🔓" label="Credits" value={stats.creditBalance ?? user?.creditBalance ?? 0} accent={colors.textPrimary} />
+              <MiniStat icon="🧭" label="Reliability" value={stats.reliabilityScore ?? 0} accent={colors.purple} />
+            </View>
+          ) : null}
+          {rewards && rewards.recentEntries.length > 0 ? (
             <View style={{ gap: spacing.xs, marginTop: spacing.xs }}>
               <Text style={[styles.followMeta, { color: colors.textSecondary, marginBottom: 2 }]}>
                 Recent activity
@@ -339,14 +349,6 @@ export default function ProfileScreen() {
         </View>
       ) : null}
 
-      {stats ? (
-        <View style={styles.chipGrid}>
-          <StatChip icon="📈" label="Weekly Aura" value={stats.weeklyAura} accent={colors.green} />
-          <StatChip icon="💠" label="Clout" value={stats.cloutBalance} accent={colors.amber} />
-          <StatChip icon="🔓" label="Credits" value={stats.creditBalance ?? user?.creditBalance ?? 0} accent={colors.purple} />
-          <StatChip icon="🧭" label="Reliability" value={stats.reliabilityScore ?? 0} accent={colors.purple} />
-        </View>
-      ) : null}
 
       {userBadges.length > 0 ? (
         <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -550,11 +552,20 @@ const styles = StyleSheet.create({
   quickStatIcon: { fontSize: 18 },
   quickStatValue: { fontSize: 20, fontWeight: '900' },
   quickStatLabel: { fontSize: 11, fontWeight: '800' },
-  chipGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  chip: { width: '47%', backgroundColor: '#fff', borderRadius: 18, padding: 14, borderLeftWidth: 4, minHeight: 110 },
-  chipIcon: { fontSize: 22 },
-  chipValue: { marginTop: 10, fontSize: 22, fontWeight: '900' },
-  chipLabel: { marginTop: 6, color: '#64748b', fontSize: 12, fontWeight: '700' },
+  miniStatRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 2 },
+  miniStat: {
+    flexGrow: 1,
+    flexBasis: 96,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  miniStatIcon: { fontSize: 14 },
+  miniStatValue: { marginTop: 2, fontSize: 18, fontWeight: '900' },
+  miniStatLabel: { marginTop: 1, color: 'rgba(255,255,255,0.55)', fontSize: 11, fontWeight: '700' },
   badgeWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   followRow: {
     flexDirection: 'row',
