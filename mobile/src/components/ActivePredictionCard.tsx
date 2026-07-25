@@ -9,6 +9,7 @@ type ActivePrediction = {
   roomId: string;
   title: string;
   status: string;
+  isCreator?: boolean;
   participantCount: number;
   hasSubmittedPrediction: boolean;
   routeSummary?: {
@@ -34,6 +35,7 @@ type ActivePrediction = {
 type Props = {
   item: ActivePrediction;
   onOpen: () => void;
+  onDelete?: () => void;
   onTogglePin: () => void;
   onMoveUp: () => void;
   onMoveDown: () => void;
@@ -44,6 +46,7 @@ type Props = {
 export default function ActivePredictionCard({
   item,
   onOpen,
+  onDelete,
   onTogglePin,
   onMoveUp,
   onMoveDown,
@@ -112,6 +115,11 @@ export default function ActivePredictionCard({
         <TouchableOpacity style={[styles.iconAction, disableMoveDown && styles.iconActionDisabled]} onPress={onMoveDown} disabled={disableMoveDown}>
           <Text style={styles.iconActionText}>Down</Text>
         </TouchableOpacity>
+        {item.isCreator && onDelete ? (
+          <TouchableOpacity style={[styles.iconAction, styles.deleteAction]} onPress={onDelete}>
+            <Text style={styles.iconActionText}>Delete</Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
     </View>
   );
@@ -149,4 +157,5 @@ const styles = StyleSheet.create({
   },
   iconActionText: { color: '#fff', fontWeight: '800', fontSize: 11 },
   iconActionDisabled: { opacity: 0.45 },
+  deleteAction: { borderColor: 'rgba(248,113,113,0.45)', backgroundColor: 'rgba(127,29,29,0.18)' },
 });

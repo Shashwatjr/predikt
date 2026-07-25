@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, Param, UseGuards } from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, UseGuards, Delete } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { RoomsService } from './rooms.service';
 import { CreateRoomDto } from './dto/create-room.dto';
@@ -48,6 +48,13 @@ export class RoomsController {
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
   rematch(@Param('roomId') roomId: string, @CurrentUser() user: User) {
     return this.roomsService.rematch(roomId, user);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Delete(':roomId')
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  remove(@Param('roomId') roomId: string, @CurrentUser() user: User) {
+    return this.roomsService.remove(roomId, user);
   }
 
   @Get('code/:inviteCode')

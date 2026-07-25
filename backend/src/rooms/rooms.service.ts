@@ -1197,6 +1197,93 @@ export class RoomsService {
     };
   }
 
+  async remove(roomId: string, requestingUser: User) {
+    const room = await this.prisma.predictionRoom.findUnique({
+      where: { roomId },
+      select: {
+        roomId: true,
+        roomTitle: true,
+        creatorUserId: true,
+        status: true,
+        journeyStatus: true,
+      },
+    });
+    if (!room) throw new NotFoundException('Room not found');
+    if (room.creatorUserId !== requestingUser.userId) {
+      throw new ForbiddenException('Only the room creator can delete this room.');
+    }
+
+    const now = new Date();
+    const hideFromDashboard = this.prisma.userRoomPreference.upsert({
+      where: {
+        userId_roomId: {
+          userId: requestingUser.userId,
+          roomId,
+        },
+      },
+      create: {
+        userId: requestingUser.userId,
+        roomId,
+        pinned: false,
+        displayOrder: 0,
+        hiddenFromDashboard: true,
+      },
+      update: {
+        pinned: false,
+        hiddenFromDashboard: true,
+      },
+    });
+
+    if (['completed', 'cancelled'].includes(room.status)) {
+      await hideFromDashboard;
+      return {
+        roomId,
+        roomStatus: room.status,
+        removedFromDashboard: true,
+        cancelledForEveryone: false,
+      };
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.predictionRoom.update({
+        where: { roomId },
+        data: {
+          status: 'cancelled',
+          journeyStatus: 'cancelled_by_host',
+          cancelledAt: now,
+          closureReasonCode: 'deleted_by_creator',
+        },
+      }),
+      this.prisma.roomMilestone.updateMany({
+        where: {
+          roomId,
+          status: { in: ['pending', 'prediction_open', 'prediction_locked'] },
+        },
+        data: { status: 'cancelled' },
+      }),
+      hideFromDashboard,
+    ]);
+
+    await this.notificationsService.notifyRoomMembers({
+      roomId,
+      type: 'journey_cancelled',
+      title: 'Room deleted',
+      body: `${room.roomTitle} was deleted by the creator.`,
+      severity: 'info',
+      actionLabel: 'Back to home',
+      actionTarget: 'home',
+      metadata: { journeyStatus: 'cancelled_by_host', deletedByCreator: true },
+      idempotencyKey: `room_deleted:${roomId}`,
+    });
+
+    return {
+      roomId,
+      roomStatus: 'cancelled',
+      removedFromDashboard: true,
+      cancelledForEveryone: true,
+    };
+  }
+
   async ensureJoinedMembership(roomId: string, user: User) {
     return this.join(roomId, user);
   }

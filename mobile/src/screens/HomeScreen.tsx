@@ -6,7 +6,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { RootStackParamList } from '../navigation/types';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
-import { getApiErrorMessage } from '../services/api';
+import api, { getApiErrorMessage } from '../services/api';
 import { fetchRoom } from '../services/dashboard';
 import { useDashboardData } from '../hooks/useDashboardData';
 import DashboardOnboardingOverlay from '../components/DashboardOnboardingOverlay';
@@ -451,6 +451,32 @@ export default function HomeScreen({ navigation, route }: Props) {
     });
   }
 
+  function deleteRoom(room: any) {
+    const deleteMessage =
+      room.status === 'completed' || room.status === 'result_ready' || room.status === 'cancelled'
+        ? 'This will remove the room from your hub.'
+        : 'This will cancel the room for everyone and remove it from your hub.';
+    Alert.alert(
+      'Delete room?',
+      deleteMessage,
+      [
+        { text: 'Keep it', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            void api
+              .delete(`/rooms/${room.roomId}`)
+              .then(() => loadDashboard({ silent: true }))
+              .catch((error: unknown) => {
+                Alert.alert('Could not delete room', getApiErrorMessage(error, 'Please try again.'));
+              });
+          },
+        },
+      ],
+    );
+  }
+
   return (
     <WebSideWingLayout leftPlacement="dashboard_left" rightPlacement="dashboard_right">
       <View style={styles.screen}>
@@ -623,6 +649,7 @@ export default function HomeScreen({ navigation, route }: Props) {
                   key={room.roomId}
                   item={room}
                   onOpen={() => openRoom({ roomId: room.roomId, rawRoom: room })}
+                  onDelete={() => deleteRoom(room)}
                   onTogglePin={() => togglePin(room.roomId)}
                   onMoveUp={() => moveRoom(room.roomId, -1)}
                   onMoveDown={() => moveRoom(room.roomId, 1)}
