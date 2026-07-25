@@ -4,6 +4,7 @@ import { RoomsService } from '../rooms/rooms.service';
 import { AuthenticatedUser } from '../common/types/authenticated-user';
 import { CreateRoomFromRouteDto } from './dto/create-room-from-route.dto';
 import { RoutePreviewDto } from './dto/route-preview.dto';
+import { capWithEllipsis, shortenPlaceLabel } from './place-label.util';
 import {
   createMapsProvider,
   distanceMetersBetween as providerDistanceMetersBetween,
@@ -968,8 +969,16 @@ export class RoutesService {
     const distanceMeters = routeEstimate.distanceMeters;
     const estimatedDurationSeconds = routeEstimate.durationSeconds;
     const defaultSafetyDelayMinutes = routeSafetyDelay(body);
-    const suggestedRoomTitle = `Arrival PREDIKT: ${start.label} → ${destination.label}`;
-    const suggestedQuestion = `When will I reach ${destination.label}?`;
+    // Full labels are persisted on the room record; these display strings are
+    // shortened (drop postal/country) and hard-capped so long OSM place labels
+    // can never overflow the create-room validators (title <= 120, question <= 160).
+    const startDisplay = shortenPlaceLabel(start.label);
+    const destinationDisplay = shortenPlaceLabel(destination.label);
+    const suggestedRoomTitle = capWithEllipsis(
+      `Arrival PREDIKT: ${startDisplay} → ${destinationDisplay}`,
+      120,
+    );
+    const suggestedQuestion = capWithEllipsis(`When will I reach ${destinationDisplay}?`, 160);
     const suggestedLockTime = new Date(Date.now() + 15 * 60 * 1000).toISOString();
 
     return {
