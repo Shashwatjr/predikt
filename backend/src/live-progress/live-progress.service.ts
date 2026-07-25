@@ -11,12 +11,21 @@ import { CheckpointUpdateDto } from './dto/checkpoint-update.dto';
 import { User } from '@prisma/client';
 import { LifecycleService } from '../lifecycle/lifecycle.service';
 import { NotificationsService } from '../notifications/notifications.service';
-import { createMapsProvider } from '../routes/maps-provider';
+import { createMapsProvider, distanceMetersBetween } from '../routes/maps-provider';
 import { featureFlags } from '../config/feature-flags';
 
 // Checkpoints that get a live provider ETA re-read (billed). 90/100 are verify-only
 // and use the free derived ETA. Decision recorded in the plan.
 const LIVE_REREAD_CHECKPOINTS = [20, 40, 60, 80];
+// Hard cap on billable Google Maps calls per journey. The natural cadence is
+// 20/40/60/80 (4) plus the arrival re-read (1) = 5. This counter is the backstop:
+// once this many billable snapshots exist for a room we stop calling the provider
+// and fall back to the free time-based derived ETA, so a retried/replayed journey
+// can never run up the Maps bill.
+const MAX_BILLABLE_ETA_CALLS = 5;
+// Snapshot source values that count as a paid provider re-read (anything that is
+// not a free derived/fallback extrapolation).
+const FREE_SNAPSHOT_SOURCES = new Set(['derived', 'fallback']);
 const ETA_MOVE_NOTIFY_THRESHOLD_MS = 20 * 60 * 1000;
 
 const num = (value: unknown): number | null =>
@@ -65,11 +74,22 @@ export class LiveProgressService {
     const destLng = num(room.destinationLng) ?? num(room.journeyRoute?.destinationLng);
 
     let etaSeconds: number | null = null;
+    let remainingMeters: number | null = null;
     let source: string | null = null;
 
-    // Live re-read only at the scoring-relevant checkpoints, and only when we know
-    // the destination. Any provider failure falls back to the free derived ETA.
-    if (LIVE_REREAD_CHECKPOINTS.includes(checkpointPct) && destLat != null && destLng != null) {
+    // Live re-read only at the scoring-relevant checkpoints, when we know the
+    // destination, and while under the per-journey billable-call cap. Any provider
+    // failure (or the cap) falls back to the free time-based derived ETA — the
+    // journey never crashes on a Maps error.
+    const billableCallsSoFar = await this.prisma.roomMilestoneSnapshot.count({
+      where: { roomId, source: { notIn: Array.from(FREE_SNAPSHOT_SOURCES) } },
+    });
+    if (
+      LIVE_REREAD_CHECKPOINTS.includes(checkpointPct) &&
+      destLat != null &&
+      destLng != null &&
+      billableCallsSoFar < MAX_BILLABLE_ETA_CALLS
+    ) {
       try {
         const provider = createMapsProvider(this.configService);
         const preview = await provider.getRoutePreview(
@@ -78,6 +98,7 @@ export class LiveProgressService {
           room.journeyRoute?.travelMode,
         );
         etaSeconds = Math.round(preview.durationSeconds);
+        remainingMeters = Math.round(preview.distanceMeters);
         source = provider.name;
       } catch {
         // fall through to derived
@@ -87,8 +108,29 @@ export class LiveProgressService {
     if (etaSeconds == null) {
       const derived = this.buildTimedProgress(room, capturedAt);
       etaSeconds = derived.etaMinutes != null ? derived.etaMinutes * 60 : 0;
-      source = 'derived';
+      // Straight-line remaining distance is a safe, free approximation for the
+      // fallback snapshot (never exposed raw to viewers — meters only).
+      remainingMeters =
+        destLat != null && destLng != null
+          ? distanceMetersBetween(
+              { latitude: lat, longitude: lng },
+              { latitude: destLat, longitude: destLng },
+            )
+          : null;
+      source = billableCallsSoFar >= MAX_BILLABLE_ETA_CALLS ? 'fallback' : 'derived';
     }
+
+    // Recompute the journey's expected duration from this fresh checkpoint:
+    // elapsed-so-far + remaining ETA. Future milestones (which are derived from
+    // expectedDurationSeconds) shift with it, which is what stops the progress bar
+    // from hitting 100% while the traveller is still driving.
+    const recomputedDurationSeconds =
+      room.startTime && etaSeconds != null
+        ? Math.max(
+            60,
+            Math.round((capturedAt.getTime() - room.startTime.getTime()) / 1000) + etaSeconds,
+          )
+        : null;
 
     await this.prisma.$transaction([
       this.prisma.roomCheckpoint.upsert({
@@ -96,11 +138,19 @@ export class LiveProgressService {
         update: { lat, lng, capturedAt, etaSeconds, source },
         create: { roomId, checkpoint: checkpointPct, lat, lng, capturedAt, etaSeconds, source },
       }),
+      this.prisma.roomMilestoneSnapshot.upsert({
+        where: { roomId_checkpointPercent: { roomId, checkpointPercent: checkpointPct } },
+        update: { capturedAt, etaSeconds, remainingMeters, source },
+        create: { roomId, checkpointPercent: checkpointPct, capturedAt, etaSeconds, remainingMeters, source },
+      }),
       this.prisma.predictionRoom.update({
         where: { roomId },
         data: {
           lastTravellerUpdateAt: capturedAt,
           journeyStatus: checkpointPct >= 95 ? 'overdue' : 'live',
+          ...(recomputedDurationSeconds != null
+            ? { expectedDurationSeconds: recomputedDurationSeconds }
+            : {}),
         },
       }),
     ]);
@@ -110,7 +160,9 @@ export class LiveProgressService {
     return {
       checkpoint: checkpointPct,
       etaSeconds,
+      remainingMeters,
       source,
+      recomputedDurationSeconds,
       capturedAt: capturedAt.toISOString(),
     };
   }
@@ -308,9 +360,14 @@ export class LiveProgressService {
     }
 
     const elapsedMs = Math.max(0, now.getTime() - startTime.getTime());
+    // Only a confirmed arrival (status === 'completed') shows 100%. While the
+    // journey is live we clamp to 99 so the bar can never read "Arrived" while the
+    // traveller is still driving — even if elapsed time overshoots the (recomputed)
+    // expected duration. Checkpoint ETA re-reads push expectedDurationSeconds out,
+    // so in the normal case progress simply tracks the recomputed journey.
     const progressPercentage = room.status === 'completed'
       ? 100
-      : Math.min(100, (elapsedMs / expectedDurationMs) * 100);
+      : Math.min(99, (elapsedMs / expectedDurationMs) * 100);
     const remainingMs = Math.max(0, expectedDurationMs - elapsedMs);
     return {
       progressPercentage,
