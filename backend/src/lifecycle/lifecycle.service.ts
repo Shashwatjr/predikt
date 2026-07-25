@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
@@ -55,6 +56,8 @@ const RELIABILITY_POINTS: Record<string, number> = {
 
 @Injectable()
 export class LifecycleService {
+  private readonly logger = new Logger(LifecycleService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
@@ -1154,6 +1157,31 @@ export class LifecycleService {
         isNeutralClosure,
       });
       await this.grantBadgeGems(awardedBadges, roomId);
+
+      // Winner broadcast: a durable in-app notification for EVERY participant (not
+      // just those active at resolution — notifyRoomMembers writes a row per member,
+      // so it persists for anyone who was away). In-app only; no push infra.
+      // Wrapped so a notification failure can never turn a successful arrival into a 500.
+      try {
+        const winnerHandle =
+          (winner.user as { prediktHandle?: string | null; name?: string | null })?.prediktHandle ||
+          (winner.user as { name?: string | null })?.name ||
+          'Someone';
+        const roomTitle = room?.roomTitle ?? 'the room';
+        await this.notificationsService.notifyRoomMembers({
+          roomId,
+          type: 'winner_declared',
+          title: `🏆 ${winnerHandle} took the Aura`,
+          body: `🏆 ${winnerHandle} took the Aura on ${roomTitle}.`,
+          severity: 'success',
+          actionLabel: 'See the Tea',
+          actionTarget: `room:${roomId}:result`,
+          metadata: { winnerHandle, roomTitle },
+          idempotencyKey: `winner_declared:${roomId}`,
+        });
+      } catch (error) {
+        this.logger.warn(`winner_declared notification failed for room ${roomId}: ${String(error)}`);
+      }
     }
 
     const primaryBadge = awardedBadges[0]?.title ?? momentCard.titles[0];
