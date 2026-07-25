@@ -1088,10 +1088,11 @@ export class RoutesService {
     const autoCloseAt = new Date(
       journeyScheduledStartAt.getTime() + (expectedDurationSeconds + gracePeriodSeconds) * 1000,
     );
+    const fallbackQuestion = preview.suggestedQuestion ?? 'When will I arrive?';
     const primaryPrediction = body.primaryPrediction ?? {
       type: 'arrival_time',
       answerType: 'exact_time',
-      question: preview.suggestedQuestion ?? 'When will I arrive?',
+      question: fallbackQuestion,
     };
     const travelMode = normalizeTravelMode(body.travelMode);
     return this.roomsService.createFromRoute(
@@ -1100,7 +1101,7 @@ export class RoutesService {
         eventType: primaryPrediction.type ?? 'journey',
         category: 'arrival_time',
         templateKey: 'arrival_time',
-        question: primaryPrediction.question,
+        question: primaryPrediction.question?.trim() || fallbackQuestion,
         baselineSource: preview.provider,
         baselineLabel: preview.providerLabel,
         baselineValue: expectedDurationSeconds,

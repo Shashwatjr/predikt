@@ -11,7 +11,12 @@ export type RootStackParamList = {
     | undefined;
   RoomCreated: { room: any };
   JoinRoom: { joinCode?: string } | undefined;
-  Prediction: { roomId: string; room: any; editPredictionId?: string };
+  Prediction: {
+    roomId: string;
+    room: any;
+    editPredictionId?: string;
+    returnToRoomCreated?: boolean;
+  };
   LiveRoom: { roomId: string; isCreator: boolean; justPredicted?: boolean };
   Result: { roomId: string; result?: any };
   Leaderboard: undefined;

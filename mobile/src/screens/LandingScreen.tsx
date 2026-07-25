@@ -141,6 +141,7 @@ export default function LandingScreen({ navigation }: Props) {
   const [gatePrompt, setGatePrompt] = useState<string | null>(null);
   const [votePromptCategory, setVotePromptCategory] = useState<CategoryTheme | null>(null);
   const feedRef = useRef<ScrollView | null>(null);
+  const inviteRedirectedRef = useRef(false);
   const { width } = useWindowDimensions();
   // The desktop shell already shows PREDIKT branding in its left rail, so the
   // in-content header collapses to just its actions there to avoid a double logo.
@@ -152,10 +153,15 @@ export default function LandingScreen({ navigation }: Props) {
     if (typeof window === 'undefined') return;
     const code = new URLSearchParams(window.location.search).get('joinCode')?.trim().toUpperCase();
     if (!code) return;
+    if (!inviteRedirectedRef.current) {
+      inviteRedirectedRef.current = true;
+      navigation.navigate('JoinRoom', { joinCode: code });
+      return;
+    }
     setJoinCode(code);
     setShowJoinCode(true);
     void api.get(`/rooms/invite/${code}`).then((res) => setInvitePreview(res.data)).catch(() => null);
-  }, []);
+  }, [navigation]);
 
   useEffect(() => {
     const timer = setInterval(() => {

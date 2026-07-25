@@ -47,7 +47,7 @@ function benchmarkChipLabel(b: Benchmark): string {
 
 export default function PredictionScreen({ navigation, route }: Props) {
   const { colors } = useTheme();
-  const { roomId, room: roomParam, editPredictionId } = route.params;
+  const { roomId, room: roomParam, editPredictionId, returnToRoomCreated } = route.params;
   const isEditing = !!editPredictionId;
   const [room, setRoom] = useState<any>(roomParam);
   const [loading, setLoading] = useState(false);
@@ -224,6 +224,10 @@ export default function PredictionScreen({ navigation, route }: Props) {
         Animated.timing(confirmScale, { toValue: 1.05, duration: 120, useNativeDriver: true }),
         Animated.timing(confirmScale, { toValue: 1, duration: 120, useNativeDriver: true }),
       ]).start(() => {
+        if (returnToRoomCreated && !isEditing) {
+          navigation.navigate('RoomCreated', { room });
+          return;
+        }
         navigation.navigate('LiveRoom', { roomId, isCreator: false, justPredicted: true });
       });
     } catch (err: unknown) {

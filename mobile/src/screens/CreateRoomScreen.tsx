@@ -73,6 +73,12 @@ function splitLocalDateTimeInput(value: string) {
   };
 }
 
+function capWithEllipsis(text: string, max: number) {
+  const value = text.trim();
+  if (value.length <= max) return value;
+  return `${value.slice(0, max - 1).trimEnd()}…`;
+}
+
 // A date + time picker. Labels are configurable because this widget is reused for
 // three distinct fields in the Delivery ETA form (vendor ETA, the creator's own
 // prediction, and the guesses-lock time). Hardcoding "Guesses lock" made all three
@@ -930,26 +936,35 @@ export default function CreateRoomScreen({ navigation, route }: Props) {
 
     setCreateLoading(true);
     try {
+      const fallbackQuestion =
+        selectedRoutePrediction.type === 'journey_duration'
+          ? 'How long will the journey take?'
+          : selectedRoutePrediction.type === 'beat_eta'
+            ? 'Will I beat the ETA?'
+            : preview.suggestedQuestion ?? 'When will I arrive?';
+      const safeTitle = capWithEllipsis(
+        titleOverride.trim() || preview.suggestedRoomTitle || 'Arrival PREDIKT',
+        120,
+      );
+      const safeQuestion = capWithEllipsis(questionOverride.trim() || fallbackQuestion, 160);
       const res = await api.post('/rooms/from-route', {
         ...routePayload(),
         roomType: selectedMode === 'challenge_self' ? 'single_target' : 'single_target',
-        title: titleOverride.trim() || preview.suggestedRoomTitle,
+        title: safeTitle,
         predictionClosesAt: closeDate.toISOString(),
         primaryPrediction: {
           type: selectedRoutePrediction.type,
           answerType: selectedRoutePrediction.answerType,
-          question:
-            questionOverride.trim() ||
-            (selectedRoutePrediction.type === 'journey_duration'
-              ? 'How long will the journey take?'
-              : selectedRoutePrediction.type === 'beat_eta'
-                ? 'Will I beat the ETA?'
-                : preview.suggestedQuestion ?? 'When will I arrive?'),
+          question: safeQuestion,
         },
         category: 'arrival_time',
         mode: selectedMode,
       });
-      navigation.navigate('RoomCreated', { room: res.data });
+      navigation.navigate('Prediction', {
+        roomId: res.data.roomId,
+        room: res.data,
+        returnToRoomCreated: true,
+      });
     } catch (err: unknown) {
       const message = getApiErrorMessage(err, 'Could not create the room. Try again in a moment.');
       setCreateError(message);
@@ -1470,6 +1485,7 @@ export default function CreateRoomScreen({ navigation, route }: Props) {
                     onChangeText={setTitleOverride}
                     placeholder={preview.suggestedRoomTitle}
                     hint="Defaults to the route title."
+                    maxLength={120}
                   />
                   <LockDateTimeField
                     value={predictionClosesAt}
@@ -1560,6 +1576,8 @@ export default function CreateRoomScreen({ navigation, route }: Props) {
                     value={questionOverride}
                     onChangeText={setQuestionOverride}
                     placeholder={preview.suggestedQuestion}
+                    hint="Optional. Max 160 characters."
+                    maxLength={160}
                   />
                 </View>
               ) : null}

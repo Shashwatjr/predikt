@@ -40,6 +40,7 @@ class PrimaryPredictionDto {
   @IsIn(['exact_time', 'duration', 'yes_no'])
   answerType: string;
 
+  @IsOptional()
   @IsString()
   @Length(1, 160)
   question: string;

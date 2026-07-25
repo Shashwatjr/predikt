@@ -18,6 +18,7 @@ import CoachMark from '../components/CoachMark';
 import ArrivalWaitingRoom from '../components/ArrivalWaitingRoom';
 import RoomPredictionList, { RoomPredictionEntry } from '../components/RoomPredictionList';
 import CheckpointLeaderboard, { CheckpointBoard } from '../components/CheckpointLeaderboard';
+import LiveLeaderboard, { LiveLeaderboardData } from '../components/LiveLeaderboard';
 import { deriveArrivalBenchmarks, formatClock } from '../utils/benchmarks';
 import { botGuessTeaser, botEtaTeaser } from '../utils/botVoice';
 import { layout, palette } from '../theme/designSystem';
@@ -74,6 +75,9 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
   const [guessSummary, setGuessSummary] = useState<string | null>(null);
   const [predictions, setPredictions] = useState<RoomPredictionEntry[]>([]);
   const [checkpointBoards, setCheckpointBoards] = useState<Record<number, CheckpointBoard | undefined>>({});
+  const [liveLeaderboard, setLiveLeaderboard] = useState<LiveLeaderboardData | null>(null);
+  const [locking, setLocking] = useState(false);
+  const [unlockInSeconds, setUnlockInSeconds] = useState<number | null>(null);
   const [myPredictionDate, setMyPredictionDate] = useState<Date | null>(null);
   const [milestoneBanner, setMilestoneBanner] = useState<string | null>(null);
   const [etaMovedBanner, setEtaMovedBanner] = useState<string | null>(null);
@@ -101,10 +105,12 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
     fetchRoom();
     fetchPredictions();
     fetchCheckpointBoards();
+    fetchLiveLeaderboard();
     const interval = setInterval(() => {
       fetchLiveState();
       fetchPredictions();
       fetchCheckpointBoards();
+      fetchLiveLeaderboard();
     }, 5000);
     return () => clearInterval(interval);
   }, []);
@@ -294,10 +300,44 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
     }
   }
 
+  async function fetchLiveLeaderboard() {
+    try {
+      const res = await api.get(`/rooms/${roomId}/live-leaderboard`);
+      setLiveLeaderboard(res.data as LiveLeaderboardData);
+    } catch {
+      // live leaderboard is best-effort; hidden until predictions lock
+    }
+  }
+
+  async function handleLockNow() {
+    if (locking) return;
+    setLocking(true);
+    try {
+      await api.post(`/rooms/${roomId}/predictions/lock-now`);
+      await Promise.all([fetchLiveLeaderboard(), fetchPredictions(), fetchLiveState()]);
+    } catch (error) {
+      appAlert('Could not lock', getApiErrorMessage(error, 'Please try again.'));
+    } finally {
+      setLocking(false);
+    }
+  }
+
   async function fetchPredictions() {
     try {
       const res = await api.get(`/rooms/${roomId}/predictions`);
-      setPredictions((res.data ?? []) as RoomPredictionEntry[]);
+      const rows = (res.data ?? []) as RoomPredictionEntry[];
+      setPredictions(rows);
+      // Room-wide reveal window: seconds until the latest edit deadline elapses
+      // (that's when blurred guesses auto-unlock unless someone locks first).
+      const deadlines = rows
+        .map((entry: any) => (entry.editDeadline ? new Date(entry.editDeadline).getTime() : 0))
+        .filter((t: number) => t > 0);
+      if (deadlines.length) {
+        const maxDeadline = Math.max(...deadlines);
+        setUnlockInSeconds(Math.max(0, Math.ceil((maxDeadline - Date.now()) / 1000)));
+      } else {
+        setUnlockInSeconds(null);
+      }
       const visible = (res.data ?? []).filter((entry: any) => entry.predictedReachedTime);
       if (!visible.length) return;
       const times = visible.map((entry: any) => new Date(entry.predictedReachedTime).getTime()).sort((a: number, b: number) => a - b);
@@ -554,8 +594,14 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
   const isArrivalCategory = category !== 'weather_rain' && category !== 'food_eta' && !isGenericRoom;
   const trackingCountdownActive =
     secondsUntilStart > 0 && (liveState?.status === 'live' || !!liveState?.waitingForDelayedStart);
+  const suppressGuestStartCountdown =
+    !isCreator &&
+    isArrivalCategory &&
+    trackingCountdownActive &&
+    !['completed', 'cancelled'].includes(liveState?.status ?? '');
   const showArrivalWaitingRoom =
     isArrivalCategory &&
+    isCreator &&
     !!liveState &&
     trackingCountdownActive &&
     !['completed', 'cancelled'].includes(liveState.status);
@@ -786,9 +832,21 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
           statusLabel={category === 'weather_rain' ? (liveState?.journeyStatus ?? liveState?.status ?? 'live').replace(/_/g, ' ') : getTravelStageFromProgress(pct, isCreator ? 'creator' : 'guest')}
           statusTone="live"
           progress={category !== 'weather_rain' ? pct : undefined}
-          etaLabel={liveState?.etaMinutes != null ? `${liveState.etaMinutes} min remaining` : trackingCountdownLabel ?? (minutesUntilStart > 0 ? `Starts in ${minutesUntilStart} min` : undefined)}
+          etaLabel={
+            liveState?.etaMinutes != null
+              ? `${liveState.etaMinutes} min remaining`
+              : suppressGuestStartCountdown
+                ? undefined
+                : trackingCountdownLabel ?? (minutesUntilStart > 0 ? `Starts in ${minutesUntilStart} min` : undefined)
+          }
           oracleLabel={room?.baselineLabel ?? room?.oracleBotPrediction?.label}
-          lifecycleNote={liveState?.waitingForDelayedStart && !isCreator ? (trackingCountdownLabel ?? 'Waiting to start.') : (liveState?.lifecycleMessage ?? liveState?.safetyMessage)}
+          lifecycleNote={
+            suppressGuestStartCountdown
+              ? "You're in. Predictions are open and journey updates will appear here shortly."
+              : liveState?.waitingForDelayedStart && !isCreator
+                ? (trackingCountdownLabel ?? 'Waiting to start.')
+                : (liveState?.lifecycleMessage ?? liveState?.safetyMessage)
+          }
         />
       )}
 
@@ -830,7 +888,9 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
           <Text style={[styles.startDelayCopy, { color: colors.textSecondary }]}>
             {category === 'weather_rain'
               ? 'Declare the actual rain outcome when the time window ends. Oracle Bot is a benchmark, not a guarantee.'
-              : (!isCreator && liveState.waitingForDelayedStart && trackingCountdownLabel)
+              : suppressGuestStartCountdown
+                ? 'You are already in the room. The host can start the journey at any moment, and updates will appear here automatically.'
+                : (!isCreator && liveState.waitingForDelayedStart && trackingCountdownLabel)
                 ? trackingCountdownLabel
                 : liveState.lifecycleMessage ?? 'Approx. journey progress is shown with privacy-safe timing.'}
           </Text>
@@ -926,7 +986,7 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
         </View>
       ) : null}
 
-      {!isCreator && liveState?.waitingForDelayedStart && trackingCountdownLabel && !isGenericRoom && category !== 'weather_rain' ? (
+      {!isCreator && liveState?.waitingForDelayedStart && trackingCountdownLabel && !suppressGuestStartCountdown && !isGenericRoom && category !== 'weather_rain' ? (
         <View style={[styles.creatorCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <LinearGradient colors={[colors.purple + '30', 'transparent']} style={styles.creatorHeader}>
             <Text style={[styles.creatorTitle, { color: colors.textPrimary }]}>Journey starting soon</Text>
