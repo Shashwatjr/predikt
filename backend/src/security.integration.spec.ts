@@ -139,6 +139,8 @@ describe('Security And Enterprise Hardening (integration)', () => {
       });
       await prisma.userSession.deleteMany({ where: { userId: { in: createdUserIds } } });
       await prisma.creditLedger.deleteMany({ where: { userId: { in: createdUserIds } } });
+      await prisma.rewardLedgerEntry.deleteMany({ where: { userId: { in: createdUserIds } } });
+      await prisma.rewardAccount.deleteMany({ where: { userId: { in: createdUserIds } } });
       await prisma.auraTransaction.deleteMany({ where: { userId: { in: createdUserIds } } });
       await prisma.cloutTransaction.deleteMany({ where: { userId: { in: createdUserIds } } });
       await prisma.roomResult.deleteMany({ where: { userId: { in: createdUserIds } } });
