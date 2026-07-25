@@ -11,7 +11,6 @@ type Props = {
   statusLabel: string;
   statusTone?: 'live' | 'success' | 'warning' | 'default';
   etaLabel?: string;
-  myPredictionLabel?: string;
   progress?: number;
   oracleLabel?: string;
   participantCount?: number;
@@ -24,7 +23,6 @@ export default function LiveStatusCard({
   statusLabel,
   statusTone = 'live',
   etaLabel,
-  myPredictionLabel,
   progress,
   oracleLabel,
   participantCount,
@@ -41,7 +39,6 @@ export default function LiveStatusCard({
       </View>
       {typeof progress === 'number' ? <ProgressBar percentage={progress} label="Approximate progress" /> : null}
       {etaLabel ? <Text style={styles.meta}>Provider journey read: {etaLabel}</Text> : null}
-      {myPredictionLabel ? <Text style={[styles.prediction, { color: theme.primaryColor }]}>My prediction: {myPredictionLabel}</Text> : null}
       {oracleLabel ? <Text style={styles.meta}>Benchmark: {oracleLabel}</Text> : null}
       {typeof participantCount === 'number' ? <Text style={styles.meta}>{participantCount} participants</Text> : null}
       {lifecycleNote ? <Text style={styles.note}>{lifecycleNote}</Text> : null}
@@ -56,6 +53,5 @@ const styles = StyleSheet.create({
   icon: { fontSize: 22 },
   title: { color: palette.textPrimary, ...typography.bodyBold, flex: 1 },
   meta: { color: palette.textSecondary, ...typography.caption },
-  prediction: { ...typography.bodyBold },
   note: { color: palette.violetLight, ...typography.caption },
 });

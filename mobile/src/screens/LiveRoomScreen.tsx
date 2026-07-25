@@ -913,7 +913,7 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
         <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           {isGenericRoom && genericSummaryRows.length > 0 ? (
             <View style={styles.genericSummaryWrap}>
-              <Text style={[styles.creatorTitle, { color: colors.textPrimary }]}>The Tea</Text>
+              <Text style={[styles.creatorTitle, { color: colors.textPrimary }]}>Live votes</Text>
               {genericSummaryRows.map(([key, count]) => (
                 <View key={key} style={styles.genericSummaryRow}>
                   <Text style={[styles.genericSummaryLabel, { color: colors.textPrimary }]}>

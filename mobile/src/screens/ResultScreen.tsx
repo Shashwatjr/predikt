@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, Alert, Animated, Linking, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { AccessibilityInfo, Animated, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -8,22 +8,16 @@ import LeaderboardList from '../components/LeaderboardList';
 import PrimaryButton from '../components/PrimaryButton';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
-import api, { getApiErrorMessage } from '../services/api';
+import api from '../services/api';
 import WebSideWingLayout from '../components/WebSideWingLayout';
-import MomentCard from '../components/MomentCard';
 import { shareMoment } from '../utils/shareMoment';
-import { CommentaryResponse, ResultPayload, RoomBadge } from '../types/engagement';
-import TeaCard from '../components/TeaCard';
-import CommentaryBubble from '../components/CommentaryBubble';
+import { ResultPayload, RoomBadge } from '../types/engagement';
 import RewardChips from '../components/RewardChips';
-import ReactionStrip from '../components/ReactionStrip';
 import SectionHeader from '../components/SectionHeader';
 import GuestUpgradePrompt from '../components/GuestUpgradePrompt';
 import { getCategoryTheme } from '../config/categoryTheme';
 import { featureFlags } from '../config/featureFlags';
-import { copyToClipboard, formatLineForShare } from '../utils/shareLine';
 import { layout, palette } from '../theme/designSystem';
-import CoachMark from '../components/CoachMark';
 import RoomPredictionList, { RoomPredictionEntry } from '../components/RoomPredictionList';
 
 type Props = {
@@ -37,8 +31,6 @@ type GenericSummaryRow = {
   count: number;
 };
 
-const REACTIONS = ['🔥', '🎯', '👑', '😂', '😭', '🤝', '⚡', '🌧️', '🍕', '💪'];
-
 export default function ResultScreen({ navigation, route }: Props) {
   const { colors } = useTheme();
   const { user } = useAuth();
@@ -46,11 +38,7 @@ export default function ResultScreen({ navigation, route }: Props) {
   const [data, setData] = useState<any[]>(initialResult?.rankings ?? []);
   const [winner, setWinner] = useState<any>(initialResult?.winner ?? null);
   const [room, setRoom] = useState<any>(null);
-  const [commentary, setCommentary] = useState<CommentaryResponse | null>(null);
   const [badges, setBadges] = useState<RoomBadge[]>([]);
-  const [selectedReaction, setSelectedReaction] = useState<string | null>(null);
-  const [isRematching, setIsRematching] = useState(false);
-  const [lineCopied, setLineCopied] = useState(false);
   const [predictions, setPredictions] = useState<RoomPredictionEntry[]>(
     (initialResult?.predictionEntries as RoomPredictionEntry[] | undefined) ?? [],
   );
@@ -61,8 +49,6 @@ export default function ResultScreen({ navigation, route }: Props) {
   const floatOpacity = useRef(new Animated.Value(0)).current;
   const winnerScale = useRef(new Animated.Value(0.94)).current;
   const winnerGlow = useRef(new Animated.Value(0)).current;
-  const commentaryRise = useRef(new Animated.Value(0)).current;
-  const commentaryOpacity = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
     let active = true;
@@ -97,17 +83,13 @@ export default function ResultScreen({ navigation, route }: Props) {
 
   async function fetchRoomAndCommentary() {
     try {
-      const [roomRes, commentaryRes, badgesRes] = await Promise.allSettled([
+      const [roomRes, badgesRes] = await Promise.allSettled([
         api.get(`/rooms/${roomId}`),
-        api.get(`/rooms/${roomId}/commentary`),
         api.get(`/rooms/${roomId}/badges`),
       ]);
 
       if (roomRes.status === 'fulfilled') {
         setRoom(roomRes.value.data);
-      }
-      if (commentaryRes.status === 'fulfilled') {
-        setCommentary(commentaryRes.value.data);
       }
       if (badgesRes.status === 'fulfilled') {
         setBadges(badgesRes.value.data);
@@ -124,23 +106,15 @@ export default function ResultScreen({ navigation, route }: Props) {
       floatY.setValue(0);
       winnerScale.setValue(1);
       winnerGlow.setValue(1);
-      commentaryRise.setValue(0);
-      commentaryOpacity.setValue(1);
       return;
     }
     floatOpacity.setValue(1);
     floatY.setValue(0);
-    commentaryRise.setValue(8);
-    commentaryOpacity.setValue(0);
     Animated.parallel([
       Animated.timing(floatY, { toValue: -60, duration: 1400, useNativeDriver: true }),
       Animated.timing(floatOpacity, { toValue: 0, duration: 1400, useNativeDriver: true }),
       Animated.timing(winnerScale, { toValue: 1, duration: 400, useNativeDriver: true }),
       Animated.timing(winnerGlow, { toValue: 1, duration: 400, useNativeDriver: true }),
-      Animated.parallel([
-        Animated.timing(commentaryRise, { toValue: 0, duration: 300, useNativeDriver: true }),
-        Animated.timing(commentaryOpacity, { toValue: 1, duration: 300, useNativeDriver: true }),
-      ]),
     ]).start();
   }
 
@@ -155,24 +129,6 @@ export default function ResultScreen({ navigation, route }: Props) {
       }
     } catch {
       // ignore
-    }
-  }
-
-  async function sendReaction(emoji: string) {
-    try {
-      await api.post(`/rooms/${roomId}/reactions`, { emoji });
-      setSelectedReaction(emoji);
-    } catch {
-      Alert.alert('Reaction not saved', 'Only participants in completed rooms can react to The Tea.');
-    }
-  }
-
-  async function regenerateCommentary() {
-    try {
-      const res = await api.post(`/rooms/${roomId}/commentary/regenerate`);
-      setCommentary(res.data);
-    } catch {
-      Alert.alert('Commentary unavailable', 'This room is using safe deterministic commentary right now.');
     }
   }
 
@@ -207,15 +163,12 @@ export default function ResultScreen({ navigation, route }: Props) {
           : 'a little'
       }`
     : 'No near miss this time';
-  const momentCard = buildMomentCardFromResult(initialResult as ResultPayload | undefined, categoryKey, commentary?.personality);
+  const momentCard = buildMomentCardFromResult(initialResult as ResultPayload | undefined, categoryKey);
   const badgeUnlocked =
     badges.find((badge) => badge.userId === (winningRow?.userId ?? winningRow?.user?.userId))?.title
     ?? initialResult?.momentCard?.badge
     ?? initialResult?.badges?.[0]?.title
     ?? momentCard.badge;
-  const comebackCopy = winningRow && user && (winningRow.userId ?? winningRow.user?.userId) !== user.userId
-    ? 'Comeback unlocked.'
-    : 'Run it back?';
 
   async function shareMomentCard() {
     await shareMoment({
@@ -228,81 +181,17 @@ export default function ResultScreen({ navigation, route }: Props) {
       differenceLabel,
       oracleLabel: oracleBotLabel,
       badge: badgeUnlocked,
-      commentary: commentary?.punchline ?? momentCard.commentary,
+      commentary: momentCard.commentary,
       cta: 'Join the next My Prediktion',
       linkLabel: 'Run it back?',
     });
     await api.post('/events', { eventType: 'moment_card_shared', metadata: { roomId, category: categoryKey } }).catch(() => undefined);
   }
 
-  async function shareCommentaryLine() {
-    const line = commentary?.punchline;
-    if (!line) return;
-    const text = formatLineForShare(line, commentary?.personality);
-    const ok = await copyToClipboard(text);
-    if (ok) {
-      setLineCopied(true);
-      setTimeout(() => setLineCopied(false), 2000);
-    } else {
-      // Native/no-clipboard fallback: surface the exact text to copy by hand.
-      Alert.alert('Copy this line', text);
-    }
-  }
-
-  async function handleRematch() {
-    if (isRematching) return;
-
-    setIsRematching(true);
-    try {
-      const res = await api.post(`/rooms/${roomId}/rematch`);
-      const createdRoom = res.data;
-      await api.post('/events', { eventType: 'rematch_created', metadata: { sourceRoomId: roomId, category: categoryKey, targetRoomId: createdRoom?.roomId } }).catch(() => undefined);
-      navigation.navigate('Prediction', { roomId: createdRoom?.roomId ?? roomId, room: createdRoom ?? { roomId } });
-    } catch (error) {
-      Alert.alert('Rematch unavailable', getApiErrorMessage(error, 'This room cannot be rematched right now.'));
-    } finally {
-      setIsRematching(false);
-    }
-  }
-
-  async function handleComeback() {
-    await api.post('/events', { eventType: 'comeback_started', metadata: { sourceRoomId: roomId, category: categoryKey } }).catch(() => undefined);
-    navigation.navigate('CreateRoom');
-  }
-
-  async function handleChallengeResult() {
-    try {
-      const response = await api.post(`/rooms/${roomId}/disputes`, {
-        reason: 'Predictor challenge: please review this creator-attested generic-room result.',
-      });
-      const proofWaMeLink = response.data?.proofWaMeLink;
-      Alert.alert(
-        'Challenge submitted',
-        proofWaMeLink
-          ? 'The creator and challenger were notified. We can open the WhatsApp proof link now.'
-          : 'The creator and challenger were notified in-app.',
-        proofWaMeLink
-          ? [
-              { text: 'Later', style: 'cancel' },
-              {
-                text: 'Open WhatsApp link',
-                onPress: () => {
-                  void Linking.openURL(proofWaMeLink);
-                },
-              },
-            ]
-          : undefined,
-      );
-    } catch (error) {
-      Alert.alert('Challenge unavailable', getApiErrorMessage(error, 'We could not submit the challenge right now.'));
-    }
-  }
-
   const categoryTheme = getCategoryTheme(categoryKey);
   const genericCategoryKey =
     room?.category ?? room?.creationMeta?.category ?? room?.templateKey ?? categoryKey;
   const isGenericRoom = genericCategoryKey === 'open_prediction';
-  const isCreator = !!user?.userId && !!room?.creatorUserId && user.userId === room.creatorUserId;
   const genericOptions =
     Array.isArray(room?.scoringRule?.weatherOptions)
       ? room.scoringRule.weatherOptions.map((option: any) => ({
@@ -355,12 +244,7 @@ export default function ResultScreen({ navigation, route }: Props) {
   return (
     <WebSideWingLayout rightPlacement="result_side">
       <ScrollView contentContainerStyle={[styles.container, { backgroundColor: palette.bg, maxWidth: layout.maxContentWidth, alignSelf: 'center', width: '100%' }]}>
-        <SectionHeader title="☕ The Tea" subtitle={isNeutralClosure ? 'Fair reset — nobody counted as a loss' : categoryTheme.resultTitle} />
-        <CoachMark
-          storageKey="coachmark:result:the_tea"
-          title="The Tea"
-          body="The reveal. See who nailed it and what Chaos Bot said."
-        />
+        <SectionHeader title="Results" subtitle={isNeutralClosure ? 'Fair reset — nobody counted as a loss' : categoryTheme.resultTitle} />
 
         {isGenericRoom ? (
           <View style={[styles.genericTeaCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -387,43 +271,26 @@ export default function ResultScreen({ navigation, route }: Props) {
             <RoomPredictionList data={genericPredictions} title="Prediction board" />
           </View>
         ) : (
-          <TeaCard
-            roomTitle={room?.roomTitle ?? 'My Prediktion moment'}
-            category={categoryTheme}
-            winnerHandle={winnerHandle}
-            neutral={isNeutralClosure}
-            metrics={[
-              { label: 'Winner', value: winnerHandle },
-              { label: 'Predicted', value: winningPrediction },
-              { label: 'Actual', value: actualOutcome },
-              { label: 'Difference', value: differenceLabel },
-              { label: 'Near miss', value: biggestNearMiss },
-              { label: 'Badge', value: badgeUnlocked },
-            ]}
-            oracleLabel={oracleBotLabel}
-            badge={badgeUnlocked}
-            auraEarned={dotBonus ? undefined : auraEarned}
-          />
+          <View style={[styles.genericTeaCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Text style={[styles.genericTeaTitle, { color: colors.textPrimary }]}>
+              {room?.roomTitle ?? 'Result summary'}
+            </Text>
+            <View style={styles.metricGrid}>
+              <MetricCard label="Winner" value={winnerHandle} colors={colors} />
+              <MetricCard label="Predicted" value={winningPrediction} colors={colors} />
+              <MetricCard label="Actual" value={actualOutcome} colors={colors} />
+              <MetricCard label="Difference" value={differenceLabel} colors={colors} />
+              <MetricCard label="Near miss" value={biggestNearMiss} colors={colors} />
+              <MetricCard label="Badge" value={badgeUnlocked} colors={colors} />
+            </View>
+            <Text style={[styles.genericTeaSubtitle, { color: colors.textSecondary }]}>
+              Benchmark: {oracleBotLabel}
+            </Text>
+          </View>
         )}
 
         {!isGenericRoom && dotBonus ? (
           <Text style={[styles.dotBonus, { color: colors.green }]}>Dot Bonus unlocked: {dotBonus}</Text>
-        ) : null}
-
-        {!isGenericRoom ? (
-          <MomentCard
-            title={room?.roomTitle ?? 'My Prediktion moment'}
-            subtitle={momentCard.subtitle}
-            badge={badgeUnlocked}
-            category={categoryLabel}
-            handle={winnerHandle}
-            predictionLabel={winningPrediction}
-            actualLabel={actualOutcome}
-            differenceLabel={differenceLabel}
-            oracleLabel={oracleBotLabel}
-            commentary={commentary?.punchline ?? momentCard.commentary}
-            cta="Join the next My Prediktion"
-          />
         ) : null}
 
         {!isGenericRoom && winningRow ? (
@@ -470,26 +337,6 @@ export default function ResultScreen({ navigation, route }: Props) {
           </View>
         ) : null}
 
-        {commentary ? (
-          <Animated.View style={{ opacity: commentaryOpacity, transform: [{ translateY: commentaryRise }] }}>
-            <CommentaryBubble
-              hero
-              personality={commentary.personality}
-              headline={commentary.headline}
-              punchline={commentary.punchline}
-              onShareLine={shareCommentaryLine}
-              shareCopied={lineCopied}
-            />
-            <PrimaryButton
-              label={commentary?.canRegenerate === false ? 'Commentary Locked' : 'Refresh Commentary'}
-              onPress={regenerateCommentary}
-              variant="secondary"
-              icon="🌀"
-              disabled={commentary?.canRegenerate === false}
-            />
-          </Animated.View>
-        ) : null}
-
         {!isGenericRoom && podiumTop3.length >= 2 ? (
           <View style={styles.podium}>
             <View style={[styles.podiumCol, { alignSelf: 'flex-end' }]}>
@@ -521,22 +368,6 @@ export default function ResultScreen({ navigation, route }: Props) {
         {/* Guest's Tea has resolved — offer to keep their Aura before they bounce. */}
         <GuestUpgradePrompt variant="result" />
 
-        {!isGenericRoom ? (
-          <>
-            <SectionHeader title="React + Rematch" subtitle={comebackCopy} />
-            <ReactionStrip reactions={REACTIONS} onReact={sendReaction} selected={selectedReaction} />
-          </>
-        ) : null}
-
-        {isGenericRoom && !isCreator ? (
-          <PrimaryButton
-            label="Challenge Creator-Attest"
-            onPress={handleChallengeResult}
-            variant="secondary"
-            icon="⚖️"
-          />
-        ) : null}
-
         {!isGenericRoom && data.length ? (
           <>
             <Text style={[styles.section, { color: colors.textSecondary }]}>All Rankings</Text>
@@ -558,12 +389,6 @@ export default function ResultScreen({ navigation, route }: Props) {
         ) : null}
 
         <View style={styles.ctaStack}>
-          {!isGenericRoom ? (
-            <PrimaryButton label={isRematching ? 'Scheduling next round...' : 'Schedule the next round'} onPress={handleRematch} icon="🔁" disabled={isRematching} />
-          ) : null}
-          {!isGenericRoom ? (
-            <PrimaryButton label="Start a different room" onPress={handleComeback} variant="secondary" icon="⚡" />
-          ) : null}
           {featureFlags.momentCardExport ? (
             <PrimaryButton label="Share Moment Card" onPress={shareMomentCard} variant="secondary" icon="✨" />
           ) : null}
@@ -616,54 +441,54 @@ function formatActualOutcome(result: any) {
   return new Date(result.actualOutcome).toLocaleString();
 }
 
-function buildMomentCardFromResult(result: ResultPayload | undefined, category: string, personality?: string | null) {
+function buildMomentCardFromResult(result: ResultPayload | undefined, category: string) {
   if (result?.momentCard?.badge || result?.momentCard?.shareText) {
     return {
       badge: result.momentCard.badge ?? result.momentCard.titles?.[0] ?? 'Closest Guess',
       subtitle: result.momentCard.shareText ?? 'Closest guess wins Aura',
-      commentary: `${personality ?? 'Oracle'} energy says the result is ready to share.`,
+      commentary: 'Result summary is ready to share.',
     };
   }
-  return buildFallbackMomentCard(category, personality);
+  return buildFallbackMomentCard(category);
 }
 
-function buildFallbackMomentCard(category: string, personality?: string | null) {
+function buildFallbackMomentCard(category: string) {
   switch (category) {
     case 'weather_rain':
       return {
         badge: 'Rain Oracle',
         subtitle: 'Forecast Beater',
-        commentary: `${personality ?? 'Oracle'} energy says the forecast was beat fairly.`,
+        commentary: 'Forecast result is ready to share.',
       };
     case 'food_eta':
       return {
         badge: 'Beat the ETA',
         subtitle: 'Delivery Oracle',
-        commentary: `${personality ?? 'Chaos'} energy says the delivery arc stayed dramatic.`,
+        commentary: 'Delivery result is ready to share.',
       };
     case 'whos_late':
       return {
         badge: 'Group Chaos',
         subtitle: 'Time Oracle',
-        commentary: `${personality ?? 'Best Friend'} energy says tradition was respectfully maintained.`,
+        commentary: 'Group result is ready to share.',
       };
     case 'gym_habit':
       return {
         badge: 'Pattern Breaker',
         subtitle: 'Comeback Solo',
-        commentary: `${personality ?? 'Best Friend'} energy says progress still deserves a screenshot.`,
+        commentary: 'Progress update is ready to share.',
       };
     case 'open_prediction':
       return {
         badge: 'Wild Cards',
         subtitle: 'Creator-attest MVP lane',
-        commentary: `${personality ?? 'Oracle'} energy says the call is in, and challengers still have a route to contest it.`,
+        commentary: 'Creator-attested result is ready to share.',
       };
     default:
       return {
         badge: 'Route Oracle',
         subtitle: 'Closest guess wins Aura',
-        commentary: `${personality ?? 'Chaos'} energy says the route had opinions and the winner had receipts.`,
+        commentary: 'Journey result is ready to share.',
       };
   }
 }
@@ -680,13 +505,6 @@ const styles = StyleSheet.create({
   metricLabel: { fontSize: 11, fontWeight: '900', textTransform: 'uppercase', marginBottom: 4 },
   metricValue: { fontSize: 13, fontWeight: '800', lineHeight: 18 },
   dotBonus: { fontSize: 13, lineHeight: 19, fontWeight: '800' },
-  storyCard: { borderRadius: 20, borderWidth: 1, padding: 16, gap: 8 },
-  storyHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  storyTitle: { fontSize: 16, fontWeight: '900' },
-  storyBadge: { fontSize: 12, fontWeight: '800' },
-  storyHeadline: { fontSize: 18, fontWeight: '900' },
-  storyQuote: { fontSize: 14, lineHeight: 20, fontStyle: 'italic' },
-  storySupport: { fontSize: 13, lineHeight: 19 },
   genericTeaCard: { borderRadius: 20, borderWidth: 1, padding: 18, gap: 12 },
   genericTeaTitle: { fontSize: 20, fontWeight: '900' },
   genericTeaSubtitle: { fontSize: 13, lineHeight: 19 },
@@ -730,7 +548,5 @@ const styles = StyleSheet.create({
   podiumName: { color: '#fff', fontWeight: '700', fontSize: 11, textAlign: 'center' },
   podiumXp: { color: 'rgba(255,255,255,0.8)', fontSize: 10, marginTop: 2 },
   section: { fontSize: 14, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase' },
-  reactions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
-  reaction: { fontSize: 22, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999 },
   ctaStack: { gap: 10, paddingBottom: 24 },
 });
