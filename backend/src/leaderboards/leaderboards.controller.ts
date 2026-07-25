@@ -44,6 +44,14 @@ export class LeaderboardsController {
     return Object.fromEntries(allowed.map((value, i) => [value, boards[i]]));
   }
 
+  // Live room-wide leaderboard for the LiveRoom screen (polled every 5s). Ranks
+  // locked predictions vs the current best projected arrival. Hidden until lock.
+  @UseGuards(JwtAuthGuard)
+  @Get('rooms/:roomId/live-leaderboard')
+  liveLeaderboard(@Param('roomId') roomId: string, @CurrentUser() user: User) {
+    return this.leaderboardsService.liveLeaderboard(roomId, user);
+  }
+
   @Get('leaderboard/weekly')
   weeklyLeaderboard() {
     return this.leaderboardsService.weeklyLeaderboard();

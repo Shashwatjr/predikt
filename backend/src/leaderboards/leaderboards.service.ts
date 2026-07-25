@@ -143,6 +143,108 @@ export class LeaderboardsService {
   }
 
   /**
+   * Live room-wide leaderboard for the LiveRoom screen (polled every 5s). Ranks
+   * every locked-in prediction against the current best projected arrival, which is
+   * recomputed as milestones cross (latest RoomMilestoneSnapshot ETA, else GPS/pace
+   * fallback). NEVER surfaces standings before predictionsLockedAt — that would let
+   * a late guesser reverse-engineer peers' predictions. Awards nothing (real Aura is
+   * still granted only at room end).
+   */
+  async liveLeaderboard(roomId: string, requestingUser: User) {
+    const room = await this.prisma.predictionRoom.findUnique({
+      where: { roomId },
+      include: {
+        journeyRoute: true,
+        checkpoints: true,
+        milestoneSnapshots: { orderBy: [{ checkpointPercent: 'desc' }, { capturedAt: 'desc' }] },
+        milestones: { where: { milestoneType: 'final_destination' } },
+      },
+    });
+    if (!room) throw new NotFoundException('Room not found');
+
+    if (room.visibility === 'private') {
+      const membership = await this.prisma.roomMembership.findUnique({
+        where: { roomId_userId: { roomId, userId: requestingUser.userId } },
+      });
+      if (room.creatorUserId !== requestingUser.userId && membership?.status !== 'joined') {
+        throw new ForbiddenException('Join this room to view standings.');
+      }
+    }
+
+    // Privacy boundary: the live leaderboard is hidden until predictions lock.
+    if (!room.predictionsLockedAt) {
+      return { revealed: false as const, reason: 'not_locked' as const, standings: [] };
+    }
+
+    // Current best projected arrival: prefer the freshest milestone snapshot ETA,
+    // then the checkpoint-based projection, then the static plan.
+    const latestSnapshot = room.milestoneSnapshots[0];
+    let projectedArrival: Date | null = null;
+    let basis: 'snapshot_eta' | 'checkpoint' | 'plan' = 'plan';
+    if (latestSnapshot?.etaSeconds != null) {
+      projectedArrival = new Date(latestSnapshot.capturedAt.getTime() + latestSnapshot.etaSeconds * 1000);
+      basis = 'snapshot_eta';
+    } else {
+      const latestCp = [...room.checkpoints].sort((a, b) => b.checkpoint - a.checkpoint)[0];
+      const projected = latestCp ? this.projectArrival(room, latestCp, latestCp.checkpoint) : null;
+      if (projected) {
+        projectedArrival = projected.arrival;
+        basis = 'checkpoint';
+      } else if (room.startTime && room.expectedDurationSeconds) {
+        projectedArrival = new Date(room.startTime.getTime() + room.expectedDurationSeconds * 1000);
+        basis = 'plan';
+      }
+    }
+    if (!projectedArrival) {
+      return { revealed: false as const, reason: 'insufficient_data' as const, standings: [] };
+    }
+
+    const finalMilestoneIds = room.milestones.map((m) => m.milestoneId);
+    const predictions = await this.prisma.milestonePrediction.findMany({
+      where: {
+        roomId,
+        revokedAt: null,
+        ...(finalMilestoneIds.length ? { milestoneId: { in: finalMilestoneIds } } : {}),
+      },
+      include: { user: { select: SAFE_PUBLIC_USER_SELECT } },
+    });
+
+    const ranked = predictions
+      .map((p) => ({
+        p,
+        diffSeconds: Math.round(
+          Math.abs(p.predictedReachedTime.getTime() - projectedArrival!.getTime()) / 1000,
+        ),
+      }))
+      .sort((a, b) =>
+        a.diffSeconds !== b.diffSeconds
+          ? a.diffSeconds - b.diffSeconds
+          : a.p.submittedAt.getTime() - b.p.submittedAt.getTime(),
+      );
+
+    return {
+      revealed: true as const,
+      basis,
+      projectedArrivalAt: projectedArrival.toISOString(),
+      capturedAt: (latestSnapshot?.capturedAt ?? room.lastTravellerUpdateAt ?? new Date()).toISOString(),
+      standings: ranked.map((entry, index) => ({
+        rank: index + 1,
+        isWinnerSoFar: index === 0,
+        user: safePublicUser(entry.p.user),
+        userId: entry.p.userId,
+        prediktHandle: entry.p.user.prediktHandle,
+        predictedReachedTime: entry.p.predictedReachedTime.toISOString(),
+        // Delta from the current best (leader): 0 for the leader, positive for others.
+        deltaFromBestSeconds: entry.diffSeconds - ranked[0].diffSeconds,
+        diffFromProjectedSeconds: entry.diffSeconds,
+        hotTake: entry.p.hotTake ?? null,
+        auraEligible: entry.p.auraEligible,
+        isCurrentUser: entry.p.userId === requestingUser.userId,
+      })),
+    };
+  }
+
+  /**
    * Projects the real arrival time at a checkpoint. Preferred basis: observed
    * GPS speed (distance covered / elapsed) applied to the straight-line
    * distance remaining to the destination. Falls back to pace-time
