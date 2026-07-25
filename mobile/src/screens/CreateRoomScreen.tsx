@@ -119,6 +119,38 @@ function LockDateTimeField({
   );
 }
 
+// Compact time-only (HH:MM) picker for the Delivery ETA inputs. Reuses the clock
+// wheel without the date row or the seconds column, so the vendor ETA and the
+// creator's own prediction read as light, single-purpose fields — clearly distinct
+// from the full date + time "Guesses lock" widget (the previous version reused the
+// whole lock widget for all three, so they looked like one widget repeated 3x). The
+// date part of `value` is preserved (defaults to today) so the stored ISO stays right.
+function TimeOnlyField({
+  value,
+  onChange,
+  label,
+  hint,
+}: {
+  value: string;
+  onChange: (next: string) => void;
+  label: string;
+  hint?: string;
+}) {
+  const parsed = splitLocalDateTimeInput(value);
+  return (
+    <View style={styles.lockTimeBlock}>
+      <Text style={styles.lockTimeLabel}>{label}</Text>
+      <TimePickerSegments
+        value={parsed.timePart}
+        onChange={(nextTime) => onChange(mergeLocalDateAndTime(parsed.datePart, nextTime))}
+        showSeconds={false}
+        showAmPm
+      />
+      {hint ? <Text style={styles.lockTimeHint}>{hint}</Text> : null}
+    </View>
+  );
+}
+
 function LockDateField({
   value,
   onChange,
@@ -1691,12 +1723,11 @@ export default function CreateRoomScreen({ navigation, route }: Props) {
               {providerTimingMode(
                 deliveryProviderPreset === 'Other' ? deliveryProviderOther.trim() || 'Other' : deliveryProviderPreset,
               ) === 'time_only' ? (
-                <LockDateTimeField
+                <TimeOnlyField
                   value={deliveryVendorEtaDateTime}
                   onChange={setDeliveryVendorEtaDateTime}
-                  dateLabel="Vendor ETA date"
-                  timeLabel="Vendor's stated ETA"
-                  hint="Read this off your delivery app · HH MM"
+                  label="Vendor's stated ETA"
+                  hint="Read this off your delivery app · HH:MM"
                 />
               ) : (
                 <View style={styles.advancedStack}>
@@ -1737,12 +1768,11 @@ export default function CreateRoomScreen({ navigation, route }: Props) {
                   ) : null}
                 </View>
               )}
-              <LockDateTimeField
+              <TimeOnlyField
                 value={placeholderPredictionValue}
                 onChange={setPlaceholderPredictionValue}
-                dateLabel="Your prediction date"
-                timeLabel="Your predicted arrival"
-                hint="Your own guess · locks with everyone else's · HH MM"
+                label="Your predicted arrival"
+                hint="Your own guess · locks with everyone else's · HH:MM"
               />
             </View>
           ) : (
