@@ -14,6 +14,7 @@ import { RoomsService } from '../rooms/rooms.service';
 import { RewardService } from '../rewards/reward.service';
 import { RewardReason } from '../rewards/reward.constants';
 import { isLatePredictionWindowOpen } from '../common/utils/late-prediction';
+import { hasBannedBettingKeyword } from '../common/utils/content-policy';
 import { featureFlags } from '../config/feature-flags';
 
 // v2: highest checkpoint reached; predictions locked after 80% are Late-tier only
@@ -114,6 +115,18 @@ export class PredictionsService {
       throw new BadRequestException('At least one milestone prediction is required');
     }
 
+    // Optional 1-line hot take, capped at 80 chars and guardrail-checked (it may be
+    // quoted verbatim by Chaos Bot). Per-entry value wins, else the room-level one.
+    const hotTakeFor = (entry: { hotTake?: string }): string | null => {
+      const raw = (entry.hotTake ?? dto.hotTake ?? '').trim();
+      if (!raw) return null;
+      if (raw.length > 80) throw new BadRequestException('Hot take must be 80 characters or fewer');
+      if (hasBannedBettingKeyword(raw)) {
+        throw new BadRequestException('Hot take contains terms that are not allowed');
+      }
+      return raw;
+    };
+
     const milestoneMap = new Map(room.milestones.map((m) => [m.milestoneId, m]));
 
     for (const entry of predictions) {
@@ -170,6 +183,7 @@ export class PredictionsService {
           milestoneId: entry.milestoneId,
           predictedReachedTime: new Date(entry.predictedReachedTime),
           selectedOptionKey: dto.selectedOptionKey ?? null,
+          hotTake: hotTakeFor(entry),
           submittedAt,
           editDeadline,
           auraEligible,
@@ -336,12 +350,23 @@ export class PredictionsService {
           !p.revokedAt &&
           (p.lockedStatus || (p.editDeadline != null && now > p.editDeadline.getTime())),
       );
+    // Room-wide reveal (guest-predict UX): everyone's guesses unlock 1 minute after
+    // the last submission (the max editDeadline across live predictions) OR the moment
+    // any participant hits "Lock now" (predictionsLockedAt set). Any new/updated guess
+    // pushes its editDeadline out, which resets the window.
+    const roomRevealed =
+      v2 &&
+      (room.predictionsLockedAt != null ||
+        (predictions.some((p) => !p.revokedAt) &&
+          predictions
+            .filter((p) => !p.revokedAt && p.editDeadline != null)
+            .every((p) => now > (p.editDeadline as Date).getTime())));
 
     return predictions.map((prediction) => {
       const isOwn = prediction.userId === requestingUser.userId;
-      // v2: hide a peer's value until the viewer's own prediction locks; always show own.
-      // v1: coarse hide until the room-wide lock.
-      const hide = v2 ? !isOwn && !viewerLocked : hideValues;
+      // v2: hide a peer's value until EITHER the viewer's own prediction locks OR the
+      // room-wide window elapses / someone locks in; always show own. v1: coarse hide.
+      const hide = v2 ? !isOwn && !viewerLocked && !roomRevealed : hideValues;
       return {
       predictionId: prediction.predictionId,
       milestoneId: prediction.milestoneId,
@@ -353,6 +378,8 @@ export class PredictionsService {
         hide || prediction.revokedAt ? undefined : prediction.predictedReachedTime,
       selectedOptionKey:
         hide || prediction.revokedAt ? undefined : prediction.selectedOptionKey,
+      // Hot take is revealed on the same boundary as the predicted time.
+      hotTake: hide || prediction.revokedAt ? undefined : prediction.hotTake ?? null,
       submittedAt: prediction.submittedAt,
       editDeadline: prediction.editDeadline,
       revokedAt: prediction.revokedAt,
@@ -372,6 +399,40 @@ export class PredictionsService {
       user: safePublicUser(prediction.user),
       };
     });
+  }
+
+  /**
+   * "Lock now" (guest-predict UX): any participant can instantly reveal all
+   * predictions to everyone, ending the 60s auto-reveal window early. Sets
+   * predictionsLockedAt + revealedAt and flips predictions_open -> predictions_locked.
+   * Idempotent — locking an already-locked room just returns the existing state.
+   */
+  async lockNow(roomId: string, user: User) {
+    const room = await this.assertRoom(roomId);
+    await this.roomsService?.ensureJoinedMembership(roomId, user);
+    if (room.predictionsLockedAt) {
+      return {
+        alreadyLocked: true,
+        predictionsLockedAt: room.predictionsLockedAt,
+        revealedAt: room.revealedAt ?? room.predictionsLockedAt,
+      };
+    }
+    const now = new Date();
+    await this.prisma.$transaction([
+      this.prisma.milestonePrediction.updateMany({
+        where: { roomId, revokedAt: null },
+        data: { lockedStatus: true },
+      }),
+      this.prisma.predictionRoom.update({
+        where: { roomId },
+        data: {
+          predictionsLockedAt: now,
+          revealedAt: now,
+          ...(room.status === 'predictions_open' ? { status: 'predictions_locked' } : {}),
+        },
+      }),
+    ]);
+    return { locked: true, lockedBy: user.userId, predictionsLockedAt: now, revealedAt: now };
   }
 
   async updatePrediction(predictionId: string, dto: any, user: User) {

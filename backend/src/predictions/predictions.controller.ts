@@ -41,6 +41,14 @@ export class PredictionsController {
   listMilestones(@Param('roomId') roomId: string, @CurrentUser() user: User) {
     return this.predictionsService.listMilestonePredictions(roomId, user);
   }
+
+  // "Lock now": any participant reveals all predictions instantly, ending the 60s
+  // auto-reveal window early and moving the room to predictions_locked.
+  @Post('predictions/lock-now')
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  lockNow(@Param('roomId') roomId: string, @CurrentUser() user: User) {
+    return this.predictionsService.lockNow(roomId, user);
+  }
 }
 
 @UseGuards(JwtAuthGuard)
