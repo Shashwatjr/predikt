@@ -426,7 +426,7 @@ export default function CreateRoomScreen({ navigation, route }: Props) {
   const [predictionClosesAt, setPredictionClosesAt] = useState(makeDefaultCloseAt);
   const [titleOverride, setTitleOverride] = useState('');
   const [questionOverride, setQuestionOverride] = useState('');
-  const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
+  const [showAdvancedOptions, setShowAdvancedOptions] = useState(true);
   // Tracks whether the user has edited the (now primary-path) close time, so an
   // arriving route preview only auto-fills a suggested lock time when untouched.
   const [closeTimeEdited, setCloseTimeEdited] = useState(false);
@@ -469,9 +469,9 @@ export default function CreateRoomScreen({ navigation, route }: Props) {
 
   function applySportsPreset() {
     setSelectedCategory('sports_prediction');
-    setOpenPredictionTitle('Argentina vs Spain');
-    setOpenPredictionQuestion('Who will win?');
-    setOpenPredictionOptions(['Argentina', 'Spain', 'Draw']);
+    setOpenPredictionTitle('');
+    setOpenPredictionQuestion('');
+    setOpenPredictionOptions(['', '', '']);
     setOpenPredictionAnswerType('multiple_choice');
     setGenericTemplate('sports');
     setGenericDeliveryProvider('Zomato');
@@ -716,9 +716,9 @@ export default function CreateRoomScreen({ navigation, route }: Props) {
     setOpenPredictionQuestion(template.question);
     if (templateKey === 'sports') {
       setOpenPredictionAnswerType('multiple_choice');
-      setOpenPredictionTitle('Argentina vs Spain');
-      setOpenPredictionQuestion('Who will win?');
-      setOpenPredictionOptions(['Argentina', 'Spain', 'Draw']);
+      setOpenPredictionTitle('');
+      setOpenPredictionQuestion('');
+      setOpenPredictionOptions(['', '', '']);
     } else if (templateKey === 'delivery') {
       setOpenPredictionAnswerType('yes_no');
       setOpenPredictionTitle('Will this delivery beat the vendor ETA?');
@@ -1922,7 +1922,7 @@ export default function CreateRoomScreen({ navigation, route }: Props) {
                       label={`Option ${index + 1}${index > 1 ? ' (optional)' : ''}`}
                       value={option}
                       onChangeText={(value) => updateOpenPredictionOption(index, value)}
-                      placeholder={index === 0 ? 'Argentina' : index === 1 ? 'Spain' : `Option ${index + 1}`}
+                      placeholder={`Option ${index + 1}`}
                     />
                   </View>
                   {openPredictionOptions.length > 2 ? (
