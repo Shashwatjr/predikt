@@ -1,4 +1,35 @@
+import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+
+const mapsLogger = new Logger('MapsProvider');
+
+/**
+ * Fetch with an abort timeout and one automatic retry on a transient failure
+ * (network error or timeout). Google/OSRM route lookups are the only outbound
+ * calls on the room-creation hot path, so a single retry smooths over a blip
+ * before we fall back to a less accurate provider.
+ */
+async function fetchWithRetry(
+  url: string,
+  { timeoutMs = 6000, retries = 1 }: { timeoutMs?: number; retries?: number } = {},
+): Promise<Response> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      return await fetch(url, { signal: controller.signal });
+    } catch (error) {
+      lastError = error;
+      if (attempt < retries) {
+        mapsLogger.warn(`Route fetch attempt ${attempt + 1} failed (${String(error)}); retrying once.`);
+      }
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
+}
 
 export type PrediktTravelMode = 'car' | 'bike' | 'walk' | 'cycle' | 'transit';
 export type MapsProviderName = 'google' | 'bing' | 'azure' | 'osm';
@@ -241,8 +272,8 @@ class GoogleMapsProvider implements MapsProvider {
   ): Promise<RoutePreviewResult> {
     const apiKey = this.options.directionsApiKey || this.options.mapsApiKey || this.options.placesApiKey;
     if (!apiKey) {
-      const fallback = new ApproximateMapsProvider('google', 'Google Maps', false);
-      return fallback.getRoutePreview(start, destination, travelModeInput);
+      // No key configured — this provider cannot serve; let the chain fall through.
+      throw new Error('Google Directions skipped: no API key configured.');
     }
 
     const travelMode = normalizeTravelMode(travelModeInput);
@@ -254,21 +285,16 @@ class GoogleMapsProvider implements MapsProvider {
       key: apiKey,
     });
 
-    const response = await fetch(`https://maps.googleapis.com/maps/api/directions/json?${params}`);
+    // fetchWithRetry gives one automatic retry on a network/timeout blip before we
+    // surface the failure and let the chain fall back to a lower-accuracy provider.
+    const response = await fetchWithRetry(`https://maps.googleapis.com/maps/api/directions/json?${params}`);
     if (!response.ok) {
-      const fallback = new ApproximateMapsProvider('google', 'Google Maps', false);
-      const preview = await fallback.getRoutePreview(start, destination, travelModeInput);
-      return {
-        ...preview,
-        warnings: [
-          'Google Directions was unavailable. Showing a fallback estimate.',
-          ...preview.warnings,
-        ],
-      };
+      throw new Error(`Google Directions HTTP ${response.status}.`);
     }
 
     const data = (await response.json()) as {
       status?: string;
+      error_message?: string;
       routes?: Array<{
         overview_polyline?: { points?: string };
         bounds?: {
@@ -283,29 +309,17 @@ class GoogleMapsProvider implements MapsProvider {
     };
 
     if (data.status !== 'OK' || !data.routes?.length || !data.routes[0].legs?.length) {
-      const fallback = new ApproximateMapsProvider('google', 'Google Maps', false);
-      const preview = await fallback.getRoutePreview(start, destination, travelModeInput);
-      return {
-        ...preview,
-        warnings: [
-          `Google Directions returned ${data.status ?? 'UNKNOWN'}. Showing a fallback estimate.`,
-          ...preview.warnings,
-        ],
-      };
+      // Surface the REAL reason (status + error_message). This is what makes a
+      // referer-restricted key ("REQUEST_DENIED: API keys with referer restrictions
+      // cannot be used with this API") visible in logs instead of a silent fake ETA.
+      const detail = data.error_message ? ` — ${data.error_message}` : '';
+      throw new Error(`Google Directions returned ${data.status ?? 'UNKNOWN'}${detail}.`);
     }
 
     const route = data.routes[0];
     const leg = route.legs?.[0];
     if (!leg) {
-      const fallback = new ApproximateMapsProvider('google', 'Google Maps', false);
-      const preview = await fallback.getRoutePreview(start, destination, travelModeInput);
-      return {
-        ...preview,
-        warnings: [
-          'Google Directions returned no route leg. Showing a fallback estimate.',
-          ...preview.warnings,
-        ],
-      };
+      throw new Error('Google Directions returned no route leg.');
     }
     const encodedPolyline = route.overview_polyline?.points ?? '';
     const coordinates = encodedPolyline ? decodeGooglePolyline(encodedPolyline) : buildApproximateGeometry(start, destination).coordinates;
@@ -361,57 +375,94 @@ class OsrmMapsProvider implements MapsProvider {
       );
     }
 
-    try {
-      const url = `${this.baseUrl.replace(/\/+$/, '')}/route/v1/${profile}/${start.longitude},${start.latitude};${destination.longitude},${destination.latitude}?overview=full&geometries=geojson`;
-      const response = await fetch(url);
-      if (!response.ok) {
-        throw new Error(`OSRM returned ${response.status}`);
-      }
-      const data = (await response.json()) as {
-        routes?: Array<{
-          distance: number;
-          duration: number;
-          geometry?: { coordinates?: number[][] };
-        }>;
-      };
-      const route = data.routes?.[0];
-      if (!route?.geometry?.coordinates?.length) {
-        throw new Error('Missing geometry');
-      }
-
-      const coordinates = route.geometry.coordinates.map(([longitude, latitude]) => ({
-        latitude,
-        longitude,
-      }));
-
-      return {
-        provider: 'osm',
-        providerLabel: 'OpenStreetMap route',
-        travelMode,
-        travelModeLabel: MODE_LABELS[travelMode],
-        distanceMeters: Math.round(route.distance),
-        durationSeconds: Math.max(5 * 60, Math.round(route.duration)),
-        etaLabel: `${Math.round(route.duration / 60)} min`,
-        confidenceLevel: 'high',
-        isApproximate: warnings.length > 0,
-        warnings,
-        previewGeometry: {
-          coordinates,
-          bounds: buildBounds(coordinates),
-        },
-      };
-    } catch {
-      const fallback = new ApproximateMapsProvider('osm', 'Approx. route estimate', true);
-      const preview = await fallback.getRoutePreview(start, destination, travelModeInput);
-      return {
-        ...preview,
-        providerLabel: 'Approx. route estimate',
-        warnings: [
-          'Precise routing unavailable. Showing an approximate route line.',
-          ...preview.warnings,
-        ],
-      };
+    const url = `${this.baseUrl.replace(/\/+$/, '')}/route/v1/${profile}/${start.longitude},${start.latitude};${destination.longitude},${destination.latitude}?overview=full&geometries=geojson`;
+    const response = await fetchWithRetry(url);
+    if (!response.ok) {
+      throw new Error(`OSRM returned HTTP ${response.status}.`);
     }
+    const data = (await response.json()) as {
+      routes?: Array<{
+        distance: number;
+        duration: number;
+        geometry?: { coordinates?: number[][] };
+      }>;
+    };
+    const route = data.routes?.[0];
+    if (!route?.geometry?.coordinates?.length) {
+      throw new Error('OSRM returned no route geometry.');
+    }
+
+    const coordinates = route.geometry.coordinates.map(([longitude, latitude]) => ({
+      latitude,
+      longitude,
+    }));
+
+    return {
+      provider: 'osm',
+      providerLabel: 'OpenStreetMap route',
+      travelMode,
+      travelModeLabel: MODE_LABELS[travelMode],
+      distanceMeters: Math.round(route.distance),
+      durationSeconds: Math.max(5 * 60, Math.round(route.duration)),
+      etaLabel: `${Math.round(route.duration / 60)} min`,
+      confidenceLevel: 'high',
+      isApproximate: warnings.length > 0,
+      warnings,
+      previewGeometry: {
+        coordinates,
+        bounds: buildBounds(coordinates),
+      },
+    };
+  }
+}
+
+/**
+ * Ordered provider chain: try the primary (Google when a key is present), then each
+ * fallback in turn. The first provider that returns wins; every fall-through is logged
+ * with the real reason so a broken primary (e.g. a referer-restricted key) is visible
+ * in Cloud Run rather than hiding behind a silently-degraded estimate. The final entry
+ * is always the approximate estimate, which never throws, so a preview is guaranteed.
+ */
+class RouteProviderChain implements MapsProvider {
+  readonly name: MapsProviderName;
+  readonly label: string;
+
+  constructor(private readonly providers: MapsProvider[]) {
+    if (!providers.length) {
+      throw new Error('RouteProviderChain requires at least one provider.');
+    }
+    this.name = providers[0].name;
+    this.label = providers[0].label;
+  }
+
+  async getRoutePreview(
+    start: PlacePoint,
+    destination: PlacePoint,
+    travelModeInput: string | undefined,
+  ): Promise<RoutePreviewResult> {
+    let lastError: unknown;
+    for (let index = 0; index < this.providers.length; index++) {
+      const provider = this.providers[index];
+      const isLastResort = index === this.providers.length - 1;
+      try {
+        const result = await provider.getRoutePreview(start, destination, travelModeInput);
+        if (index === 0) {
+          mapsLogger.log(`Route ETA via ${result.provider} (${result.providerLabel}): ${result.etaLabel}.`);
+        } else {
+          mapsLogger.warn(
+            `Route ETA fell back to ${result.provider} (${result.providerLabel}): ${result.etaLabel}.` +
+              (isLastResort ? ' This is the last-resort estimate.' : ''),
+          );
+        }
+        return result;
+      } catch (error) {
+        lastError = error;
+        mapsLogger.warn(`Route provider "${provider.name}" failed: ${String((error as Error)?.message ?? error)}`);
+      }
+    }
+    // Unreachable in practice: the chain always ends with a non-throwing approximate
+    // provider. Guard anyway so a misconfigured chain fails loudly rather than silently.
+    throw lastError instanceof Error ? lastError : new Error('All route providers failed.');
   }
 }
 
@@ -423,22 +474,35 @@ export function createMapsProvider(config: ConfigService): MapsProvider {
   const hasBing = Boolean(config.get<string>('BING_MAPS_API_KEY')?.trim());
   const hasAzure = Boolean(config.get<string>('AZURE_MAPS_KEY')?.trim());
   const osrmBaseUrl = config.get<string>('OSRM_BASE_URL')?.trim();
+  const googleAvailable = hasGoogle || hasGoogleDirections || hasGooglePlaces;
 
-  if ((preference === 'google' || preference === 'auto') && (hasGoogle || hasGoogleDirections || hasGooglePlaces)) {
-    return new GoogleMapsProvider({
-      mapsApiKey: config.get<string>('GOOGLE_MAPS_API_KEY')?.trim(),
-      placesApiKey: config.get<string>('GOOGLE_PLACES_API_KEY')?.trim(),
-      directionsApiKey: config.get<string>('GOOGLE_DIRECTIONS_API_KEY')?.trim(),
-    });
+  // Build an ordered chain. Google (when a key is available) is always the primary for
+  // route ETA; OSM/OSRM and the approximate estimate only serve when Google is
+  // unavailable or fails. The chain logs each fall-through with the real reason.
+  const providers: MapsProvider[] = [];
+
+  if ((preference === 'google' || preference === 'auto') && googleAvailable) {
+    providers.push(
+      new GoogleMapsProvider({
+        mapsApiKey: config.get<string>('GOOGLE_MAPS_API_KEY')?.trim(),
+        placesApiKey: config.get<string>('GOOGLE_PLACES_API_KEY')?.trim(),
+        directionsApiKey: config.get<string>('GOOGLE_DIRECTIONS_API_KEY')?.trim(),
+      }),
+    );
   }
-  if ((preference === 'bing' || preference === 'auto') && hasBing) {
-    return new ApproximateMapsProvider('bing', 'Bing Maps', true);
+  if (preference === 'bing' && hasBing) {
+    providers.push(new ApproximateMapsProvider('bing', 'Bing Maps', true));
   }
-  if ((preference === 'azure' || preference === 'auto') && hasAzure) {
-    return new ApproximateMapsProvider('azure', 'Azure Maps', true);
+  if (preference === 'azure' && hasAzure) {
+    providers.push(new ApproximateMapsProvider('azure', 'Azure Maps', true));
   }
-  if ((preference === 'osm' || preference === 'auto') && osrmBaseUrl) {
-    return new OsrmMapsProvider(osrmBaseUrl);
+  // OSM (real road routing) is the last-resort fallback before a straight-line guess —
+  // only when an OSRM endpoint is configured. Kept out of the primary slot on purpose.
+  if (preference !== 'approximate' && osrmBaseUrl) {
+    providers.push(new OsrmMapsProvider(osrmBaseUrl));
   }
-  return new ApproximateMapsProvider('osm', 'OpenStreetMap', true);
+  // Terminal, never-throws provider so a route preview is always produced.
+  providers.push(new ApproximateMapsProvider('osm', 'OpenStreetMap', true));
+
+  return new RouteProviderChain(providers);
 }

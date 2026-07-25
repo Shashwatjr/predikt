@@ -100,4 +100,60 @@ describe('maps provider selection', () => {
     expect(fetchMock.mock.calls[0][0]).toContain('mode=walking');
     expect(fetchMock.mock.calls[1][0]).toContain('mode=bicycling');
   });
+
+  it('falls back to the OSM last-resort (not a fake "Google Maps") when the key is referer-restricted', async () => {
+    const fetchMock = jest.fn().mockResolvedValue({
+      ok: true,
+      json: jest.fn().mockResolvedValue({
+        status: 'REQUEST_DENIED',
+        error_message: 'API keys with referer restrictions cannot be used with this API.',
+      }),
+    });
+    global.fetch = fetchMock as any;
+
+    const provider = createMapsProvider(config({ GOOGLE_MAPS_API_KEY: 'browser-key' }));
+    const preview = await provider.getRoutePreview(
+      { placeId: 'a', label: 'Harohalli', latitude: 12.7936, longitude: 77.4808 },
+      { placeId: 'b', label: 'Bagmane WTC', latitude: 12.9583, longitude: 77.6996 },
+      'car',
+    );
+
+    // Google was tried and failed; the result must be the honest OSM estimate, never
+    // labelled as Google. A regression here is what hid the referer-restriction outage.
+    expect(preview.provider).toBe('osm');
+    expect(preview.providerLabel).toBe('OpenStreetMap');
+    expect(preview.isApproximate).toBe(true);
+    expect(preview.durationSeconds).toBeGreaterThan(0);
+  });
+
+  it('retries a transient Google failure once before returning a route', async () => {
+    const okResponse = {
+      ok: true,
+      json: jest.fn().mockResolvedValue({
+        status: 'OK',
+        routes: [
+          {
+            overview_polyline: { points: '' },
+            legs: [{ distance: { value: 40000 }, duration: { value: 2400, text: '40 mins' } }],
+          },
+        ],
+      }),
+    };
+    const fetchMock = jest
+      .fn()
+      .mockRejectedValueOnce(new Error('ECONNRESET'))
+      .mockResolvedValueOnce(okResponse);
+    global.fetch = fetchMock as any;
+
+    const provider = createMapsProvider(config({ GOOGLE_MAPS_API_KEY: 'server-key' }));
+    const preview = await provider.getRoutePreview(
+      { placeId: 'a', label: 'Harohalli', latitude: 12.7936, longitude: 77.4808 },
+      { placeId: 'b', label: 'Bagmane WTC', latitude: 12.9583, longitude: 77.6996 },
+      'car',
+    );
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(preview.provider).toBe('google');
+    expect(preview.durationSeconds).toBe(2400);
+  });
 });
