@@ -37,6 +37,8 @@ import {
   unfollowUser as unfollowUserApi,
 } from '../services/profile';
 import { clearActivePredictions } from '../services/dashboard';
+import RewardChips from '../components/RewardChips';
+import { fetchRewardsMe, RewardsMe } from '../services/rewards';
 
 type Stats = ProfileStats;
 
@@ -72,6 +74,7 @@ export default function ProfileScreen() {
   const [following, setFollowing] = useState<FollowingEntry[]>([]);
   const [unfollowingIds, setUnfollowingIds] = useState<string[]>([]);
   const [userBadges, setUserBadges] = useState<ProfileBadge[]>([]);
+  const [rewards, setRewards] = useState<RewardsMe | null>(null);
   const [commentaryEnabled, setCommentaryEnabled] = useState(true);
   const [aiCommentaryOptOut, setAiCommentaryOptOut] = useState(false);
   const [savingCommentaryPref, setSavingCommentaryPref] = useState(false);
@@ -86,10 +89,14 @@ export default function ProfileScreen() {
   async function loadStats() {
     setLoading(true);
     try {
-      const overview = await fetchProfileOverview();
+      const [overview, rewardsData] = await Promise.all([
+        fetchProfileOverview(),
+        fetchRewardsMe().catch(() => null),
+      ]);
       setStats(overview.stats);
       setUserBadges(overview.badges);
       setFollowing(overview.following);
+      setRewards(rewardsData);
     } catch {
       Alert.alert('Profile unavailable', 'We could not load your profile stats.');
     } finally {
@@ -288,6 +295,49 @@ export default function ProfileScreen() {
           <Text style={[styles.detailValue, { color: colors.textPrimary }]}>{user?.isGuest ? 'Guest' : 'Registered'}</Text>
         </View>
       </View>
+
+      {rewards ? (
+        <View style={[cardStyle(), { gap: spacing.sm }]}>
+          <SectionHeader title="Your rewards" subtitle="Tap a chip to see what it means." />
+          <RewardChips
+            aura={rewards.aura.balance}
+            rizz={rewards.rizz.balance}
+            gems={rewards.gems.balance}
+            variant="labeled"
+          />
+          {rewards.recentEntries.length > 0 ? (
+            <View style={{ gap: spacing.xs, marginTop: spacing.xs }}>
+              <Text style={[styles.followMeta, { color: colors.textSecondary, marginBottom: 2 }]}>
+                Recent activity
+              </Text>
+              {rewards.recentEntries.slice(0, 6).map((entry) => (
+                <View
+                  key={entry.id}
+                  style={[styles.followRow, { borderBottomColor: colors.border }]}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.followName, { color: colors.textPrimary }]}>
+                      {entry.label}
+                    </Text>
+                    <Text style={[styles.followMeta, { color: colors.textSecondary }]}>
+                      {entry.rewardType} • {new Date(entry.createdAt).toLocaleDateString()}
+                    </Text>
+                  </View>
+                  <Text
+                    style={[
+                      styles.rewardDelta,
+                      { color: entry.amount >= 0 ? colors.green : colors.amber },
+                    ]}
+                  >
+                    {entry.amount >= 0 ? '+' : ''}
+                    {entry.amount}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          ) : null}
+        </View>
+      ) : null}
 
       {stats ? (
         <View style={styles.chipGrid}>
@@ -515,6 +565,7 @@ const styles = StyleSheet.create({
   },
   followName: { fontSize: 15, fontWeight: '700' },
   followMeta: { fontSize: 13, marginTop: 4 },
+  rewardDelta: { fontSize: 15, fontWeight: '900' },
   emptyState: { fontSize: 14, lineHeight: 20 },
   advancedHeader: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   advancedChevron: { fontSize: 13, fontWeight: '900' },

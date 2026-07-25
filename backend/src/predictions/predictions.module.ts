@@ -3,9 +3,10 @@ import { PredictionEditsController, PredictionsController } from './predictions.
 import { PredictionsService } from './predictions.service';
 import { AuditModule } from '../audit/audit.module';
 import { RoomsModule } from '../rooms/rooms.module';
+import { RewardsModule } from '../rewards/rewards.module';
 
 @Module({
-  imports: [AuditModule, RoomsModule],
+  imports: [AuditModule, RoomsModule, RewardsModule],
   controllers: [PredictionsController, PredictionEditsController],
   providers: [PredictionsService],
   exports: [PredictionsService],

@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { AdminController } from './admin.controller';
 import { AdminPortalController } from './admin-portal.controller';
+import { AdminRewardsController } from './admin-rewards.controller';
+import { RewardsModule } from '../rewards/rewards.module';
 import { AdminService } from './admin.service';
 import { AdminAuthGuard } from './admin-auth.guard';
 import { AdminRoleGuard } from './admin-role.guard';
@@ -15,8 +17,8 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { AuditModule } from '../audit/audit.module';
 
 @Module({
-  imports: [PrismaModule, AuditModule, JwtModule.register({})],
-  controllers: [AdminController, AdminPortalController],
+  imports: [PrismaModule, AuditModule, JwtModule.register({}), RewardsModule],
+  controllers: [AdminController, AdminPortalController, AdminRewardsController],
   providers: [
     AdminService,
     AdminFeatureEnabledGuard,

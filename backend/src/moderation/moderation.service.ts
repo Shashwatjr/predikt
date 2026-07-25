@@ -11,6 +11,8 @@ import { findBannedBettingTerms } from '../common/utils/content-policy';
 import { POLICY_BLOCK_MESSAGE } from '../common/constants/policy.constants';
 import { SAFE_PUBLIC_USER_SELECT, safePublicUser } from '../common/utils/safe-user-select';
 import { NotificationsService } from '../notifications/notifications.service';
+import { RewardService } from '../rewards/reward.service';
+import { RewardReason } from '../rewards/reward.constants';
 
 const ALLOWED_REACTIONS = new Set(['🔥', '🎯', '👑', '😂', '😭', '🤝', '⚡', '🌧️', '🍕', '💪']);
 
@@ -20,6 +22,7 @@ export class ModerationService {
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
     private readonly notificationsService: NotificationsService,
+    private readonly rewardService: RewardService,
   ) {}
 
   async report(user: User, body: any) {
@@ -220,6 +223,21 @@ export class ModerationService {
       targetId: roomId,
       afterValue: { emoji },
     });
+
+    // RIZZ for the creator when another user reacts. Once per (room, reactor) via
+    // the idempotency key, so changing emoji does not re-earn; rejectSelf blocks
+    // the creator reacting to their own result.
+    await this.rewardService.grant({
+      userId: room.creatorUserId,
+      rewardType: 'RIZZ',
+      reasonCode: RewardReason.RIZZ_REACTION_RECEIVED,
+      sourceType: 'reaction',
+      sourceId: roomId,
+      idempotencyKey: `rizz_react:${roomId}:${currentUser.userId}`,
+      actorUserId: currentUser.userId,
+      metadata: { reactorUserId: currentUser.userId },
+    });
+
     return reaction;
   }
 

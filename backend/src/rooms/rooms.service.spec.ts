@@ -27,7 +27,7 @@ describe('RoomsService memberships', () => {
       creditLedger: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },
       $transaction: jest.fn(async (callback: any) => callback(prisma)),
     } as any;
-    const service = new RoomsService(prisma, auditService, notificationsService);
+    const service = new RoomsService(prisma, auditService, notificationsService, { grant: jest.fn().mockResolvedValue({ applied: true }) } as any);
 
     await service.create(
       {
@@ -61,7 +61,7 @@ describe('RoomsService memberships', () => {
         create: jest.fn(),
       },
     } as any;
-    const service = new RoomsService(prisma, auditService, notificationsService);
+    const service = new RoomsService(prisma, auditService, notificationsService, { grant: jest.fn().mockResolvedValue({ applied: true }) } as any);
 
     await expect(
       service.create(
@@ -108,7 +108,7 @@ describe('RoomsService memberships', () => {
       creditLedger: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },
       $transaction: jest.fn(async (callback: any) => callback(prisma)),
     } as any;
-    const service = new RoomsService(prisma, auditService, notificationsService);
+    const service = new RoomsService(prisma, auditService, notificationsService, { grant: jest.fn().mockResolvedValue({ applied: true }) } as any);
 
     await service.create(
       {
@@ -159,7 +159,7 @@ describe('RoomsService memberships', () => {
         count: jest.fn().mockResolvedValue(0),
       },
     } as any;
-    const service = new RoomsService(prisma, auditService, notificationsService);
+    const service = new RoomsService(prisma, auditService, notificationsService, { grant: jest.fn().mockResolvedValue({ applied: true }) } as any);
 
     const joined = await service.join('room-1', { userId: 'user-1', name: 'User One' } as any);
 
@@ -192,7 +192,7 @@ describe('RoomsService memberships', () => {
         count: jest.fn(),
       },
     } as any;
-    const service = new RoomsService(prisma, auditService, notificationsService);
+    const service = new RoomsService(prisma, auditService, notificationsService, { grant: jest.fn().mockResolvedValue({ applied: true }) } as any);
 
     await expect(service.join('room-1', { userId: 'user-1' } as any)).rejects.toBeInstanceOf(
       ForbiddenException,
@@ -216,7 +216,7 @@ describe('RoomsService memberships', () => {
         }),
       },
     } as any;
-    const service = new RoomsService(prisma, auditService, notificationsService);
+    const service = new RoomsService(prisma, auditService, notificationsService, { grant: jest.fn().mockResolvedValue({ applied: true }) } as any);
 
     await expect(service.leave('room-1', { userId: 'creator-1' } as any)).rejects.toBeInstanceOf(
       BadRequestException,
@@ -236,7 +236,7 @@ describe('RoomsService memberships', () => {
         }),
       },
     } as any;
-    const service = new RoomsService(prisma, auditService, notificationsService);
+    const service = new RoomsService(prisma, auditService, notificationsService, { grant: jest.fn().mockResolvedValue({ applied: true }) } as any);
 
     await expect(service.findById('room-1', { userId: 'user-1' } as any)).rejects.toBeInstanceOf(
       ForbiddenException,
@@ -277,7 +277,7 @@ describe('RoomsService memberships', () => {
         count: jest.fn().mockResolvedValue(0),
       },
     } as any;
-    const service = new RoomsService(prisma, auditService, notificationsService);
+    const service = new RoomsService(prisma, auditService, notificationsService, { grant: jest.fn().mockResolvedValue({ applied: true }) } as any);
 
     const joined = await service.join('room-1', { userId: 'user-2', name: 'Late Joiner' } as any);
 
@@ -320,7 +320,7 @@ describe('RoomsService memberships', () => {
         count: jest.fn().mockResolvedValue(0),
       },
     } as any;
-    const service = new RoomsService(prisma, auditService, notificationsService);
+    const service = new RoomsService(prisma, auditService, notificationsService, { grant: jest.fn().mockResolvedValue({ applied: true }) } as any);
 
     const joined = await service.join('room-1', { userId: 'user-3', name: 'Too Late' } as any);
 

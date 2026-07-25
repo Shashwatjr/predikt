@@ -85,6 +85,12 @@ enum CloutTransactionType {
   expire
 }
 
+enum RewardType {
+  AURA
+  RIZZ
+  GEMS
+}
+
 enum DropType {
   voucher
   flex
@@ -259,199 +265,201 @@ enum AiSystemStatus {
 }
 
 model User {
-  userId                  String          @id @default(uuid()) @map("user_id")
-  name                    String
-  email                   String?         @unique
-  phone                   String?         @unique
-  prediktHandle           String?         @unique @map("predikt_handle")
-  profileImage            String?         @map("profile_image")
-  avatarKey               String?         @map("avatar_key")
-  selectedBackgroundKey   String?         @map("selected_background_key")
-  passwordHash            String?         @map("password_hash")
-  isGuest                 Boolean         @default(false) @map("is_guest")
-  guestKey                String?         @unique @map("guest_key")
-  status                  String          @default("active")
-  totalAura               Int             @default(0) @map("total_aura")
-  weeklyAura              Int             @default(0) @map("weekly_aura")
-  cloutBalance            Int             @default(0) @map("clout_balance")
-  lifetimeCloutEarned     Int             @default(0) @map("lifetime_clout_earned")
-  creditBalance           Int             @default(0) @map("credit_balance")
-  predictionAccuracyScore Float           @default(0) @map("prediction_accuracy_score")
-  roomsCreatedCount       Int             @default(0) @map("rooms_created_count")
-  predictionsMadeCount    Int             @default(0) @map("predictions_made_count")
-  winsCount               Int             @default(0) @map("wins_count")
-  currentStreak           Int             @default(0) @map("current_streak")
-  longestStreak           Int             @default(0) @map("longest_streak")
-  termsAcceptedAt         DateTime?       @map("terms_accepted_at")
-  privacyAcceptedAt       DateTime?       @map("privacy_accepted_at")
-  marketingOptIn          Boolean         @default(false) @map("marketing_opt_in")
-  aiPersonalisationOptOut Boolean         @default(false) @map("ai_personalisation_opt_out")
-  preferredCommentaryPersonality String?    @map("preferred_commentary_personality")
-  aiCommentaryOptOut      Boolean         @default(false) @map("ai_commentary_opt_out")
-  commentaryEnabled        Boolean         @default(true) @map("commentary_enabled")
-  commentaryToneLevel     String          @default("playful") @map("commentary_tone_level")
-  locationConsentStatus   String?         @map("location_consent_status")
-  createdAt               DateTime        @default(now()) @map("created_at")
-  updatedAt               DateTime        @updatedAt @map("updated_at")
+  userId                         String    @id @default(uuid()) @map("user_id")
+  name                           String
+  email                          String?   @unique
+  phone                          String?   @unique
+  prediktHandle                  String?   @unique @map("predikt_handle")
+  profileImage                   String?   @map("profile_image")
+  avatarKey                      String?   @map("avatar_key")
+  selectedBackgroundKey          String?   @map("selected_background_key")
+  passwordHash                   String?   @map("password_hash")
+  isGuest                        Boolean   @default(false) @map("is_guest")
+  guestKey                       String?   @unique @map("guest_key")
+  status                         String    @default("active")
+  totalAura                      Int       @default(0) @map("total_aura")
+  weeklyAura                     Int       @default(0) @map("weekly_aura")
+  cloutBalance                   Int       @default(0) @map("clout_balance")
+  lifetimeCloutEarned            Int       @default(0) @map("lifetime_clout_earned")
+  creditBalance                  Int       @default(0) @map("credit_balance")
+  predictionAccuracyScore        Float     @default(0) @map("prediction_accuracy_score")
+  roomsCreatedCount              Int       @default(0) @map("rooms_created_count")
+  predictionsMadeCount           Int       @default(0) @map("predictions_made_count")
+  winsCount                      Int       @default(0) @map("wins_count")
+  currentStreak                  Int       @default(0) @map("current_streak")
+  longestStreak                  Int       @default(0) @map("longest_streak")
+  termsAcceptedAt                DateTime? @map("terms_accepted_at")
+  privacyAcceptedAt              DateTime? @map("privacy_accepted_at")
+  marketingOptIn                 Boolean   @default(false) @map("marketing_opt_in")
+  aiPersonalisationOptOut        Boolean   @default(false) @map("ai_personalisation_opt_out")
+  preferredCommentaryPersonality String?   @map("preferred_commentary_personality")
+  aiCommentaryOptOut             Boolean   @default(false) @map("ai_commentary_opt_out")
+  commentaryEnabled              Boolean   @default(true) @map("commentary_enabled")
+  commentaryToneLevel            String    @default("playful") @map("commentary_tone_level")
+  locationConsentStatus          String?   @map("location_consent_status")
+  createdAt                      DateTime  @default(now()) @map("created_at")
+  updatedAt                      DateTime  @updatedAt @map("updated_at")
 
-  rooms                 PredictionRoom[]      @relation("creator_rooms")
-  milestonePredictions  MilestonePrediction[]
-  locationEvents        LiveLocationEvent[]
-  auraTransactions      AuraTransaction[]
-  cloutTransactions     CloutTransaction[]
-  roomResults           RoomResult[]
-  userDrops             UserDrop[]
-  userFlexes            UserFlex[]
-  creatorProfile        CreatorProfile?
-  createdCampaigns      Campaign[]            @relation("creator_campaigns")
-  consentRecords        ConsentRecord[]
-  privacyRequests       PrivacyRequest[]      @relation("privacy_request_user")
-  creditLedger          CreditLedger[]
-  sessions              UserSession[]
-  reportsFiled          Report[]              @relation("reporter_reports")
-  reportsReceived       Report[]              @relation("target_user_reports")
-  blockedUsers          UserBlock[]           @relation("user_blocks")
-  blockedByUsers        UserBlock[]           @relation("user_blocked_by")
-  roomDisputes          RoomDispute[]
-  resultReactions       ResultReaction[]
-  following             Follow[]              @relation("Following")
-  followers             Follow[]              @relation("Followers")
-  dailySpinClaims       DailySpinClaim[]
-  activityEvents        ActivityEvent[]
-  feedbackSubmissions   UserFeedback[]
-  roomPreferences       UserRoomPreference[]
-  reliabilityLedger     UserReliabilityLedger[]
-  roomMemberships       RoomMembership[]
-  notifications         UserNotification[]
-  roomCommentaries      RoomCommentary[]      @relation("generatedBy")
-  userBadges            UserBadge[]
+  rooms                PredictionRoom[]        @relation("creator_rooms")
+  milestonePredictions MilestonePrediction[]
+  locationEvents       LiveLocationEvent[]
+  auraTransactions     AuraTransaction[]
+  cloutTransactions    CloutTransaction[]
+  roomResults          RoomResult[]
+  userDrops            UserDrop[]
+  userFlexes           UserFlex[]
+  creatorProfile       CreatorProfile?
+  createdCampaigns     Campaign[]              @relation("creator_campaigns")
+  consentRecords       ConsentRecord[]
+  privacyRequests      PrivacyRequest[]        @relation("privacy_request_user")
+  creditLedger         CreditLedger[]
+  sessions             UserSession[]
+  reportsFiled         Report[]                @relation("reporter_reports")
+  reportsReceived      Report[]                @relation("target_user_reports")
+  blockedUsers         UserBlock[]             @relation("user_blocks")
+  blockedByUsers       UserBlock[]             @relation("user_blocked_by")
+  roomDisputes         RoomDispute[]
+  resultReactions      ResultReaction[]
+  following            Follow[]                @relation("Following")
+  followers            Follow[]                @relation("Followers")
+  dailySpinClaims      DailySpinClaim[]
+  activityEvents       ActivityEvent[]
+  feedbackSubmissions  UserFeedback[]
+  roomPreferences      UserRoomPreference[]
+  reliabilityLedger    UserReliabilityLedger[]
+  roomMemberships      RoomMembership[]
+  notifications        UserNotification[]
+  roomCommentaries     RoomCommentary[]        @relation("generatedBy")
+  userBadges           UserBadge[]
+  rewardAccount        RewardAccount?
+  rewardLedgerEntries  RewardLedgerEntry[]
 
   @@map("users")
 }
 
 model PredictionRoom {
-  roomId                    String              @id @default(uuid()) @map("room_id")
-  creatorUserId             String              @map("creator_user_id")
-  roomTitle                 String              @map("room_title")
-  eventType                 String              @map("event_type")
-  category                  String?             @map("category")
-  mode                      String?             @map("mode")
-  templateKey               String?             @map("template_key")
-  baselineSource            String?             @map("baseline_source")
-  baselineLabel             String?             @map("baseline_label")
-  baselineValue             Json?               @map("baseline_value")
-  baselineSnapshot          Json?               @map("baseline_snapshot")
-  baselineCapturedAt        DateTime?           @map("baseline_captured_at")
-  providerName              String?             @map("provider_name")
-  providerConfidence        String?             @map("provider_confidence")
-  hostPrediction            Json?               @map("host_prediction")
-  oracleBotPrediction       Json?               @map("oracle_bot_prediction")
+  roomId                   String                   @id @default(uuid()) @map("room_id")
+  creatorUserId            String                   @map("creator_user_id")
+  roomTitle                String                   @map("room_title")
+  eventType                String                   @map("event_type")
+  category                 String?                  @map("category")
+  mode                     String?                  @map("mode")
+  templateKey              String?                  @map("template_key")
+  baselineSource           String?                  @map("baseline_source")
+  baselineLabel            String?                  @map("baseline_label")
+  baselineValue            Json?                    @map("baseline_value")
+  baselineSnapshot         Json?                    @map("baseline_snapshot")
+  baselineCapturedAt       DateTime?                @map("baseline_captured_at")
+  providerName             String?                  @map("provider_name")
+  providerConfidence       String?                  @map("provider_confidence")
+  hostPrediction           Json?                    @map("host_prediction")
+  oracleBotPrediction      Json?                    @map("oracle_bot_prediction")
   // v2 (checkpoint_leaderboard_v2): Oracle's SCORED outcome as a ranked competitor
   // ({ arrivalTime, diffSeconds, rank, beatenByHuman, frozenAtCheckpoint }). Distinct from
   // oracleBotPrediction, which is only the display benchmark label.
-  oracleResult              Json?               @map("oracle_result")
-  options                   Json?               @map("options")
-  roomType                  String              @default("journey") @map("room_type")
-  answerType                String              @default("exact_time") @map("answer_type")
-  predictionMode            String              @default("milestone") @map("prediction_mode")
-  predictionVisibilityMode  PredictionVisibilityMode @default(hidden_until_lock) @map("prediction_visibility_mode")
-  roomCategory              RoomCategory        @default(journey) @map("room_category")
-  startingPointLabel        String              @map("starting_point_label")
-  destinationLabel          String              @map("destination_label")
-  startingLat               Float?              @map("starting_lat")
-  startingLng               Float?              @map("starting_lng")
-  destinationLat            Float?              @map("destination_lat")
-  destinationLng            Float?              @map("destination_lng")
-  status                    RoomStatus          @default(created)
-  visibility                Visibility          @default(invite_only)
-  locationDisplayMode       LocationDisplayMode @default(approximate) @map("location_display_mode")
-  safetyDelayMinutes        Int                 @default(10) @map("safety_delay_minutes")
-  visibleMovementStartTime  DateTime?           @map("visible_movement_start_time")
-  disableRouteReplay        Boolean             @default(true) @map("disable_route_replay")
-  hideExactStart            Boolean             @default(true) @map("hide_exact_start")
-  hideExactDestination      Boolean             @default(true) @map("hide_exact_destination")
-  autoPauseNearDestination  Boolean             @default(true) @map("auto_pause_near_destination")
-  socialMode                SocialMode          @default(none) @map("social_mode")
-  creatorSocialPlatform     String?             @map("creator_social_platform")
-  creatorSocialHandle       String?             @map("creator_social_handle")
-  socialLiveUrl             String?             @map("social_live_url")
-  pinnedCommentText         String?             @map("pinned_comment_text")
-  shareCardTitle            String?             @map("share_card_title")
-  shareCardSubtitle         String?             @map("share_card_subtitle")
-  instagramStoryText        String?             @map("instagram_story_text")
-  facebookPostText          String?             @map("facebook_post_text")
-  qrCodePayload             String?             @map("qr_code_payload")
-  resultShareText           String?             @map("result_share_text")
-  movementAvatarType        MovementAvatarType  @default(car) @map("movement_avatar_type")
-  movementAvatarUrl         String?             @map("movement_avatar_url")
-  isSponsored               Boolean             @default(false) @map("is_sponsored")
-  sponsorName               String?             @map("sponsor_name")
-  sponsorLogoUrl            String?             @map("sponsor_logo_url")
-  sponsorBrandColor         String?             @map("sponsor_brand_color")
-  sponsorTagline            String?             @map("sponsor_tagline")
-  resultCardSponsorText     String?             @map("result_card_sponsor_text")
-  inviteCode                String              @unique @map("invite_code")
-  rematchOfRoomId           String?             @map("rematch_of_room_id")
-  plannedStartTime          DateTime?           @map("planned_start_time")
-  startTime                 DateTime?           @map("start_time")
-  predictionCloseTime       DateTime            @map("prediction_close_time")
-  lockTime                  DateTime?           @map("lock_time")
-  editDeadline              DateTime?           @map("edit_deadline")
-  resultDeadline            DateTime?           @map("result_deadline")
-  journeyStatus             String              @default("scheduled") @map("journey_status")
-  journeyScheduledStartAt   DateTime?           @map("journey_scheduled_start_at")
-  journeyStartedAt          DateTime?           @map("journey_started_at")
-  lastTravellerUpdateAt     DateTime?           @map("last_traveller_update_at")
-  expectedDurationSeconds   Int?                @map("expected_duration_seconds")
-  gracePeriodSeconds        Int?                @map("grace_period_seconds")
-  autoCloseAt               DateTime?           @map("auto_close_at")
-  noStartCutoffAt           DateTime?           @map("no_start_cutoff_at")
-  arrivalConfirmedAt        DateTime?           @map("arrival_confirmed_at")
-  cancelledAt               DateTime?           @map("cancelled_at")
-  autoClosedAt              DateTime?           @map("auto_closed_at")
-  abandonedAt               DateTime?           @map("abandoned_at")
-  closureReasonCode         String?             @map("closure_reason_code")
-  closureNote               String?             @map("closure_note")
-  scoringRule               Json?               @map("scoring_rule")
-  outcomeSource             String?             @map("outcome_source")
-  confidenceLevel           String?             @map("confidence_level")
-  selectedBackground        String?             @map("selected_background")
-  selectedRoomTheme         String?             @map("selected_room_theme")
-  participantSafetyMessage  String              @default("Location shown with delay for safety.") @map("participant_safety_message")
-  resultDisputed            Boolean             @default(false) @map("result_disputed")
-  rewardsSuppressed         Boolean             @default(false) @map("rewards_suppressed")
-  actualEndTime             DateTime?           @map("actual_end_time")
-  aiPredictedTime           DateTime?           @map("ai_predicted_time")
-  mapPredictedTime          DateTime?           @map("map_predicted_time")
-  crowdAverageTime          DateTime?           @map("crowd_average_time")
-  createdAt                 DateTime            @default(now()) @map("created_at")
-  updatedAt                 DateTime            @updatedAt @map("updated_at")
+  oracleResult             Json?                    @map("oracle_result")
+  options                  Json?                    @map("options")
+  roomType                 String                   @default("journey") @map("room_type")
+  answerType               String                   @default("exact_time") @map("answer_type")
+  predictionMode           String                   @default("milestone") @map("prediction_mode")
+  predictionVisibilityMode PredictionVisibilityMode @default(hidden_until_lock) @map("prediction_visibility_mode")
+  roomCategory             RoomCategory             @default(journey) @map("room_category")
+  startingPointLabel       String                   @map("starting_point_label")
+  destinationLabel         String                   @map("destination_label")
+  startingLat              Float?                   @map("starting_lat")
+  startingLng              Float?                   @map("starting_lng")
+  destinationLat           Float?                   @map("destination_lat")
+  destinationLng           Float?                   @map("destination_lng")
+  status                   RoomStatus               @default(created)
+  visibility               Visibility               @default(invite_only)
+  locationDisplayMode      LocationDisplayMode      @default(approximate) @map("location_display_mode")
+  safetyDelayMinutes       Int                      @default(10) @map("safety_delay_minutes")
+  visibleMovementStartTime DateTime?                @map("visible_movement_start_time")
+  disableRouteReplay       Boolean                  @default(true) @map("disable_route_replay")
+  hideExactStart           Boolean                  @default(true) @map("hide_exact_start")
+  hideExactDestination     Boolean                  @default(true) @map("hide_exact_destination")
+  autoPauseNearDestination Boolean                  @default(true) @map("auto_pause_near_destination")
+  socialMode               SocialMode               @default(none) @map("social_mode")
+  creatorSocialPlatform    String?                  @map("creator_social_platform")
+  creatorSocialHandle      String?                  @map("creator_social_handle")
+  socialLiveUrl            String?                  @map("social_live_url")
+  pinnedCommentText        String?                  @map("pinned_comment_text")
+  shareCardTitle           String?                  @map("share_card_title")
+  shareCardSubtitle        String?                  @map("share_card_subtitle")
+  instagramStoryText       String?                  @map("instagram_story_text")
+  facebookPostText         String?                  @map("facebook_post_text")
+  qrCodePayload            String?                  @map("qr_code_payload")
+  resultShareText          String?                  @map("result_share_text")
+  movementAvatarType       MovementAvatarType       @default(car) @map("movement_avatar_type")
+  movementAvatarUrl        String?                  @map("movement_avatar_url")
+  isSponsored              Boolean                  @default(false) @map("is_sponsored")
+  sponsorName              String?                  @map("sponsor_name")
+  sponsorLogoUrl           String?                  @map("sponsor_logo_url")
+  sponsorBrandColor        String?                  @map("sponsor_brand_color")
+  sponsorTagline           String?                  @map("sponsor_tagline")
+  resultCardSponsorText    String?                  @map("result_card_sponsor_text")
+  inviteCode               String                   @unique @map("invite_code")
+  rematchOfRoomId          String?                  @map("rematch_of_room_id")
+  plannedStartTime         DateTime?                @map("planned_start_time")
+  startTime                DateTime?                @map("start_time")
+  predictionCloseTime      DateTime                 @map("prediction_close_time")
+  lockTime                 DateTime?                @map("lock_time")
+  editDeadline             DateTime?                @map("edit_deadline")
+  resultDeadline           DateTime?                @map("result_deadline")
+  journeyStatus            String                   @default("scheduled") @map("journey_status")
+  journeyScheduledStartAt  DateTime?                @map("journey_scheduled_start_at")
+  journeyStartedAt         DateTime?                @map("journey_started_at")
+  lastTravellerUpdateAt    DateTime?                @map("last_traveller_update_at")
+  expectedDurationSeconds  Int?                     @map("expected_duration_seconds")
+  gracePeriodSeconds       Int?                     @map("grace_period_seconds")
+  autoCloseAt              DateTime?                @map("auto_close_at")
+  noStartCutoffAt          DateTime?                @map("no_start_cutoff_at")
+  arrivalConfirmedAt       DateTime?                @map("arrival_confirmed_at")
+  cancelledAt              DateTime?                @map("cancelled_at")
+  autoClosedAt             DateTime?                @map("auto_closed_at")
+  abandonedAt              DateTime?                @map("abandoned_at")
+  closureReasonCode        String?                  @map("closure_reason_code")
+  closureNote              String?                  @map("closure_note")
+  scoringRule              Json?                    @map("scoring_rule")
+  outcomeSource            String?                  @map("outcome_source")
+  confidenceLevel          String?                  @map("confidence_level")
+  selectedBackground       String?                  @map("selected_background")
+  selectedRoomTheme        String?                  @map("selected_room_theme")
+  participantSafetyMessage String                   @default("Location shown with delay for safety.") @map("participant_safety_message")
+  resultDisputed           Boolean                  @default(false) @map("result_disputed")
+  rewardsSuppressed        Boolean                  @default(false) @map("rewards_suppressed")
+  actualEndTime            DateTime?                @map("actual_end_time")
+  aiPredictedTime          DateTime?                @map("ai_predicted_time")
+  mapPredictedTime         DateTime?                @map("map_predicted_time")
+  crowdAverageTime         DateTime?                @map("crowd_average_time")
+  createdAt                DateTime                 @default(now()) @map("created_at")
+  updatedAt                DateTime                 @updatedAt @map("updated_at")
 
-  creator               User                  @relation("creator_rooms", fields: [creatorUserId], references: [userId])
-  rematchOfRoom         PredictionRoom?       @relation("RoomRematch", fields: [rematchOfRoomId], references: [roomId])
-  rematches             PredictionRoom[]      @relation("RoomRematch")
-  milestones            RoomMilestone[]
-  milestonePredictions  MilestonePrediction[]
-  results               RoomResult[]
-  locationEvents        LiveLocationEvent[]
+  creator              User                    @relation("creator_rooms", fields: [creatorUserId], references: [userId])
+  rematchOfRoom        PredictionRoom?         @relation("RoomRematch", fields: [rematchOfRoomId], references: [roomId])
+  rematches            PredictionRoom[]        @relation("RoomRematch")
+  milestones           RoomMilestone[]
+  milestonePredictions MilestonePrediction[]
+  results              RoomResult[]
+  locationEvents       LiveLocationEvent[]
   checkpoints          RoomCheckpoint[]
-  auraTransactions      AuraTransaction[]
-  cloutTransactions     CloutTransaction[]
-  roomDropRules         RoomDropRule[]
-  userDrops             UserDrop[]
-  userFlexes            UserFlex[]
-  creditLedger          CreditLedger[]
-  reports               Report[]
-  disputes              RoomDispute[]
-  resultReactions       ResultReaction[]
-  campaignMetrics       CampaignMetric[]
-  journeyRoute          JourneyRoute?
-  roomPreferences       UserRoomPreference[]
-  reliabilityLedger     UserReliabilityLedger[]
-  roomMemberships       RoomMembership[]
-  notifications         UserNotification[]
-  roomCommentaries      RoomCommentary[]
-  userBadges            UserBadge[]
+  auraTransactions     AuraTransaction[]
+  cloutTransactions    CloutTransaction[]
+  roomDropRules        RoomDropRule[]
+  userDrops            UserDrop[]
+  userFlexes           UserFlex[]
+  creditLedger         CreditLedger[]
+  reports              Report[]
+  disputes             RoomDispute[]
+  resultReactions      ResultReaction[]
+  campaignMetrics      CampaignMetric[]
+  journeyRoute         JourneyRoute?
+  roomPreferences      UserRoomPreference[]
+  reliabilityLedger    UserReliabilityLedger[]
+  roomMemberships      RoomMembership[]
+  notifications        UserNotification[]
+  roomCommentaries     RoomCommentary[]
+  userBadges           UserBadge[]
 
   @@map("prediction_rooms")
 }
@@ -478,27 +486,27 @@ model RoomCheckpoint {
 }
 
 model RoomCommentary {
-  commentaryId              String   @id @default(uuid()) @map("commentary_id")
-  roomId                   String   @map("room_id")
-  generatedByUserId        String?  @map("generated_by_user_id")
-  personality              String
-  headline                 String
-  punchline                String
-  supportingLine           String?  @map("supporting_line")
-  safetyMode               String   @default("deterministic") @map("safety_mode")
-  provider                 String   @default("templates")
-  providerVersion          String?  @map("provider_version")
-  templateKey              String?  @map("template_key")
-  generationVersion        Int      @default(1) @map("generation_version")
-  generatedAt              DateTime @default(now()) @map("generated_at")
-  regeneratedAt            DateTime? @map("regenerated_at")
-  moderationStatus         String   @default("approved") @map("moderation_status")
-  moderationReason         String?  @map("moderation_reason")
-  reportedCount            Int      @default(0) @map("reported_count")
-  isCurrent                Boolean  @default(true) @map("is_current")
-  metadata                 Json?
-  createdAt                DateTime @default(now()) @map("created_at")
-  updatedAt                DateTime @updatedAt @map("updated_at")
+  commentaryId      String    @id @default(uuid()) @map("commentary_id")
+  roomId            String    @map("room_id")
+  generatedByUserId String?   @map("generated_by_user_id")
+  personality       String
+  headline          String
+  punchline         String
+  supportingLine    String?   @map("supporting_line")
+  safetyMode        String    @default("deterministic") @map("safety_mode")
+  provider          String    @default("templates")
+  providerVersion   String?   @map("provider_version")
+  templateKey       String?   @map("template_key")
+  generationVersion Int       @default(1) @map("generation_version")
+  generatedAt       DateTime  @default(now()) @map("generated_at")
+  regeneratedAt     DateTime? @map("regenerated_at")
+  moderationStatus  String    @default("approved") @map("moderation_status")
+  moderationReason  String?   @map("moderation_reason")
+  reportedCount     Int       @default(0) @map("reported_count")
+  isCurrent         Boolean   @default(true) @map("is_current")
+  metadata          Json?
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
 
   room        PredictionRoom @relation(fields: [roomId], references: [roomId])
   generatedBy User?          @relation("generatedBy", fields: [generatedByUserId], references: [userId])
@@ -510,17 +518,17 @@ model RoomCommentary {
 }
 
 model UserBadge {
-  userBadgeId  String   @id @default(uuid()) @map("user_badge_id")
-  userId       String   @map("user_id")
-  badgeKey     String   @map("badge_key")
-  roomId       String?  @map("room_id")
-  category     String?
-  title        String
-  description  String
-  icon         String?
-  awardedAt    DateTime @default(now()) @map("awarded_at")
-  metadata     Json?
-  createdAt    DateTime @default(now()) @map("created_at")
+  userBadgeId String   @id @default(uuid()) @map("user_badge_id")
+  userId      String   @map("user_id")
+  badgeKey    String   @map("badge_key")
+  roomId      String?  @map("room_id")
+  category    String?
+  title       String
+  description String
+  icon        String?
+  awardedAt   DateTime @default(now()) @map("awarded_at")
+  metadata    Json?
+  createdAt   DateTime @default(now()) @map("created_at")
 
   user User            @relation(fields: [userId], references: [userId])
   room PredictionRoom? @relation(fields: [roomId], references: [roomId])
@@ -533,21 +541,21 @@ model UserBadge {
 }
 
 model RoomMilestone {
-  milestoneId           String            @id @default(uuid()) @map("milestone_id")
-  roomId                String            @map("room_id")
-  milestoneOrder        Int               @map("milestone_order")
-  milestoneName         String            @map("milestone_name")
-  milestoneType         MilestoneType     @default(intermediate) @map("milestone_type")
-  locationLabel         String?           @map("location_label")
-  milestoneLat          Float?            @map("milestone_lat")
-  milestoneLng          Float?            @map("milestone_lng")
-  predictionCloseTime   DateTime?         @map("prediction_close_time")
-  actualReachedTime     DateTime?         @map("actual_reached_time")
-  actualOptionKey       String?           @map("actual_option_key")
-  status                MilestoneStatus   @default(pending)
-  auraMultiplier        Decimal           @default(1.0) @db.Decimal(5, 2) @map("aura_multiplier")
-  createdAt             DateTime          @default(now()) @map("created_at")
-  updatedAt             DateTime          @updatedAt @map("updated_at")
+  milestoneId         String          @id @default(uuid()) @map("milestone_id")
+  roomId              String          @map("room_id")
+  milestoneOrder      Int             @map("milestone_order")
+  milestoneName       String          @map("milestone_name")
+  milestoneType       MilestoneType   @default(intermediate) @map("milestone_type")
+  locationLabel       String?         @map("location_label")
+  milestoneLat        Float?          @map("milestone_lat")
+  milestoneLng        Float?          @map("milestone_lng")
+  predictionCloseTime DateTime?       @map("prediction_close_time")
+  actualReachedTime   DateTime?       @map("actual_reached_time")
+  actualOptionKey     String?         @map("actual_option_key")
+  status              MilestoneStatus @default(pending)
+  auraMultiplier      Decimal         @default(1.0) @map("aura_multiplier") @db.Decimal(5, 2)
+  createdAt           DateTime        @default(now()) @map("created_at")
+  updatedAt           DateTime        @updatedAt @map("updated_at")
 
   room                  PredictionRoom        @relation(fields: [roomId], references: [roomId])
   milestonePredictions  MilestonePrediction[]
@@ -561,31 +569,31 @@ model RoomMilestone {
 }
 
 model MilestonePrediction {
-  predictionId                String   @id @default(uuid()) @map("prediction_id")
-  milestoneId                 String   @map("milestone_id")
-  roomId                      String   @map("room_id")
-  userId                      String   @map("user_id")
-  predictedReachedTime        DateTime @map("predicted_reached_time")
-  selectedOptionKey           String?  @map("selected_option_key")
-  submittedAt                 DateTime @default(now()) @map("submitted_at")
+  predictionId                String    @id @default(uuid()) @map("prediction_id")
+  milestoneId                 String    @map("milestone_id")
+  roomId                      String    @map("room_id")
+  userId                      String    @map("user_id")
+  predictedReachedTime        DateTime  @map("predicted_reached_time")
+  selectedOptionKey           String?   @map("selected_option_key")
+  submittedAt                 DateTime  @default(now()) @map("submitted_at")
   editDeadline                DateTime? @map("edit_deadline")
   revokedAt                   DateTime? @map("revoked_at")
-  lockedStatus                Boolean  @default(false) @map("locked_status")
-  differenceFromActualMinutes Float?   @map("difference_from_actual_minutes")
-  differenceFromActualSeconds Int?     @map("difference_from_actual_seconds")
-  rankForMilestone            Int?     @map("rank_for_milestone")
-  baseAura                    Int      @default(0) @map("base_aura")
-  rankBonusAura               Int      @default(0) @map("rank_bonus_aura")
-  multiplier                  Decimal  @default(1.0) @db.Decimal(5, 2)
-  totalAuraAwarded            Int      @default(0) @map("total_aura_awarded")
-  cloutAwarded                Int      @default(0) @map("clout_awarded")
+  lockedStatus                Boolean   @default(false) @map("locked_status")
+  differenceFromActualMinutes Float?    @map("difference_from_actual_minutes")
+  differenceFromActualSeconds Int?      @map("difference_from_actual_seconds")
+  rankForMilestone            Int?      @map("rank_for_milestone")
+  baseAura                    Int       @default(0) @map("base_aura")
+  rankBonusAura               Int       @default(0) @map("rank_bonus_aura")
+  multiplier                  Decimal   @default(1.0) @db.Decimal(5, 2)
+  totalAuraAwarded            Int       @default(0) @map("total_aura_awarded")
+  cloutAwarded                Int       @default(0) @map("clout_awarded")
   // v2 (checkpoint_leaderboard_v2): predictions locked after the 80% checkpoint are
-  // accepted but Rizz-tier only — auraEligible=false excludes them from the winner /
+  // accepted but Late-tier only — auraEligible=false excludes them from the winner /
   // Aura leaderboard. lockedCheckpoint records the checkpoint % at which it locked.
-  auraEligible                Boolean  @default(true) @map("aura_eligible")
-  lockedCheckpoint            Int?     @map("locked_checkpoint")
+  auraEligible                Boolean   @default(true) @map("aura_eligible")
+  lockedCheckpoint            Int?      @map("locked_checkpoint")
 
-  milestone RoomMilestone @relation(fields: [milestoneId], references: [milestoneId])
+  milestone RoomMilestone  @relation(fields: [milestoneId], references: [milestoneId])
   room      PredictionRoom @relation(fields: [roomId], references: [roomId])
   user      User           @relation(fields: [userId], references: [userId])
 
@@ -611,16 +619,16 @@ model RoomResult {
 }
 
 model UserRoomPreference {
-  userRoomPreferenceId String         @id @default(uuid()) @map("user_room_preference_id")
-  userId               String         @map("user_id")
-  roomId               String         @map("room_id")
-  pinned               Boolean        @default(false)
-  displayOrder         Int            @default(0) @map("display_order")
-  hiddenFromDashboard  Boolean        @default(false) @map("hidden_from_dashboard")
-  createdAt            DateTime       @default(now()) @map("created_at")
-  updatedAt            DateTime       @updatedAt @map("updated_at")
+  userRoomPreferenceId String   @id @default(uuid()) @map("user_room_preference_id")
+  userId               String   @map("user_id")
+  roomId               String   @map("room_id")
+  pinned               Boolean  @default(false)
+  displayOrder         Int      @default(0) @map("display_order")
+  hiddenFromDashboard  Boolean  @default(false) @map("hidden_from_dashboard")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
 
-  user User @relation(fields: [userId], references: [userId])
+  user User           @relation(fields: [userId], references: [userId])
   room PredictionRoom @relation(fields: [roomId], references: [roomId])
 
   @@unique([userId, roomId])
@@ -682,7 +690,7 @@ model UserReliabilityLedger {
   metadata            Json?
   createdAt           DateTime @default(now()) @map("created_at")
 
-  user User @relation(fields: [userId], references: [userId])
+  user User            @relation(fields: [userId], references: [userId])
   room PredictionRoom? @relation(fields: [roomId], references: [roomId])
 
   @@map("user_reliability_ledger")
@@ -755,20 +763,82 @@ model CreditLedger {
   metadata       Json?
   createdAt      DateTime  @default(now()) @map("created_at")
 
-  user User @relation(fields: [userId], references: [userId])
+  user User            @relation(fields: [userId], references: [userId])
   room PredictionRoom? @relation(fields: [sourceId], references: [roomId])
 
   @@map("credit_ledger")
 }
 
+// Phase 1 reward foundation. RIZZ + Gems are canonical here; AURA is mirrored from
+// User.totalAura inside the same transaction (User.totalAura/weeklyAura stay the
+// source of truth for existing leaderboards). Clout/Credit remain separate (frozen).
+model RewardAccount {
+  rewardAccountId String @id @default(uuid()) @map("reward_account_id")
+  userId          String @unique @map("user_id")
+
+  auraBalance Int @default(0) @map("aura_balance")
+  rizzBalance Int @default(0) @map("rizz_balance")
+  gemBalance  Int @default(0) @map("gem_balance")
+
+  lifetimeAura Int @default(0) @map("lifetime_aura")
+  lifetimeRizz Int @default(0) @map("lifetime_rizz")
+  lifetimeGems Int @default(0) @map("lifetime_gems")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [userId])
+
+  @@map("reward_accounts")
+}
+
+// Generalized from CreditLedger. Every reward balance change writes exactly one row.
+// idempotencyKey is the replay guard. metadata must never hold PII or GPS.
+model RewardLedgerEntry {
+  rewardLedgerEntryId String     @id @default(uuid()) @map("reward_ledger_entry_id")
+  userId              String     @map("user_id")
+  rewardType          RewardType @map("reward_type")
+  amount              Int
+  balanceAfter        Int        @map("balance_after")
+  reasonCode          String     @map("reason_code")
+  sourceType          String?    @map("source_type")
+  sourceId            String?    @map("source_id")
+  idempotencyKey      String     @unique @map("idempotency_key")
+  metadata            Json?
+  createdAt           DateTime   @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [userId])
+
+  @@index([userId, rewardType, createdAt])
+  @@index([reasonCode, createdAt])
+  @@map("reward_ledger_entries")
+}
+
+// Config-driven reward rules. Amounts/caps live here, never hardcoded in services.
+model RewardRule {
+  reasonCode   String     @id @map("reason_code")
+  rewardType   RewardType @map("reward_type")
+  baseAmount   Int        @default(0) @map("base_amount")
+  enabled      Boolean    @default(true)
+  dailyCap     Int?       @map("daily_cap")
+  perSourceCap Int?       @map("per_source_cap")
+  configJson   Json?      @map("config_json")
+  label        String
+  description  String
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+
+  @@map("reward_rules")
+}
+
 model UserSession {
-  userSessionId     String    @id @default(uuid()) @map("user_session_id")
-  userId            String    @map("user_id")
-  refreshTokenHash  String    @map("refresh_token_hash")
-  revokedAt         DateTime? @map("revoked_at")
-  expiresAt         DateTime  @map("expires_at")
-  createdAt         DateTime  @default(now()) @map("created_at")
-  updatedAt         DateTime  @updatedAt @map("updated_at")
+  userSessionId    String    @id @default(uuid()) @map("user_session_id")
+  userId           String    @map("user_id")
+  refreshTokenHash String    @map("refresh_token_hash")
+  revokedAt        DateTime? @map("revoked_at")
+  expiresAt        DateTime  @map("expires_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
 
   user User @relation(fields: [userId], references: [userId])
 
@@ -778,18 +848,18 @@ model UserSession {
 }
 
 model Report {
-  reportId          String       @id @default(uuid()) @map("report_id")
-  reporterId        String       @map("reporter_id")
-  targetUserId      String?      @map("target_user_id")
-  roomId            String?      @map("room_id")
-  reportType        ReportType   @map("report_type")
-  reason            String?
-  status            ReportStatus @default(submitted)
-  priority          String       @default("normal")
-  assignedAdminId   String?      @map("assigned_admin_id")
-  metadata          Json?
-  createdAt         DateTime     @default(now()) @map("created_at")
-  updatedAt         DateTime     @updatedAt @map("updated_at")
+  reportId        String       @id @default(uuid()) @map("report_id")
+  reporterId      String       @map("reporter_id")
+  targetUserId    String?      @map("target_user_id")
+  roomId          String?      @map("room_id")
+  reportType      ReportType   @map("report_type")
+  reason          String?
+  status          ReportStatus @default(submitted)
+  priority        String       @default("normal")
+  assignedAdminId String?      @map("assigned_admin_id")
+  metadata        Json?
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
 
   reporter      User            @relation("reporter_reports", fields: [reporterId], references: [userId])
   targetUser    User?           @relation("target_user_reports", fields: [targetUserId], references: [userId])
@@ -911,12 +981,12 @@ model Flex {
 }
 
 model UserFlex {
-  userFlexId  String    @id @default(uuid()) @map("user_flex_id")
-  userId      String    @map("user_id")
-  flexId      String    @map("flex_id")
-  roomId      String?   @map("room_id")
-  milestoneId String?   @map("milestone_id")
-  earnedAt    DateTime  @default(now()) @map("earned_at")
+  userFlexId  String   @id @default(uuid()) @map("user_flex_id")
+  userId      String   @map("user_id")
+  flexId      String   @map("flex_id")
+  roomId      String?  @map("room_id")
+  milestoneId String?  @map("milestone_id")
+  earnedAt    DateTime @default(now()) @map("earned_at")
 
   user      User            @relation(fields: [userId], references: [userId])
   flex      Flex            @relation(fields: [flexId], references: [flexId])
@@ -927,20 +997,20 @@ model UserFlex {
 }
 
 model CreatorProfile {
-  creatorProfileId    String                     @id @default(uuid()) @map("creator_profile_id")
-  userId              String                     @unique @map("user_id")
-  displayName         String?                    @map("display_name")
-  handle              String?                    @unique
-  instagramHandle     String?                    @map("instagram_handle")
-  facebookPage        String?                    @map("facebook_page")
-  youtubeHandle       String?                    @map("youtube_handle")
-  creatorCategory     String?                    @map("creator_category")
-  audienceSizeLabel   String?                    @map("audience_size_label")
-  subscriptionPlan    String?                    @map("subscription_plan")
-  verificationStatus  CreatorVerificationStatus  @default(pending_review) @map("verification_status")
-  revenueSharePercent Decimal?                   @db.Decimal(5, 2) @map("revenue_share_percent")
-  createdAt           DateTime                   @default(now()) @map("created_at")
-  updatedAt           DateTime                   @updatedAt @map("updated_at")
+  creatorProfileId    String                    @id @default(uuid()) @map("creator_profile_id")
+  userId              String                    @unique @map("user_id")
+  displayName         String?                   @map("display_name")
+  handle              String?                   @unique
+  instagramHandle     String?                   @map("instagram_handle")
+  facebookPage        String?                   @map("facebook_page")
+  youtubeHandle       String?                   @map("youtube_handle")
+  creatorCategory     String?                   @map("creator_category")
+  audienceSizeLabel   String?                   @map("audience_size_label")
+  subscriptionPlan    String?                   @map("subscription_plan")
+  verificationStatus  CreatorVerificationStatus @default(pending_review) @map("verification_status")
+  revenueSharePercent Decimal?                  @map("revenue_share_percent") @db.Decimal(5, 2)
+  createdAt           DateTime                  @default(now()) @map("created_at")
+  updatedAt           DateTime                  @updatedAt @map("updated_at")
 
   user User @relation(fields: [userId], references: [userId])
 
@@ -948,34 +1018,34 @@ model CreatorProfile {
 }
 
 model SubscriptionPlan {
-  planId                   String     @id @default(uuid()) @map("plan_id")
-  planName                 String     @map("plan_name")
-  planType                 PlanType   @map("plan_type")
-  monthlyPriceInr          Int?       @map("monthly_price_inr")
-  yearlyPriceInr           Int?       @map("yearly_price_inr")
-  maxRoomsPerMonth         Int?       @map("max_rooms_per_month")
-  maxParticipantsPerRoom   Int?       @map("max_participants_per_room")
-  customBrandingAllowed    Boolean    @default(false) @map("custom_branding_allowed")
-  sponsoredRoomsAllowed    Boolean    @default(false) @map("sponsored_rooms_allowed")
-  analyticsAllowed         Boolean    @default(false) @map("analytics_allowed")
-  dropsAllowed             Boolean    @default(true) @map("drops_allowed")
-  status                   PlanStatus @default(active)
-  createdAt                DateTime   @default(now()) @map("created_at")
-  updatedAt                DateTime   @updatedAt @map("updated_at")
+  planId                 String     @id @default(uuid()) @map("plan_id")
+  planName               String     @map("plan_name")
+  planType               PlanType   @map("plan_type")
+  monthlyPriceInr        Int?       @map("monthly_price_inr")
+  yearlyPriceInr         Int?       @map("yearly_price_inr")
+  maxRoomsPerMonth       Int?       @map("max_rooms_per_month")
+  maxParticipantsPerRoom Int?       @map("max_participants_per_room")
+  customBrandingAllowed  Boolean    @default(false) @map("custom_branding_allowed")
+  sponsoredRoomsAllowed  Boolean    @default(false) @map("sponsored_rooms_allowed")
+  analyticsAllowed       Boolean    @default(false) @map("analytics_allowed")
+  dropsAllowed           Boolean    @default(true) @map("drops_allowed")
+  status                 PlanStatus @default(active)
+  createdAt              DateTime   @default(now()) @map("created_at")
+  updatedAt              DateTime   @updatedAt @map("updated_at")
 
   @@map("subscription_plans")
 }
 
 model Sponsor {
-  sponsorId    String        @id @default(uuid()) @map("sponsor_id")
-  sponsorName  String        @map("sponsor_name")
-  logoUrl      String?       @map("logo_url")
-  brandColor   String?       @map("brand_color")
-  websiteUrl   String?       @map("website_url")
-  industry     String?
-  status       SponsorStatus @default(active)
-  createdAt    DateTime      @default(now()) @map("created_at")
-  updatedAt    DateTime      @updatedAt @map("updated_at")
+  sponsorId   String        @id @default(uuid()) @map("sponsor_id")
+  sponsorName String        @map("sponsor_name")
+  logoUrl     String?       @map("logo_url")
+  brandColor  String?       @map("brand_color")
+  websiteUrl  String?       @map("website_url")
+  industry    String?
+  status      SponsorStatus @default(active)
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
 
   campaigns Campaign[]
 
@@ -983,53 +1053,53 @@ model Sponsor {
 }
 
 model Campaign {
-  campaignId      String         @id @default(uuid()) @map("campaign_id")
-  sponsorId       String?        @map("sponsor_id")
-  campaignName    String         @map("campaign_name")
-  campaignType    CampaignType   @map("campaign_type")
-  creatorUserId   String?        @map("creator_user_id")
-  startDate       DateTime?      @map("start_date")
-  endDate         DateTime?      @map("end_date")
-  budgetLabel     String?        @map("budget_label")
-  status          CampaignStatus @default(draft)
-  createdAt       DateTime       @default(now()) @map("created_at")
-  updatedAt       DateTime       @updatedAt @map("updated_at")
+  campaignId    String         @id @default(uuid()) @map("campaign_id")
+  sponsorId     String?        @map("sponsor_id")
+  campaignName  String         @map("campaign_name")
+  campaignType  CampaignType   @map("campaign_type")
+  creatorUserId String?        @map("creator_user_id")
+  startDate     DateTime?      @map("start_date")
+  endDate       DateTime?      @map("end_date")
+  budgetLabel   String?        @map("budget_label")
+  status        CampaignStatus @default(draft)
+  createdAt     DateTime       @default(now()) @map("created_at")
+  updatedAt     DateTime       @updatedAt @map("updated_at")
 
-  sponsor Sponsor? @relation(fields: [sponsorId], references: [sponsorId])
-  creator User?    @relation("creator_campaigns", fields: [creatorUserId], references: [userId])
+  sponsor Sponsor?         @relation(fields: [sponsorId], references: [sponsorId])
+  creator User?            @relation("creator_campaigns", fields: [creatorUserId], references: [userId])
   metrics CampaignMetric[]
 
   @@map("campaigns")
 }
 
 model CampaignMetric {
-  metricId                String   @id @default(uuid()) @map("metric_id")
-  campaignId              String   @map("campaign_id")
-  roomId                  String?  @map("room_id")
-  impressions             Int      @default(0)
-  joins                   Int      @default(0)
-  predictionsSubmitted    Int      @default(0) @map("predictions_submitted")
-  uniqueParticipants      Int      @default(0) @map("unique_participants")
-  shares                  Int      @default(0)
-  dropsUnlocked           Int      @default(0) @map("drops_unlocked")
-  dropsRedeemed           Int      @default(0) @map("drops_redeemed")
-  resultCardsShared       Int      @default(0) @map("result_cards_shared")
-  createdAt               DateTime @default(now()) @map("created_at")
-  updatedAt               DateTime @updatedAt @map("updated_at")
+  metricId             String   @id @default(uuid()) @map("metric_id")
+  campaignId           String   @map("campaign_id")
+  roomId               String?  @map("room_id")
+  impressions          Int      @default(0)
+  joins                Int      @default(0)
+  predictionsSubmitted Int      @default(0) @map("predictions_submitted")
+  uniqueParticipants   Int      @default(0) @map("unique_participants")
+  shares               Int      @default(0)
+  dropsUnlocked        Int      @default(0) @map("drops_unlocked")
+  dropsRedeemed        Int      @default(0) @map("drops_redeemed")
+  resultCardsShared    Int      @default(0) @map("result_cards_shared")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
 
-  campaign Campaign       @relation(fields: [campaignId], references: [campaignId])
+  campaign Campaign        @relation(fields: [campaignId], references: [campaignId])
   room     PredictionRoom? @relation(fields: [roomId], references: [roomId])
 
   @@map("campaign_metrics")
 }
 
 model AdminRole {
-  roleId       String   @id @default(uuid()) @map("role_id")
-  roleName     String   @unique @map("role_name")
-  description  String?
-  permissions  Json
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  roleId      String   @id @default(uuid()) @map("role_id")
+  roleName    String   @unique @map("role_name")
+  description String?
+  permissions Json
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
 
   adminUsers AdminUser[]
 
@@ -1037,41 +1107,41 @@ model AdminRole {
 }
 
 model AdminUser {
-  adminUserId String      @id @default(uuid()) @map("admin_user_id")
-  name        String
-  email       String      @unique
-  passwordHash String     @map("password_hash")
-  roleId      String      @map("role_id")
-  status      AdminStatus @default(active)
-  lastLoginAt DateTime?   @map("last_login_at")
-  mfaEnabled  Boolean     @default(false) @map("mfa_enabled")
-  createdAt   DateTime    @default(now()) @map("created_at")
-  updatedAt   DateTime    @updatedAt @map("updated_at")
+  adminUserId  String      @id @default(uuid()) @map("admin_user_id")
+  name         String
+  email        String      @unique
+  passwordHash String      @map("password_hash")
+  roleId       String      @map("role_id")
+  status       AdminStatus @default(active)
+  lastLoginAt  DateTime?   @map("last_login_at")
+  mfaEnabled   Boolean     @default(false) @map("mfa_enabled")
+  createdAt    DateTime    @default(now()) @map("created_at")
+  updatedAt    DateTime    @updatedAt @map("updated_at")
 
-  role                    AdminRole         @relation(fields: [roleId], references: [roleId])
-  assignedPrivacyRequests PrivacyRequest[]  @relation("privacy_request_admin")
-  assignedReports         Report[]          @relation("assigned_reports")
-  assignedFeedback        UserFeedback[]    @relation("assigned_feedback")
+  role                    AdminRole        @relation(fields: [roleId], references: [roleId])
+  assignedPrivacyRequests PrivacyRequest[] @relation("privacy_request_admin")
+  assignedReports         Report[]         @relation("assigned_reports")
+  assignedFeedback        UserFeedback[]   @relation("assigned_feedback")
 
   @@map("admin_users")
 }
 
 model UserFeedback {
-  feedbackId        String   @id @default(uuid()) @map("feedback_id")
-  userId            String?  @map("user_id")
-  feedbackType      String   @map("feedback_type")
-  category          String?
-  status            String   @default("new")
-  priority          String   @default("normal")
-  message           String
-  contactAllowed    Boolean  @default(false) @map("contact_allowed")
-  platform          String?
-  roomId            String?  @map("room_id")
-  assignedAdminId   String?  @map("assigned_admin_id")
-  internalNotes     String?  @map("internal_notes")
-  metadata          Json?
-  createdAt         DateTime @default(now()) @map("created_at")
-  updatedAt         DateTime @updatedAt @map("updated_at")
+  feedbackId      String   @id @default(uuid()) @map("feedback_id")
+  userId          String?  @map("user_id")
+  feedbackType    String   @map("feedback_type")
+  category        String?
+  status          String   @default("new")
+  priority        String   @default("normal")
+  message         String
+  contactAllowed  Boolean  @default(false) @map("contact_allowed")
+  platform        String?
+  roomId          String?  @map("room_id")
+  assignedAdminId String?  @map("assigned_admin_id")
+  internalNotes   String?  @map("internal_notes")
+  metadata        Json?
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
 
   user          User?      @relation(fields: [userId], references: [userId])
   assignedAdmin AdminUser? @relation("assigned_feedback", fields: [assignedAdminId], references: [adminUserId])
@@ -1102,17 +1172,17 @@ model AuditLog {
 }
 
 model ConsentRecord {
-  consentId      String        @id @default(uuid()) @map("consent_id")
-  userId         String        @map("user_id")
-  consentType    ConsentType   @map("consent_type")
-  status         ConsentStatus
-  policyVersion  String        @map("policy_version")
-  source         String?
-  ipAddress      String?       @map("ip_address")
-  userAgent      String?       @map("user_agent")
-  consentedAt    DateTime?     @map("consented_at")
-  withdrawnAt    DateTime?     @map("withdrawn_at")
-  createdAt      DateTime      @default(now()) @map("created_at")
+  consentId     String        @id @default(uuid()) @map("consent_id")
+  userId        String        @map("user_id")
+  consentType   ConsentType   @map("consent_type")
+  status        ConsentStatus
+  policyVersion String        @map("policy_version")
+  source        String?
+  ipAddress     String?       @map("ip_address")
+  userAgent     String?       @map("user_agent")
+  consentedAt   DateTime?     @map("consented_at")
+  withdrawnAt   DateTime?     @map("withdrawn_at")
+  createdAt     DateTime      @default(now()) @map("created_at")
 
   user User @relation(fields: [userId], references: [userId])
 
@@ -1120,41 +1190,41 @@ model ConsentRecord {
 }
 
 model PrivacyRequest {
-  privacyRequestId String                @id @default(uuid()) @map("privacy_request_id")
-  userId           String                @map("user_id")
-  requestType      PrivacyRequestType    @map("request_type")
-  status           PrivacyRequestStatus  @default(submitted)
-  submittedAt      DateTime              @default(now()) @map("submitted_at")
-  verifiedAt       DateTime?             @map("verified_at")
-  completedAt      DateTime?             @map("completed_at")
-  assignedAdminId  String?               @map("assigned_admin_id")
-  resolutionNotes  String?               @map("resolution_notes")
-  exportFileUrl    String?               @map("export_file_url")
-  createdAt        DateTime              @default(now()) @map("created_at")
-  updatedAt        DateTime              @updatedAt @map("updated_at")
+  privacyRequestId String               @id @default(uuid()) @map("privacy_request_id")
+  userId           String               @map("user_id")
+  requestType      PrivacyRequestType   @map("request_type")
+  status           PrivacyRequestStatus @default(submitted)
+  submittedAt      DateTime             @default(now()) @map("submitted_at")
+  verifiedAt       DateTime?            @map("verified_at")
+  completedAt      DateTime?            @map("completed_at")
+  assignedAdminId  String?              @map("assigned_admin_id")
+  resolutionNotes  String?              @map("resolution_notes")
+  exportFileUrl    String?              @map("export_file_url")
+  createdAt        DateTime             @default(now()) @map("created_at")
+  updatedAt        DateTime             @updatedAt @map("updated_at")
 
-  user          User      @relation("privacy_request_user", fields: [userId], references: [userId])
+  user          User       @relation("privacy_request_user", fields: [userId], references: [userId])
   assignedAdmin AdminUser? @relation("privacy_request_admin", fields: [assignedAdminId], references: [adminUserId])
 
   @@map("privacy_requests")
 }
 
 model AiSystemInventory {
-  aiSystemId             String       @id @default(uuid()) @map("ai_system_id")
-  featureName            String       @map("feature_name")
-  purpose                String
-  provider               String?
-  modelName              String?      @map("model_name")
-  inputDataCategories    Json?        @map("input_data_categories")
-  outputType             String?      @map("output_type")
-  riskClassification     String?      @map("risk_classification")
-  humanOversight         String?      @map("human_oversight")
-  transparencyNotice     String?      @map("transparency_notice")
-  version                String?
-  status                 AiSystemStatus @default(planned)
-  lastReviewedAt         DateTime?    @map("last_reviewed_at")
-  createdAt              DateTime     @default(now()) @map("created_at")
-  updatedAt              DateTime     @updatedAt @map("updated_at")
+  aiSystemId          String         @id @default(uuid()) @map("ai_system_id")
+  featureName         String         @map("feature_name")
+  purpose             String
+  provider            String?
+  modelName           String?        @map("model_name")
+  inputDataCategories Json?          @map("input_data_categories")
+  outputType          String?        @map("output_type")
+  riskClassification  String?        @map("risk_classification")
+  humanOversight      String?        @map("human_oversight")
+  transparencyNotice  String?        @map("transparency_notice")
+  version             String?
+  status              AiSystemStatus @default(planned)
+  lastReviewedAt      DateTime?      @map("last_reviewed_at")
+  createdAt           DateTime       @default(now()) @map("created_at")
+  updatedAt           DateTime       @updatedAt @map("updated_at")
 
   @@map("ai_system_inventory")
 }
@@ -1209,25 +1279,25 @@ model ActivityEvent {
 }
 
 model JourneyRoute {
-  journeyRouteId            String         @id @default(uuid()) @map("journey_route_id")
-  roomId                    String         @unique @map("room_id")
-  startPlaceId              String         @map("start_place_id")
-  startLabel                String         @map("start_label")
-  startLat                  Decimal?       @db.Decimal(10, 7) @map("start_lat")
-  startLng                  Decimal?       @db.Decimal(10, 7) @map("start_lng")
-  destinationPlaceId        String         @map("destination_place_id")
-  destinationLabel          String         @map("destination_label")
-  destinationLat            Decimal?       @db.Decimal(10, 7) @map("destination_lat")
-  destinationLng            Decimal?       @db.Decimal(10, 7) @map("destination_lng")
-  travelMode                String         @map("travel_mode")
-  distanceMeters            Int?           @map("distance_meters")
-  estimatedDurationSeconds  Int?           @map("estimated_duration_seconds")
-  routeSummary              String?        @map("route_summary")
-  encodedPolyline           String?        @map("encoded_polyline")
-  privacyMode               String         @default("approximate_delayed") @map("privacy_mode")
-  safetyDelayMinutes        Int            @default(10) @map("safety_delay_minutes")
-  createdAt                 DateTime       @default(now()) @map("created_at")
-  updatedAt                 DateTime       @updatedAt @map("updated_at")
+  journeyRouteId           String   @id @default(uuid()) @map("journey_route_id")
+  roomId                   String   @unique @map("room_id")
+  startPlaceId             String   @map("start_place_id")
+  startLabel               String   @map("start_label")
+  startLat                 Decimal? @map("start_lat") @db.Decimal(10, 7)
+  startLng                 Decimal? @map("start_lng") @db.Decimal(10, 7)
+  destinationPlaceId       String   @map("destination_place_id")
+  destinationLabel         String   @map("destination_label")
+  destinationLat           Decimal? @map("destination_lat") @db.Decimal(10, 7)
+  destinationLng           Decimal? @map("destination_lng") @db.Decimal(10, 7)
+  travelMode               String   @map("travel_mode")
+  distanceMeters           Int?     @map("distance_meters")
+  estimatedDurationSeconds Int?     @map("estimated_duration_seconds")
+  routeSummary             String?  @map("route_summary")
+  encodedPolyline          String?  @map("encoded_polyline")
+  privacyMode              String   @default("approximate_delayed") @map("privacy_mode")
+  safetyDelayMinutes       Int      @default(10) @map("safety_delay_minutes")
+  createdAt                DateTime @default(now()) @map("created_at")
+  updatedAt                DateTime @updatedAt @map("updated_at")
 
   room PredictionRoom @relation(fields: [roomId], references: [roomId])
 

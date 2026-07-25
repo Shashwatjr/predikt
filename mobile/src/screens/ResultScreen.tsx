@@ -15,6 +15,7 @@ import { shareMoment } from '../utils/shareMoment';
 import { CommentaryResponse, ResultPayload, RoomBadge } from '../types/engagement';
 import TeaCard from '../components/TeaCard';
 import CommentaryBubble from '../components/CommentaryBubble';
+import RewardChips from '../components/RewardChips';
 import ReactionStrip from '../components/ReactionStrip';
 import SectionHeader from '../components/SectionHeader';
 import GuestUpgradePrompt from '../components/GuestUpgradePrompt';
@@ -191,6 +192,13 @@ export default function ResultScreen({ navigation, route }: Props) {
   const differenceLabel = typeof differenceMinutes === 'number' ? `${differenceMinutes.toFixed(1)} min` : 'Closest';
   const auraEarned = winningRow?.totalRoomAura ?? winningRow?.pointsAwarded ?? 0;
   const dotBonus = winningRow?.dotBonus ?? winningRow?.rankBonusAura;
+  // The viewer's own reward for this room. Aura is the per-room value we can
+  // attribute from the leaderboard; RIZZ/Gems have no per-room source via the
+  // Phase 1 endpoints, so only non-zero Aura is surfaced here.
+  const myRow = user?.userId
+    ? data.find((r: any) => (r.userId ?? r.user?.userId) === user.userId)
+    : undefined;
+  const myAuraEarned = myRow?.totalRoomAura ?? myRow?.pointsAwarded ?? 0;
   const oracleBotLabel = room?.baselineLabel ?? room?.oracleBotPrediction?.label ?? 'Benchmark only';
   const biggestNearMiss = podiumTop3[1]
     ? `${formatWinnerHandle(podiumTop3[1])} missed by ${
@@ -447,6 +455,21 @@ export default function ResultScreen({ navigation, route }: Props) {
           </View>
         ) : null}
 
+        {myAuraEarned > 0 ? (
+          <View style={styles.rewardsEarned}>
+            <Text style={[styles.rewardsEarnedLabel, { color: colors.textSecondary }]}>You earned</Text>
+            <RewardChips
+              aura={myAuraEarned}
+              rizz={0}
+              gems={0}
+              variant="compact"
+              onlyNonZero
+              showPlus
+              animatedStyle={{ opacity: winnerGlow }}
+            />
+          </View>
+        ) : null}
+
         {commentary ? (
           <Animated.View style={{ opacity: commentaryOpacity, transform: [{ translateY: commentaryRise }] }}>
             <CommentaryBubble
@@ -679,6 +702,8 @@ const styles = StyleSheet.create({
   genericSummaryLabel: { fontSize: 14, fontWeight: '800', textTransform: 'capitalize' },
   genericSummaryCount: { fontSize: 16, fontWeight: '900' },
   winnerWrapper: { position: 'relative' },
+  rewardsEarned: { alignItems: 'center', gap: 6, marginTop: 6 },
+  rewardsEarnedLabel: { fontSize: 12, fontWeight: '800', letterSpacing: 1, textTransform: 'uppercase' },
   winnerGlow: {
     position: 'absolute',
     top: -8,

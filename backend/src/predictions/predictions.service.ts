@@ -11,11 +11,13 @@ import { User } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { safePublicUser, SAFE_PUBLIC_USER_SELECT } from '../common/utils/safe-user-select';
 import { RoomsService } from '../rooms/rooms.service';
+import { RewardService } from '../rewards/reward.service';
+import { RewardReason } from '../rewards/reward.constants';
 import { isLatePredictionWindowOpen } from '../common/utils/late-prediction';
 import { featureFlags } from '../config/feature-flags';
 
-// v2: highest checkpoint reached; predictions locked after 80% are Rizz-tier only,
-// and none are accepted after 100%.
+// v2: highest checkpoint reached; predictions locked after 80% are Late-tier only
+// (accepted but no Aura), and none are accepted after 100%.
 async function maxReachedCheckpoint(
   prisma: PrismaService,
   roomId: string,
@@ -33,6 +35,7 @@ export class PredictionsService {
     private readonly prisma: PrismaService,
     private readonly auditService?: AuditService,
     private readonly roomsService?: RoomsService,
+    private readonly rewardService?: RewardService,
   ) {}
 
   async submit(roomId: string, dto: CreatePredictionDto, user: User) {
@@ -135,7 +138,7 @@ export class PredictionsService {
     }
 
     // v2 (checkpoint_leaderboard_v2): predictions placed after the 80% checkpoint are
-    // accepted but Rizz-tier only (excluded from winner/Aura); none accepted after 100%.
+    // accepted but Late-tier only (excluded from winner/Aura); none accepted after 100%.
     const v2 = featureFlags.checkpointLeaderboardV2;
     let auraEligible = true;
     let lockedCheckpoint: number | null = null;
@@ -207,6 +210,18 @@ export class PredictionsService {
             currentStreak: { increment: 1 },
             longestStreak: { increment: 1 },
           },
+        });
+
+        // Gems for the user's first completed prediction. Per-user idempotency key
+        // means every later completion is a no-op. Gems never affect prediction power.
+        await this.rewardService?.grant({
+          userId: user.userId,
+          rewardType: 'GEMS',
+          reasonCode: RewardReason.GEM_FIRST_PREDICTION,
+          sourceType: 'prediction',
+          sourceId: roomId,
+          idempotencyKey: `gem_first_pred:${user.userId}`,
+          tx,
         });
       } else {
         await tx.user.update({

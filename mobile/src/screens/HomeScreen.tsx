@@ -24,6 +24,8 @@ import {
   hasCompletedDashboardOnboarding,
 } from '../services/onboardingStorage';
 import AppHeader from '../components/AppHeader';
+import RewardChips from '../components/RewardChips';
+import { fetchRewardsMe, RewardsMe } from '../services/rewards';
 import BottomNav, { NavTab } from '../components/BottomNav';
 import CategoryTile from '../components/CategoryTile';
 import CategoryVotePrompt from '../components/CategoryVotePrompt';
@@ -100,9 +102,24 @@ export default function HomeScreen({ navigation, route }: Props) {
   const [todaysTea, setTodaysTea] = useState<TodaysTea | null>(null);
   const [teaVisible, setTeaVisible] = useState(false);
   const [votePromptCategory, setVotePromptCategory] = useState<CategoryTheme | null>(null);
+  const [rewards, setRewards] = useState<RewardsMe | null>(null);
   const teaTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const summary = dashboard?.summary;
   const userId = user?.userId;
+
+  useEffect(() => {
+    let active = true;
+    fetchRewardsMe()
+      .then((data) => {
+        if (active) setRewards(data);
+      })
+      .catch(() => {
+        // Rewards are non-critical on Home; leave chips hidden on failure.
+      });
+    return () => {
+      active = false;
+    };
+  }, [userId]);
   const userName = user?.name;
   const demoAccount = isDemoAccount(user);
   const showDemoHub = !demoAccount || demoHubExpanded;
@@ -452,6 +469,15 @@ export default function HomeScreen({ navigation, route }: Props) {
             }
             onProfile={() => navigation.navigate('Profile')}
           />
+
+          {rewards ? (
+            <RewardChips
+              aura={rewards.aura.balance}
+              rizz={rewards.rizz.balance}
+              gems={rewards.gems.balance}
+              variant="compact"
+            />
+          ) : null}
 
           <LinearGradient colors={['rgba(34,211,238,0.26)', 'rgba(236,72,153,0.16)', 'rgba(56,189,248,0.12)']} style={styles.heroPanel}>
             <View style={styles.heroGlowOrb} />

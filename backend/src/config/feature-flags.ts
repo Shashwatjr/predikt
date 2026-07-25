@@ -33,7 +33,7 @@ export const featureFlags = {
 
   // --- Arrival checkpoint leaderboard v2 (disabled = keep the 0/50/80/100 path) ---
   // Gates the time-based 20/40/60/80/90/100 checkpoint cadence, per-viewer blur,
-  // Rizz-tier late predictions, and the reworked start/lock/scoring rules. When
+  // Late-tier late predictions, and the reworked start/lock/scoring rules. When
   // OFF, the original client-progress checkpoint flow runs unchanged.
   checkpointLeaderboardV2: envFlag('CHECKPOINT_LEADERBOARD_V2', false),
 

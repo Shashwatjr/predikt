@@ -8,7 +8,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { EndRoomDto } from './dto/end-room.dto';
 import { ReachMilestoneDto } from './dto/reach-milestone.dto';
 import { StartRoomDto } from './dto/start-room.dto';
-import { User } from '@prisma/client';
+import { Prisma, User } from '@prisma/client';
 import { safePublicUser, SAFE_PUBLIC_USER_SELECT } from '../common/utils/safe-user-select';
 import { findBannedBettingTerms } from '../common/utils/content-policy';
 import { distanceMeters } from '../common/utils/geo';
@@ -20,6 +20,8 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { BadgeService } from '../badges/badge.service';
 import { featureFlags } from '../config/feature-flags';
 import { computeOracleGuess } from '../common/utils/oracle-guess';
+import { RewardService } from '../rewards/reward.service';
+import { RewardReason, GEM_BADGE_AMOUNTS } from '../rewards/reward.constants';
 
 const TERMINAL_STATUSES = ['completed', 'cancelled'] as const;
 const DEFAULT_START_DELAY_MINUTES = 3;
@@ -58,6 +60,7 @@ export class LifecycleService {
     private readonly auditService: AuditService,
     private readonly notificationsService: NotificationsService,
     private readonly badgeService: BadgeService,
+    private readonly rewardService: RewardService,
   ) {}
 
   async lockPredictions(roomId: string, user: User) {
@@ -677,7 +680,7 @@ export class LifecycleService {
     });
 
     // v2 (checkpoint_leaderboard_v2): only Aura-eligible guesses that are NOT the
-    // creator's own compete for rank/winner/Aura. Rizz-tier (locked after 80%) and the
+    // creator's own compete for rank/winner/Aura. Late-tier (locked after 80%) and the
     // creator's own guess are still recorded + shown, but earn nothing and can't win.
     const v2 = featureFlags.checkpointLeaderboardV2;
     const creatorId = milestone.room.creatorUserId;
@@ -841,15 +844,30 @@ export class LifecycleService {
           });
         }
 
+        // Clout stays a direct increment (frozen legacy currency). Aura now flows
+        // through RewardService so it is idempotent, ledgered, and mirrored into
+        // RewardAccount — this closes the historic double-grant-on-retry gap.
         await tx.user.update({
           where: { userId: prediction.userId },
           data: {
-            totalAura: { increment: totalAuraAwarded },
-            weeklyAura: { increment: totalAuraAwarded },
             cloutBalance: { increment: cloutAwarded },
             lifetimeCloutEarned: { increment: cloutAwarded },
           },
         });
+
+        if (totalAuraAwarded > 0) {
+          await this.rewardService.grant({
+            userId: prediction.userId,
+            rewardType: 'AURA',
+            reasonCode: RewardReason.AURA_MILESTONE_SCORE,
+            amount: totalAuraAwarded,
+            sourceType: 'milestone',
+            sourceId: milestoneId,
+            idempotencyKey: `aura_ms:${milestoneId}:${prediction.userId}`,
+            metadata: { roomId },
+            tx,
+          });
+        }
 
         if (tier.flexType) {
           await this.ensureFlex(tx, prediction.userId, tier.flexType, roomId, milestoneId);
@@ -879,7 +897,7 @@ export class LifecycleService {
       });
     }
 
-    // v2: persist accuracy for Rizz-tier + creator guesses so results can show and tag
+    // v2: persist accuracy for Late-tier + creator guesses so results can show and tag
     // them, but award no Aura/Clout and leave them out of the ranked leaderboard.
     for (const prediction of ineligiblePredictions) {
       const diffSeconds = Math.abs(
@@ -984,15 +1002,28 @@ export class LifecycleService {
         await tx.user.update({
           where: { userId: prediction.userId },
           data: {
-            totalAura: { increment: totalAuraAwarded },
-            weeklyAura: { increment: totalAuraAwarded },
             cloutBalance: { increment: cloutAwarded },
             lifetimeCloutEarned: { increment: cloutAwarded },
             winsCount: isWinner ? { increment: 1 } : undefined,
           },
         });
 
+        if (totalAuraAwarded > 0) {
+          await this.rewardService.grant({
+            userId: prediction.userId,
+            rewardType: 'AURA',
+            reasonCode: RewardReason.AURA_MC_SCORE,
+            amount: totalAuraAwarded,
+            sourceType: 'milestone',
+            sourceId: milestoneId,
+            idempotencyKey: `aura_mc:${milestoneId}:${prediction.userId}`,
+            metadata: { roomId },
+            tx,
+          });
+        }
+
         if (isWinner) {
+          await this.grantFirstWinGems(prediction.userId, roomId, tx);
           await this.ensureDropAwards(tx, roomId, prediction.userId, 'milestone_winner');
         }
       });
@@ -1077,6 +1108,7 @@ export class LifecycleService {
             winsCount: { increment: 1 },
           },
         });
+        await this.grantFirstWinGems(winner.userId, roomId, tx);
         await this.ensureFlex(tx, winner.userId, 'room_champion', roomId);
         await this.ensureDropAwards(tx, roomId, winner.userId, 'overall_winner');
       });
@@ -1084,6 +1116,7 @@ export class LifecycleService {
 
     await this.awardMilestoneMasterFlex(roomId);
     await this.awardResultDeclaredCredits(roomId, creatorUserId);
+    await this.grantRematchRizz(room, results);
     await this.notificationsService.notifyRoomMembers({
       roomId,
       type: 'result_ready',
@@ -1120,6 +1153,7 @@ export class LifecycleService {
         participantCount: await this.prisma.roomMembership.count({ where: { roomId, status: 'joined' } }),
         isNeutralClosure,
       });
+      await this.grantBadgeGems(awardedBadges, roomId);
     }
 
     const primaryBadge = awardedBadges[0]?.title ?? momentCard.titles[0];
@@ -1281,6 +1315,69 @@ export class LifecycleService {
         idempotencyKey,
         metadata: { label: 'Result declared credit bonus' },
       },
+    });
+  }
+
+  /**
+   * Gems for a user's very first win. The idempotency key is per-user, so every
+   * later win is a harmless no-op — this is what makes it a "first win" reward.
+   */
+  private async grantFirstWinGems(
+    userId: string,
+    roomId: string,
+    tx?: Prisma.TransactionClient,
+  ) {
+    await this.rewardService.grant({
+      userId,
+      rewardType: 'GEMS',
+      reasonCode: RewardReason.GEM_FIRST_WIN,
+      sourceType: 'room',
+      sourceId: roomId,
+      idempotencyKey: `gem_first_win:${userId}`,
+      tx,
+    });
+  }
+
+  /** Gems for selected milestone badges (allowlist in GEM_BADGE_AMOUNTS). */
+  private async grantBadgeGems(
+    badges: Array<{ userId: string; badgeKey: string }>,
+    roomId: string,
+  ) {
+    for (const badge of badges) {
+      const amount = GEM_BADGE_AMOUNTS[badge.badgeKey];
+      if (!amount) continue;
+      await this.rewardService.grant({
+        userId: badge.userId,
+        rewardType: 'GEMS',
+        reasonCode: RewardReason.GEM_MILESTONE_BADGE,
+        amount,
+        sourceType: 'badge',
+        sourceId: badge.badgeKey,
+        idempotencyKey: `gem_badge:${badge.userId}:${badge.badgeKey}`,
+        metadata: { roomId },
+      });
+    }
+  }
+
+  /**
+   * RIZZ for a creator whose rematch room completes with at least one other
+   * participant. Prediction outcomes never grant RIZZ — this is purely social.
+   */
+  private async grantRematchRizz(
+    room: { roomId: string; creatorUserId: string; rematchOfRoomId?: string | null } | null,
+    results: Array<{ userId: string }>,
+  ) {
+    if (!room?.rematchOfRoomId) return;
+    const hasOtherParticipant = results.some((r) => r.userId !== room.creatorUserId);
+    if (!hasOtherParticipant) return;
+    await this.rewardService.grant({
+      userId: room.creatorUserId,
+      rewardType: 'RIZZ',
+      reasonCode: RewardReason.RIZZ_REMATCH_COMPLETED,
+      sourceType: 'room',
+      sourceId: room.roomId,
+      idempotencyKey: `rizz_rematch:${room.roomId}`,
+      metadata: { rematchOfRoomId: room.rematchOfRoomId },
     });
   }
 
@@ -1529,8 +1626,6 @@ export class LifecycleService {
         where: { userId },
         data: {
           creditBalance: { increment: 2 },
-          totalAura: { increment: 5 },
-          weeklyAura: { increment: 5 },
         },
       });
       await this.prisma.creditLedger.create({
@@ -1544,6 +1639,16 @@ export class LifecycleService {
           idempotencyKey,
           metadata: { label: 'Journey closure participation recognition', reason },
         },
+      });
+      // Aura compensation now flows through RewardService (idempotent + ledgered).
+      await this.rewardService.grant({
+        userId,
+        rewardType: 'AURA',
+        reasonCode: RewardReason.AURA_COMPENSATION,
+        sourceType: 'room',
+        sourceId: roomId,
+        idempotencyKey: `aura_comp:${roomId}:${userId}`,
+        metadata: { reason },
       });
       await this.prisma.auraTransaction.create({
         data: {

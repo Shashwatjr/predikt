@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
+import { seedRewardRules } from '../src/rewards/seed-reward-rules';
 
 const prisma = new PrismaClient();
 const LOCAL_DEFAULT_ADMIN_EMAIL = 'admin@predikt.local';
@@ -528,6 +529,7 @@ async function main() {
 
   await seedPlans();
   await seedAdmin();
+  await seedRewardRules(prisma);
 
   console.log('Seed complete.');
   console.log('Users:', [creator, viewer1, viewer2, viewer3].map((user) => user.email));

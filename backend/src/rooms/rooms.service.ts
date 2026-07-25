@@ -15,6 +15,8 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { RewardService } from '../rewards/reward.service';
+import { RewardReason } from '../rewards/reward.constants';
 import {
   defaultSafetyDelayMinutes,
   safeMilestones,
@@ -406,6 +408,7 @@ export class RoomsService {
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
     private readonly notificationsService: NotificationsService,
+    private readonly rewardService: RewardService,
   ) {}
 
   async createFromRoute(dto: any, creator: RoomCreatorIdentity) {
@@ -1021,6 +1024,22 @@ export class RoomsService {
       },
     });
 
+    // RIZZ for the creator when a distinct participant joins. The per-(room,joiner)
+    // idempotency key means leave+rejoin farming grants nothing; rejectSelf blocks
+    // the creator joining their own room. Never tied to prediction outcomes.
+    if (role === 'participant') {
+      await this.rewardService.grant({
+        userId: room.creatorUserId,
+        rewardType: 'RIZZ',
+        reasonCode: RewardReason.RIZZ_UNIQUE_JOIN,
+        sourceType: 'membership',
+        sourceId: roomId,
+        idempotencyKey: `rizz_join:${roomId}:${requestingUser.userId}`,
+        actorUserId: requestingUser.userId,
+        metadata: { joinerUserId: requestingUser.userId },
+      });
+    }
+
     await this.notificationsService.create({
       userId: requestingUser.userId,
       roomId,
@@ -1221,6 +1240,21 @@ export class RoomsService {
       targetId: roomId,
       afterValue: { channel: dto.channel ?? null, category: room.category, mode: room.mode },
     });
+
+    // RIZZ for sharing a room. Phase 1 shares are client-asserted (no attribution
+    // yet), so this is capped hard: once per (room, sharer) via the idempotency key
+    // and a low daily cap on the rule. True verification is a follow-up.
+    if (dto.action === 'ROOM_INVITE_SHARED') {
+      await this.rewardService.grant({
+        userId: requestingUser.userId,
+        rewardType: 'RIZZ',
+        reasonCode: RewardReason.RIZZ_VERIFIED_SHARE,
+        sourceType: 'share',
+        sourceId: roomId,
+        idempotencyKey: `rizz_share:${roomId}:${requestingUser.userId}`,
+        metadata: { channel: dto.channel ?? null },
+      });
+    }
 
     return { success: true };
   }

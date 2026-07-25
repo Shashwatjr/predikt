@@ -35,7 +35,7 @@ describe('LifecycleService journey fairness', () => {
       },
     } as any;
 
-    const service = new LifecycleService(prisma, auditService, notificationsService, badgeService);
+    const service = new LifecycleService(prisma, auditService, notificationsService, badgeService, { grant: jest.fn().mockResolvedValue({ applied: true }) } as any);
     await service.start('room-1', { userId: 'u1' } as any, { startDelayMinutes: 3 });
 
     expect(update).toHaveBeenCalled();
@@ -80,7 +80,7 @@ describe('LifecycleService journey fairness', () => {
       auraTransaction: { create: jest.fn() },
     } as any;
 
-    const service = new LifecycleService(prisma, auditService, notificationsService, badgeService);
+    const service = new LifecycleService(prisma, auditService, notificationsService, badgeService, { grant: jest.fn().mockResolvedValue({ applied: true }) } as any);
     await service.evaluateRoomLifecycle('room-2', { actorType: 'system', actorId: null });
 
     expect(updateMany).toHaveBeenCalled();
@@ -132,7 +132,7 @@ describe('LifecycleService journey fairness', () => {
       auraTransaction: { create: jest.fn() },
     } as any;
 
-    const service = new LifecycleService(prisma, auditService, notificationsService, badgeService);
+    const service = new LifecycleService(prisma, auditService, notificationsService, badgeService, { grant: jest.fn().mockResolvedValue({ applied: true }) } as any);
     await service.evaluateRoomLifecycle('room-3', { actorType: 'system', actorId: null });
 
     expect(update).toHaveBeenCalledWith(
@@ -174,7 +174,7 @@ describe('LifecycleService journey fairness', () => {
       auraTransaction: { create: jest.fn() },
     } as any;
 
-    const service = new LifecycleService(prisma, auditService, notificationsService, badgeService);
+    const service = new LifecycleService(prisma, auditService, notificationsService, badgeService, { grant: jest.fn().mockResolvedValue({ applied: true }) } as any);
     await service.cancelJourney('room-4', { userId: 'host-3' } as any, { reasonCode: 'other' });
 
     expect(prisma.userReliabilityLedger.create).toHaveBeenCalledWith(
