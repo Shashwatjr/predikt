@@ -1683,6 +1683,11 @@ export default function CreateRoomScreen({ navigation, route }: Props) {
                   placeholder="Manual courier or seller"
                 />
               ) : null}
+              <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Vendor ETA & your prediction</Text>
+              <Text style={[styles.lockTimeHint, { color: colors.textSecondary }]}>
+                The vendor ETA is the Oracle Bot benchmark everyone races. Your predicted
+                arrival is your own guess — it locks with everyone else&apos;s.
+              </Text>
               {providerTimingMode(
                 deliveryProviderPreset === 'Other' ? deliveryProviderOther.trim() || 'Other' : deliveryProviderPreset,
               ) === 'time_only' ? (
