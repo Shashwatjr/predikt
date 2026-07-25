@@ -1,6 +1,5 @@
 import {
   BadRequestException,
-  ConflictException,
   ForbiddenException,
   Injectable,
   Logger,
@@ -469,26 +468,6 @@ export class RoomsService {
     const visibility = dto.visibility ?? 'invite_only';
     const roomCategory = dto.roomCategory ?? 'journey';
     const category = normalizeCategory(dto);
-
-    // Exclusive-resource rule: a location-tracked room ties up the creator's live
-    // GPS (they can't be on two journeys at once), so only one may be active at a
-    // time. Non-GPS rooms (delivery, weather, custom, …) run unlimited in parallel.
-    if (usesExclusiveLocationResource(roomCategory)) {
-      const activeTracked = await this.prisma.predictionRoom.findFirst({
-        where: {
-          creatorUserId: creator.userId,
-          status: { notIn: ['completed', 'cancelled'] },
-          roomCategory: { in: [...GPS_TRACKED_ROOM_CATEGORIES] as never },
-        },
-        select: { roomId: true, roomTitle: true },
-      });
-      if (activeTracked) {
-        throw new ConflictException(
-          `You're already tracking a live journey ("${activeTracked.roomTitle}"). ` +
-            'Finish or cancel it before starting another location-tracked room — non-GPS rooms (delivery, weather, custom) can run in parallel.',
-        );
-      }
-    }
 
     const oracleBotPrediction = buildOracleBotPrediction(dto);
     const isSponsored = dto.isSponsored ?? false;

@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { RoomsService, usesExclusiveLocationResource } from './rooms.service';
 
 describe('RoomsService memberships', () => {
@@ -51,39 +51,39 @@ describe('RoomsService memberships', () => {
     );
   });
 
-  it('blocks a second active location-tracked room by the same creator', async () => {
+  it('allows a second active location-tracked room by the same creator', async () => {
     const room = buildRoom();
     const prisma = {
       predictionRoom: {
         findUnique: jest.fn().mockResolvedValue(null),
-        // An active room already exists in this creator's category.
         findFirst: jest.fn().mockResolvedValue({ roomId: 'room-existing', roomTitle: 'Morning Commute' }),
-        create: jest.fn(),
+        create: jest.fn().mockResolvedValue({
+          ...room,
+          creator: {},
+          milestones: [],
+          journeyRoute: null,
+        }),
       },
+      roomMembership: { upsert: jest.fn() },
+      user: { update: jest.fn().mockResolvedValue({ creditBalance: 15 }) },
+      creditLedger: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },
+      $transaction: jest.fn(async (callback: any) => callback(prisma)),
     } as any;
     const service = new RoomsService(prisma, auditService, notificationsService, { grant: jest.fn().mockResolvedValue({ applied: true }) } as any);
 
-    await expect(
-      service.create(
-        {
-          roomTitle: room.roomTitle,
-          eventType: room.eventType,
-          startingPointLabel: room.startingPointLabel,
-          destinationLabel: room.destinationLabel,
-          predictionCloseTime: room.predictionCloseTime.toISOString(),
-        } as any,
-        { userId: 'creator-1' },
-      ),
-    ).rejects.toBeInstanceOf(ConflictException);
-    expect(prisma.predictionRoom.create).not.toHaveBeenCalled();
-    expect(prisma.predictionRoom.findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
-          creatorUserId: 'creator-1',
-          status: { notIn: ['completed', 'cancelled'] },
-        }),
-      }),
+    await service.create(
+      {
+        roomTitle: room.roomTitle,
+        eventType: room.eventType,
+        startingPointLabel: room.startingPointLabel,
+        destinationLabel: room.destinationLabel,
+        predictionCloseTime: room.predictionCloseTime.toISOString(),
+      } as any,
+      { userId: 'creator-1' },
     );
+
+    expect(prisma.predictionRoom.findFirst).not.toHaveBeenCalled();
+    expect(prisma.predictionRoom.create).toHaveBeenCalled();
   });
 
   it('classifies only physically-tracked categories as exclusive-location', () => {
