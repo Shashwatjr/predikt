@@ -6,6 +6,7 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { User } from '@prisma/client';
 import { ShareRoomEventDto } from './dto/share-room-event.dto';
+import { JoinRoomDto } from './dto/join-room.dto';
 
 @Controller('rooms')
 export class RoomsController {
@@ -27,8 +28,12 @@ export class RoomsController {
   @UseGuards(JwtAuthGuard)
   @Post(':roomId/join')
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
-  join(@Param('roomId') roomId: string, @CurrentUser() user: User) {
-    return this.roomsService.join(roomId, user);
+  join(
+    @Param('roomId') roomId: string,
+    @CurrentUser() user: User,
+    @Body() dto: JoinRoomDto = {},
+  ) {
+    return this.roomsService.join(roomId, user, dto.forwardedBy);
   }
 
   @UseGuards(JwtAuthGuard)

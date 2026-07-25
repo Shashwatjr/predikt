@@ -3,6 +3,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { CreateRoomDto } from './dto/create-room.dto';
@@ -404,6 +405,8 @@ function safeRoomSummary(room: any) {
 
 @Injectable()
 export class RoomsService {
+  private readonly logger = new Logger(RoomsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
@@ -963,7 +966,7 @@ export class RoomsService {
     };
   }
 
-  async join(roomId: string, requestingUser: User) {
+  async join(roomId: string, requestingUser: User, forwardedBy?: string | null) {
     const room = await this.prisma.predictionRoom.findUnique({
       where: { roomId },
       select: {
@@ -1083,6 +1086,10 @@ export class RoomsService {
       });
     }
 
+    if (role === 'participant') {
+      await this.recordInviteForward(room, requestingUser, forwardedBy);
+    }
+
     return {
       roomId,
       membershipId: membership.membershipId,
@@ -1101,6 +1108,80 @@ export class RoomsService {
       lateJoinPredictionWindowEndsAt: getLateJoinPredictionWindowEndsAt(room)?.toISOString() ?? null,
       lateJoinPredictionArrivalCutoffAt: getLateJoinPredictionArrivalCutoffAt(room)?.toISOString() ?? null,
     };
+  }
+
+  /**
+   * Forward-share tracking: when a guest joins via a link forwarded by a participant
+   * who is not the creator, record the chain (originalInviter=creator, forwarder,
+   * joinedGuest) and give the creator an in-app "<forwarder> invited N more friends
+   * to your room" banner/notification. In-app only, no push infra. Best-effort:
+   * never blocks or fails the join.
+   */
+  private async recordInviteForward(
+    room: { roomId: string; roomTitle: string; creatorUserId: string },
+    joinedGuest: User,
+    forwardedBy?: string | null,
+  ) {
+    try {
+      const forwarderId = (forwardedBy ?? '').trim();
+      // A forward is only meaningful when a real, distinct, non-creator participant
+      // forwarded the link to a distinct guest.
+      if (
+        !forwarderId ||
+        forwarderId === room.creatorUserId ||
+        forwarderId === joinedGuest.userId
+      ) {
+        return;
+      }
+
+      // The forwarder must themselves be a member of this room.
+      const forwarder = await this.prisma.user.findUnique({
+        where: { userId: forwarderId },
+        select: { userId: true, name: true, prediktHandle: true },
+      });
+      if (!forwarder) return;
+      const forwarderIsMember = await this.prisma.roomMembership.findUnique({
+        where: { roomId_userId: { roomId: room.roomId, userId: forwarderId } },
+        select: { status: true },
+      });
+      if (!forwarderIsMember || forwarderIsMember.status === 'blocked') return;
+
+      // One forward row per (room, joined guest). Skip if already recorded.
+      const created = await this.prisma.inviteForward.upsert({
+        where: {
+          roomId_joinedGuestUserId: { roomId: room.roomId, joinedGuestUserId: joinedGuest.userId },
+        },
+        create: {
+          roomId: room.roomId,
+          originalInviterUserId: room.creatorUserId,
+          forwarderUserId: forwarderId,
+          joinedGuestUserId: joinedGuest.userId,
+        },
+        update: {},
+        select: { createdAt: true },
+      });
+      // Only notify on a fresh record (createdAt within the last few seconds).
+      if (Date.now() - created.createdAt.getTime() > 5000) return;
+
+      const forwardCount = await this.prisma.inviteForward.count({
+        where: { roomId: room.roomId, forwarderUserId: forwarderId },
+      });
+      const forwarderLabel = forwarder.prediktHandle || forwarder.name || 'A friend';
+      const friendWord = forwardCount === 1 ? 'friend' : 'friends';
+      await this.notificationsService.create({
+        userId: room.creatorUserId,
+        roomId: room.roomId,
+        type: 'invite_forwarded',
+        title: 'Your room is spreading',
+        body: `${forwarderLabel} invited ${forwardCount} more ${friendWord} to your room.`,
+        severity: 'info',
+        actionLabel: 'View room',
+        actionTarget: `room:${room.roomId}:live`,
+        metadata: { forwarderUserId: forwarderId, forwardCount },
+      });
+    } catch (error) {
+      this.logger.warn(`recordInviteForward failed for room ${room.roomId}: ${String(error)}`);
+    }
   }
 
   async leave(roomId: string, requestingUser: User) {
