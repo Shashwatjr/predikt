@@ -300,39 +300,42 @@ model User {
   createdAt                      DateTime  @default(now()) @map("created_at")
   updatedAt                      DateTime  @updatedAt @map("updated_at")
 
-  rooms                PredictionRoom[]        @relation("creator_rooms")
-  milestonePredictions MilestonePrediction[]
-  locationEvents       LiveLocationEvent[]
-  auraTransactions     AuraTransaction[]
-  cloutTransactions    CloutTransaction[]
-  roomResults          RoomResult[]
-  userDrops            UserDrop[]
-  userFlexes           UserFlex[]
-  creatorProfile       CreatorProfile?
-  createdCampaigns     Campaign[]              @relation("creator_campaigns")
-  consentRecords       ConsentRecord[]
-  privacyRequests      PrivacyRequest[]        @relation("privacy_request_user")
-  creditLedger         CreditLedger[]
-  sessions             UserSession[]
-  reportsFiled         Report[]                @relation("reporter_reports")
-  reportsReceived      Report[]                @relation("target_user_reports")
-  blockedUsers         UserBlock[]             @relation("user_blocks")
-  blockedByUsers       UserBlock[]             @relation("user_blocked_by")
-  roomDisputes         RoomDispute[]
-  resultReactions      ResultReaction[]
-  following            Follow[]                @relation("Following")
-  followers            Follow[]                @relation("Followers")
-  dailySpinClaims      DailySpinClaim[]
-  activityEvents       ActivityEvent[]
-  feedbackSubmissions  UserFeedback[]
-  roomPreferences      UserRoomPreference[]
-  reliabilityLedger    UserReliabilityLedger[]
-  roomMemberships      RoomMembership[]
-  notifications        UserNotification[]
-  roomCommentaries     RoomCommentary[]        @relation("generatedBy")
-  userBadges           UserBadge[]
-  rewardAccount        RewardAccount?
-  rewardLedgerEntries  RewardLedgerEntry[]
+  rooms                    PredictionRoom[]        @relation("creator_rooms")
+  milestonePredictions     MilestonePrediction[]
+  locationEvents           LiveLocationEvent[]
+  auraTransactions         AuraTransaction[]
+  cloutTransactions        CloutTransaction[]
+  roomResults              RoomResult[]
+  userDrops                UserDrop[]
+  userFlexes               UserFlex[]
+  creatorProfile           CreatorProfile?
+  createdCampaigns         Campaign[]              @relation("creator_campaigns")
+  consentRecords           ConsentRecord[]
+  privacyRequests          PrivacyRequest[]        @relation("privacy_request_user")
+  creditLedger             CreditLedger[]
+  sessions                 UserSession[]
+  reportsFiled             Report[]                @relation("reporter_reports")
+  reportsReceived          Report[]                @relation("target_user_reports")
+  blockedUsers             UserBlock[]             @relation("user_blocks")
+  blockedByUsers           UserBlock[]             @relation("user_blocked_by")
+  roomDisputes             RoomDispute[]
+  resultReactions          ResultReaction[]
+  following                Follow[]                @relation("Following")
+  followers                Follow[]                @relation("Followers")
+  dailySpinClaims          DailySpinClaim[]
+  activityEvents           ActivityEvent[]
+  feedbackSubmissions      UserFeedback[]
+  roomPreferences          UserRoomPreference[]
+  reliabilityLedger        UserReliabilityLedger[]
+  roomMemberships          RoomMembership[]
+  notifications            UserNotification[]
+  roomCommentaries         RoomCommentary[]        @relation("generatedBy")
+  userBadges               UserBadge[]
+  rewardAccount            RewardAccount?
+  rewardLedgerEntries      RewardLedgerEntry[]
+  inviteForwardsOriginated InviteForward[]         @relation("invite_forward_origin")
+  inviteForwardsMade       InviteForward[]         @relation("invite_forward_forwarder")
+  inviteForwardsJoined     InviteForward[]         @relation("invite_forward_joined")
 
   @@map("users")
 }
@@ -415,6 +418,11 @@ model PredictionRoom {
   autoCloseAt              DateTime?                @map("auto_close_at")
   noStartCutoffAt          DateTime?                @map("no_start_cutoff_at")
   arrivalConfirmedAt       DateTime?                @map("arrival_confirmed_at")
+  // Prediction lock window (guest-predict UX): predictionsLockedAt is set when the
+  // 60s window closes or someone hits "Lock now"; revealedAt is when blurred
+  // predictions become visible to all participants. Both null until the room locks.
+  predictionsLockedAt      DateTime?                @map("predictions_locked_at")
+  revealedAt               DateTime?                @map("revealed_at")
   cancelledAt              DateTime?                @map("cancelled_at")
   autoClosedAt             DateTime?                @map("auto_closed_at")
   abandonedAt              DateTime?                @map("abandoned_at")
@@ -460,6 +468,8 @@ model PredictionRoom {
   notifications        UserNotification[]
   roomCommentaries     RoomCommentary[]
   userBadges           UserBadge[]
+  milestoneSnapshots   RoomMilestoneSnapshot[]
+  inviteForwards       InviteForward[]
 
   @@map("prediction_rooms")
 }
@@ -592,6 +602,10 @@ model MilestonePrediction {
   // Aura leaderboard. lockedCheckpoint records the checkpoint % at which it locked.
   auraEligible                Boolean   @default(true) @map("aura_eligible")
   lockedCheckpoint            Int?      @map("locked_checkpoint")
+  // Optional one-line "hot take" shown next to the entry on the leaderboard and
+  // The Tea. Max 80 chars (enforced at the DTO). Guardrail-checked before Chaos
+  // Bot may quote it verbatim.
+  hotTake                     String?   @map("hot_take")
 
   milestone RoomMilestone  @relation(fields: [milestoneId], references: [milestoneId])
   room      PredictionRoom @relation(fields: [roomId], references: [roomId])
@@ -694,6 +708,50 @@ model UserReliabilityLedger {
   room PredictionRoom? @relation(fields: [roomId], references: [roomId])
 
   @@map("user_reliability_ledger")
+}
+
+// Server-side ETA snapshot captured at an elapsed-time checkpoint (20/40/60/80/90%).
+// Backs dynamic milestone recomputation. Google Maps ETA re-reads are billable and
+// capped per journey; source records whether this snapshot came from "google" or a
+// time-based "fallback" extrapolation. Never exposes raw lat/lng to viewers.
+model RoomMilestoneSnapshot {
+  snapshotId        String   @id @default(uuid()) @map("snapshot_id")
+  roomId            String   @map("room_id")
+  checkpointPercent Int      @map("checkpoint_percent")
+  capturedAt        DateTime @default(now()) @map("captured_at")
+  etaSeconds        Int?     @map("eta_seconds")
+  remainingMeters   Int?     @map("remaining_meters")
+  source            String?  @map("source")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  room PredictionRoom @relation(fields: [roomId], references: [roomId])
+
+  @@unique([roomId, checkpointPercent])
+  @@index([roomId, capturedAt])
+  @@map("room_milestone_snapshots")
+}
+
+// Records the forward-share chain: when a guest joins via a link forwarded by a
+// participant who is not the original creator, we record who forwarded it. Powers
+// the creator's in-app "X invited N more friends" banner/notification. In-app only.
+model InviteForward {
+  inviteForwardId       String   @id @default(uuid()) @map("invite_forward_id")
+  roomId                String   @map("room_id")
+  originalInviterUserId String   @map("original_inviter_user_id")
+  forwarderUserId       String   @map("forwarder_user_id")
+  joinedGuestUserId     String   @map("joined_guest_user_id")
+  createdAt             DateTime @default(now()) @map("created_at")
+
+  room            PredictionRoom @relation(fields: [roomId], references: [roomId])
+  originalInviter User           @relation("invite_forward_origin", fields: [originalInviterUserId], references: [userId])
+  forwarder       User           @relation("invite_forward_forwarder", fields: [forwarderUserId], references: [userId])
+  joinedGuest     User           @relation("invite_forward_joined", fields: [joinedGuestUserId], references: [userId])
+
+  @@unique([roomId, joinedGuestUserId])
+  @@index([roomId])
+  @@index([originalInviterUserId])
+  @@index([forwarderUserId])
+  @@map("invite_forwards")
 }
 
 model LiveLocationEvent {
