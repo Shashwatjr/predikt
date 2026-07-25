@@ -73,19 +73,29 @@ function splitLocalDateTimeInput(value: string) {
   };
 }
 
+// A date + time picker. Labels are configurable because this widget is reused for
+// three distinct fields in the Delivery ETA form (vendor ETA, the creator's own
+// prediction, and the guesses-lock time). Hardcoding "Guesses lock" made all three
+// render identically, which read as a single widget duplicated three times.
 function LockDateTimeField({
   value,
   onChange,
+  dateLabel = 'Guesses lock date',
+  timeLabel = 'Guesses lock time',
+  hint = 'Local time · HH MM SS',
 }: {
   value: string;
   onChange: (next: string) => void;
+  dateLabel?: string;
+  timeLabel?: string;
+  hint?: string;
 }) {
   const parsed = splitLocalDateTimeInput(value);
 
   return (
     <View style={styles.lockFieldWrap}>
       <TextInputField
-        label="Guesses lock date"
+        label={dateLabel}
         value={parsed.datePart}
         onChangeText={(nextDate) => {
           const safeDate = nextDate.replace(/[^0-9-]/g, '').slice(0, 10);
@@ -96,14 +106,14 @@ function LockDateTimeField({
         autoCapitalize="none"
       />
       <View style={styles.lockTimeBlock}>
-        <Text style={styles.lockTimeLabel}>Guesses lock time</Text>
+        <Text style={styles.lockTimeLabel}>{timeLabel}</Text>
         <TimePickerSegments
           value={parsed.timePart}
           onChange={(nextTime) => onChange(mergeLocalDateAndTime(parsed.datePart, nextTime))}
           showSeconds
           showAmPm
         />
-        <Text style={styles.lockTimeHint}>Local time · HH MM SS</Text>
+        <Text style={styles.lockTimeHint}>{hint}</Text>
       </View>
     </View>
   );
@@ -1679,6 +1689,9 @@ export default function CreateRoomScreen({ navigation, route }: Props) {
                 <LockDateTimeField
                   value={deliveryVendorEtaDateTime}
                   onChange={setDeliveryVendorEtaDateTime}
+                  dateLabel="Vendor ETA date"
+                  timeLabel="Vendor's stated ETA"
+                  hint="Read this off your delivery app · HH MM"
                 />
               ) : (
                 <View style={styles.advancedStack}>
@@ -1712,6 +1725,9 @@ export default function CreateRoomScreen({ navigation, route }: Props) {
                     <LockDateTimeField
                       value={deliveryVendorEtaDateTime}
                       onChange={setDeliveryVendorEtaDateTime}
+                      dateLabel="Vendor ETA date"
+                      timeLabel="Vendor's stated ETA"
+                      hint="Read this off your delivery app · HH MM"
                     />
                   ) : null}
                 </View>
@@ -1719,6 +1735,9 @@ export default function CreateRoomScreen({ navigation, route }: Props) {
               <LockDateTimeField
                 value={placeholderPredictionValue}
                 onChange={setPlaceholderPredictionValue}
+                dateLabel="Your prediction date"
+                timeLabel="Your predicted arrival"
+                hint="Your own guess · locks with everyone else's · HH MM"
               />
             </View>
           ) : (
