@@ -46,6 +46,35 @@ describe('LifecycleService journey fairness', () => {
     expect(update.mock.calls[0][0].data.autoCloseAt).toBeInstanceOf(Date);
   });
 
+  it('makes a zero-delay journey visible immediately', async () => {
+    const update = jest.fn().mockResolvedValue({
+      roomId: 'room-now',
+      autoCloseAt: new Date('2026-07-10T12:00:00.000Z'),
+    });
+    const prisma = {
+      predictionRoom: {
+        findUnique: jest.fn().mockResolvedValue({
+          roomId: 'room-now',
+          creatorUserId: 'u1',
+          status: 'predictions_locked',
+          roomCategory: 'travel',
+          expectedDurationSeconds: 1800,
+          gracePeriodSeconds: 900,
+          journeyScheduledStartAt: null,
+          noStartCutoffAt: null,
+          journeyRoute: { estimatedDurationSeconds: 1800 },
+        }),
+        update,
+      },
+    } as any;
+
+    const service = new LifecycleService(prisma, auditService, notificationsService, badgeService, { grant: jest.fn().mockResolvedValue({ applied: true }) } as any);
+    await service.start('room-now', { userId: 'u1' } as any, { startDelayMinutes: 0 });
+
+    expect(update).toHaveBeenCalled();
+    expect(update.mock.calls[0][0].data.startTime).toEqual(update.mock.calls[0][0].data.visibleMovementStartTime);
+  });
+
   it('marks a never-started room as abandoned after the cutoff', async () => {
     const updateMany = jest.fn();
     const update = jest.fn();

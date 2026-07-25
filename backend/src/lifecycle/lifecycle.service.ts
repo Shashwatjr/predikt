@@ -157,7 +157,9 @@ export class LifecycleService {
     );
 
     const visibleMovementStartTime = isLocationTracked
-      ? new Date(scheduledStartTime.getTime() + START_VISIBILITY_DELAY_MS)
+      ? startDelayMinutes <= 0
+        ? scheduledStartTime
+        : new Date(scheduledStartTime.getTime() + START_VISIBILITY_DELAY_MS)
       : scheduledStartTime;
 
     const updated = await this.prisma.predictionRoom.update({

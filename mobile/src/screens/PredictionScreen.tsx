@@ -1,11 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, View, Text, StyleSheet, ScrollView, TouchableOpacity, Share, Linking } from 'react-native';
+import * as Location from 'expo-location';
 import { appAlert } from '../utils/appAlert';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
 import { RootStackParamList } from '../navigation/types';
 import PrimaryButton from '../components/PrimaryButton';
 import { useTheme } from '../context/ThemeContext';
+import { useAuth } from '../context/AuthContext';
 import api, { getApiErrorMessage } from '../services/api';
 import InfoTip from '../components/InfoTip';
 import SectionHeader from '../components/SectionHeader';
@@ -47,6 +49,7 @@ function benchmarkChipLabel(b: Benchmark): string {
 
 export default function PredictionScreen({ navigation, route }: Props) {
   const { colors } = useTheme();
+  const { user } = useAuth();
   const { roomId, room: roomParam, editPredictionId, returnToRoomCreated } = route.params;
   const isEditing = !!editPredictionId;
   const [room, setRoom] = useState<any>(roomParam);
@@ -57,6 +60,10 @@ export default function PredictionScreen({ navigation, route }: Props) {
   const [nowTick, setNowTick] = useState<number>(() => Date.now());
   const category = room?.category ?? room?.templateKey ?? roomParam?.category ?? roomParam?.templateKey;
   const isGenericRoom = category === 'open_prediction';
+  const isCreator = !!user?.userId && !!(room?.creatorUserId ?? roomParam?.creatorUserId) && user.userId === (room?.creatorUserId ?? roomParam?.creatorUserId);
+  const isTrackedJourneyRoom = ['journey', 'milestone_journey', 'travel', 'fitness'].includes(
+    String(room?.roomCategory ?? roomParam?.roomCategory ?? ''),
+  );
 
   const answerType = room?.answerType ?? 'exact_time';
   const isArrival = answerType === 'exact_time';
@@ -188,6 +195,30 @@ export default function PredictionScreen({ navigation, route }: Props) {
     return predicted.toISOString();
   }
 
+  async function autoStartJourneyIfNeeded() {
+    if (isEditing || !isCreator || !isTrackedJourneyRoom) return false;
+    const roomStatus = String(room?.status ?? roomParam?.status ?? '');
+    if (roomStatus === 'live') return true;
+
+    try {
+      const permission = await Location.requestForegroundPermissionsAsync();
+      const coords = permission.status === 'granted' ? await Location.getCurrentPositionAsync({}) : null;
+      await api.post(`/rooms/${roomId}/journey/start`, {
+        startDelayMinutes: 0,
+        location: coords
+          ? { lat: coords.coords.latitude, lng: coords.coords.longitude }
+          : undefined,
+      });
+      return true;
+    } catch (error) {
+      appAlert(
+        'Prediction saved',
+        getApiErrorMessage(error, 'Your prediction is in, but we could not start the journey automatically. You can still start it from the live room.'),
+      );
+      return false;
+    }
+  }
+
   async function handleSubmit() {
     if (lockedOut) {
       return appAlert(
@@ -223,7 +254,12 @@ export default function PredictionScreen({ navigation, route }: Props) {
       Animated.sequence([
         Animated.timing(confirmScale, { toValue: 1.05, duration: 120, useNativeDriver: true }),
         Animated.timing(confirmScale, { toValue: 1, duration: 120, useNativeDriver: true }),
-      ]).start(() => {
+      ]).start(async () => {
+        const startedJourney = await autoStartJourneyIfNeeded();
+        if (startedJourney) {
+          navigation.navigate('LiveRoom', { roomId, isCreator: true, justPredicted: true });
+          return;
+        }
         if (returnToRoomCreated && !isEditing) {
           navigation.navigate('RoomCreated', { room });
           return;
