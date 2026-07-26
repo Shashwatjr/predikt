@@ -47,7 +47,6 @@ type Props = {
 
 type DemoChoice = 'Yes' | 'No' | 'Exact time';
 type HomeTab = NavTab;
-type ActivePredictionFilter = 'all' | 'needs_prediction' | 'live_now' | 'result_ready' | 'created_by_me';
 type CreateRoomPresetCategory = NonNullable<NonNullable<RootStackParamList['CreateRoom']>['presetCategory']>;
 
 const fallbackLiveRooms = [
@@ -97,7 +96,6 @@ export default function HomeScreen({ navigation, route }: Props) {
   const [demoHubExpanded, setDemoHubExpanded] = useState(false);
   const [demoChoice, setDemoChoice] = useState<DemoChoice>('Yes');
   const [activeTab, setActiveTab] = useState<HomeTab>('Home');
-  const [activePredictionFilter, setActivePredictionFilter] = useState<ActivePredictionFilter>('all');
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [todaysTea, setTodaysTea] = useState<TodaysTea | null>(null);
   const [teaVisible, setTeaVisible] = useState(false);
@@ -251,15 +249,15 @@ export default function HomeScreen({ navigation, route }: Props) {
     };
   }, []);
 
+  // Single default view — no filter tabs. Active rooms first, completed after,
+  // preserving the existing pin/displayOrder within each group (stable sort).
   const filteredActivePredictions = useMemo(() => {
-    return activePredictions.filter((room) => {
-      if (activePredictionFilter === 'needs_prediction') return !room.hasSubmittedPrediction;
-      if (activePredictionFilter === 'live_now') return room.status === 'live';
-      if (activePredictionFilter === 'result_ready') return room.status === 'result_ready';
-      if (activePredictionFilter === 'created_by_me') return room.isCreator;
-      return true;
-    });
-  }, [activePredictionFilter, activePredictions]);
+    const isCompleted = (status?: string) =>
+      ['result_ready', 'completed', 'reached', 'cancelled'].includes(String(status));
+    return [...activePredictions].sort(
+      (a, b) => (isCompleted(a.status) ? 1 : 0) - (isCompleted(b.status) ? 1 : 0),
+    );
+  }, [activePredictions]);
   const liveRooms = useMemo(() => {
     const activeRooms = activePredictions;
     if (activeRooms.length === 0) return [];
@@ -617,27 +615,6 @@ export default function HomeScreen({ navigation, route }: Props) {
 
           {showDemoHub ? (
           <>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
-            {[
-              ['all', 'All'],
-              ['needs_prediction', 'Needs my prediction'],
-              ['live_now', 'Live now'],
-              ['result_ready', 'Result ready'],
-              ['created_by_me', 'Created by me'],
-            ].map(([value, label]) => {
-              const active = activePredictionFilter === value;
-              return (
-                <TouchableOpacity
-                  key={value}
-                  style={[styles.filterChip, active && styles.filterChipActive]}
-                  onPress={() => setActivePredictionFilter(value as ActivePredictionFilter)}
-                >
-                  <Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>{label}</Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-
           {filteredActivePredictions.length > 0 ? (
             <View style={styles.activePredictionList}>
               {filteredActivePredictions.map((room, index) => (
@@ -1026,18 +1003,6 @@ const styles = StyleSheet.create({
   liveRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   liveDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: '#22D3EE' },
   liveText: { color: '#22D3EE', fontSize: 10, fontWeight: '900', letterSpacing: 1 },
-  filterRow: { gap: 8, paddingVertical: 6 },
-  filterChip: {
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.16)',
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  filterChipActive: { backgroundColor: 'rgba(34,211,238,0.28)', borderColor: 'rgba(34,211,238,0.65)' },
-  filterChipText: { color: 'rgba(255,255,255,0.72)', fontSize: 11, fontWeight: '800' },
-  filterChipTextActive: { color: '#fff' },
   activePredictionList: { gap: 10 },
   demoHubHint: {
     borderRadius: 14,
