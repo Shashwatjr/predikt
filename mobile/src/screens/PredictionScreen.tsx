@@ -202,7 +202,9 @@ export default function PredictionScreen({ navigation, route }: Props) {
   }
 
   async function autoStartJourneyIfNeeded() {
-    if (isEditing || !isCreator || !isTrackedJourneyRoom) return false;
+    // Creator setup prediction (returnToRoomCreated) must NOT start the journey — the
+    // creator lands on RoomCreated to share the invite first, then starts driving later.
+    if (isEditing || !isCreator || !isTrackedJourneyRoom || returnToRoomCreated) return false;
     const roomStatus = String(room?.status ?? roomParam?.status ?? '');
     if (roomStatus === 'live') return true;
 

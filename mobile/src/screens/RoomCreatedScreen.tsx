@@ -8,7 +8,7 @@ import PrimaryButton from '../components/PrimaryButton';
 import { useTheme } from '../context/ThemeContext';
 import TextInputField from '../components/TextInputField';
 import api from '../services/api';
-import { buildManualWhatsAppUrl, buildSharePayload, isValidManualPhone } from '../utils/shareRoom';
+import { buildManualWhatsAppUrl, buildSharePayload, isValidManualPhone, shareViaWebShareApi } from '../utils/shareRoom';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'RoomCreated'>;
@@ -99,6 +99,22 @@ export default function RoomCreatedScreen({ navigation, route }: Props) {
   }
 
   async function invitePeople() {
+    // Multi-recipient: on web prefer the Web Share API (pick a WhatsApp group / any
+    // target); if unsupported or cancelled, fall back to copying the invite link so
+    // the creator can paste it into their group chat.
+    if (Platform.OS === 'web') {
+      const shared = await shareViaWebShareApi({
+        shareTitle: `Join ${sharePayload.shareTitle}`,
+        shareText: sharePayload.shareText,
+        inviteUrl: sharePayload.inviteUrl,
+      });
+      if (shared) {
+        await trackShare('room_shared', 'web_share');
+        return;
+      }
+      await copyText('Invite link', sharePayload.inviteUrl);
+      return;
+    }
     await Share.share({
       message: sharePayload.shareText,
       title: `Join ${sharePayload.shareTitle}`,
