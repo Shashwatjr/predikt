@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Share, Linking } from 'react-native';
+import { Animated, View, Text, StyleSheet, ScrollView, Share, Linking } from 'react-native';
 import * as Location from 'expo-location';
 import { appAlert } from '../utils/appAlert';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -11,19 +11,13 @@ import { useAuth } from '../context/AuthContext';
 import api, { getApiErrorMessage } from '../services/api';
 import InfoTip from '../components/InfoTip';
 import SectionHeader from '../components/SectionHeader';
-import TimePickerSegments from '../components/TimePickerSegments';
+import ArrivalPredictionCard from '../components/ArrivalPredictionCard';
 import PredictionInputDuration from '../components/PredictionInputDuration';
 import PredictionInputYesNo from '../components/PredictionInputYesNo';
 import RoomPredictionList, { RoomPredictionEntry } from '../components/RoomPredictionList';
 import { buildSharePayload } from '../utils/shareRoom';
-import {
-  Benchmark,
-  deriveArrivalBenchmarks,
-  diffLabel,
-  formatClock,
-  formatDateLabel,
-} from '../utils/benchmarks';
-import { botGuessTeaser } from '../utils/botVoice';
+import { formatClock, formatDateLabel } from '../utils/benchmarks';
+import { useArrivalPredictionState } from '../hooks/useArrivalPredictionState';
 import { layout, palette, radius, spacing } from '../theme/designSystem';
 
 type Props = {
@@ -32,20 +26,6 @@ type Props = {
 };
 
 const durationChoices = [20, 30, 45, 60];
-const ADJUSTMENTS: Array<{ label: string; seconds: number }> = [
-  { label: '−1m', seconds: -60 },
-  { label: '−30s', seconds: -30 },
-  { label: '+30s', seconds: 30 },
-  { label: '+1m', seconds: 60 },
-  { label: '+2m', seconds: 120 },
-  { label: '+5m', seconds: 300 },
-];
-
-function benchmarkChipLabel(b: Benchmark): string {
-  if (b.key === 'maps') return b.verified ? b.label : 'Estimate';
-  if (b.key === 'host') return 'Host';
-  return 'Oracle';
-}
 
 export default function PredictionScreen({ navigation, route }: Props) {
   const { colors } = useTheme();
@@ -67,7 +47,7 @@ export default function PredictionScreen({ navigation, route }: Props) {
 
   const answerType = room?.answerType ?? 'exact_time';
   const isArrival = answerType === 'exact_time';
-  const benchmarks = useMemo(() => deriveArrivalBenchmarks(room), [room]);
+  const { benchmarks, predicted, setPredicted, hotTake, setHotTake } = useArrivalPredictionState(room);
   const journeyStart =
     room?.journeyStartedAt || room?.journeyScheduledStartAt || room?.startTime || room?.plannedStartTime
       ? new Date(room.journeyStartedAt ?? room.journeyScheduledStartAt ?? room.startTime ?? room.plannedStartTime)
@@ -105,18 +85,6 @@ export default function PredictionScreen({ navigation, route }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLive, deadlineAt?.getTime()]);
 
-  // Arrival state — the picker is pre-populated from the primary benchmark.
-  const [predicted, setPredicted] = useState<Date>(
-    () => benchmarks?.primary.date ?? new Date(Date.now() + 30 * 60 * 1000),
-  );
-  const seededRef = useRef(false);
-  useEffect(() => {
-    if (!seededRef.current && benchmarks?.primary) {
-      setPredicted(new Date(benchmarks.primary.date));
-      seededRef.current = true;
-    }
-  }, [benchmarks]);
-
   // Non-arrival answer types keep their existing inputs.
   const routeEtaSeconds = room?.route?.estimatedDurationSeconds ?? 1800;
   const [durationMinutes, setDurationMinutes] = useState(
@@ -124,7 +92,6 @@ export default function PredictionScreen({ navigation, route }: Props) {
   );
   const [yesNoChoice, setYesNoChoice] = useState<'yes' | 'no' | null>(null);
   const [selectedOptionKey, setSelectedOptionKey] = useState<string | null>(null);
-  const [hotTake, setHotTake] = useState('');
   const inviteCode = room?.inviteCode ?? roomParam?.inviteCode ?? '';
   const sharePayload = useMemo(
     () =>
@@ -177,10 +144,6 @@ export default function PredictionScreen({ navigation, route }: Props) {
       { key: 'rain_after_6', label: 'Yes, after 6 PM', helper: 'Rain arrives after 6 PM.' },
     ];
   }, [room]);
-
-  function adjust(seconds: number) {
-    setPredicted((current) => new Date(current.getTime() + seconds * 1000));
-  }
 
   function buildPredictedReachedTime(): string {
     if (answerType === 'duration') {
@@ -359,7 +322,6 @@ export default function PredictionScreen({ navigation, route }: Props) {
 
   // ---- Arrival (benchmark-anchored) experience ----
   if (isArrival) {
-    const ordered = benchmarks?.ordered ?? [];
     return (
       <ScrollView
         contentContainerStyle={[
@@ -389,90 +351,13 @@ export default function PredictionScreen({ navigation, route }: Props) {
           </View>
         ) : null}
 
-        {ordered.length ? (
-          <View style={styles.benchPanel}>
-            <Text style={styles.benchLegend}>
-              Maps is the neutral baseline. The bot's guess is just for fun. Closest to the real
-              arrival wins — that's the number to beat.
-            </Text>
-            {benchmarks?.maps ? (
-              <View style={styles.benchRow}>
-                <View style={styles.benchLabelWrap}>
-                  <Text style={styles.benchLabel}>🌍 Maps baseline</Text>
-                  <Text style={styles.benchSub}>{benchmarks.maps.verified ? 'Verified estimate' : 'Neutral estimate'}</Text>
-                </View>
-                <Text style={styles.benchTimeSmall}>{formatClock(benchmarks.maps.date, false)}</Text>
-              </View>
-            ) : null}
-            {benchmarks?.host ? (
-              <View style={styles.benchRow}>
-                <Text style={styles.benchLabel}>👑 Host's call</Text>
-                <Text style={styles.benchTimeSmall}>{formatClock(benchmarks.host.date, false)}</Text>
-              </View>
-            ) : null}
-            {benchmarks?.oracle ? (
-              <Text style={styles.botLine}>🤖 {botGuessTeaser(formatClock(benchmarks.oracle.date, false))}</Text>
-            ) : null}
-          </View>
-        ) : (
-          <InfoTip
-            title="Heads up"
-            body="This room has no benchmark yet, so use your best judgement — arrival time only."
-          />
-        )}
-
-        {/* Snap-to-benchmark + nudge chips */}
-        <View style={styles.chipsWrap}>
-          {ordered.map((b) => (
-            <TouchableOpacity
-              key={`snap-${b.key}`}
-              style={[styles.chip, styles.chipAnchor]}
-              onPress={() => setPredicted(new Date(b.date))}
-            >
-              <Text style={styles.chipAnchorText}>{benchmarkChipLabel(b)}</Text>
-            </TouchableOpacity>
-          ))}
-          {ADJUSTMENTS.map((a) => (
-            <TouchableOpacity key={a.label} style={styles.chip} onPress={() => adjust(a.seconds)}>
-              <Text style={styles.chipText}>{a.label}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        <TimePickerSegments value={predicted} onChange={setPredicted} showSeconds />
-
-        {/* Live "your call" + diffs vs each benchmark */}
-        <View style={styles.callCard}>
-          <Text style={styles.callLabel}>Your call · the one that counts</Text>
-          <Text style={styles.callTime}>{formatClock(predicted, true)}</Text>
-          {ordered.length ? (
-            <View style={styles.diffRows}>
-              {ordered.map((b) => {
-                const d = diffLabel(predicted, b.date);
-                const tone = d === 'same' ? colors.textSecondary : d.startsWith('+') ? colors.amber : colors.green;
-                return (
-                  <Text key={`diff-${b.key}`} style={[styles.diffText, { color: tone }]}>
-                    {d} vs {benchmarkChipLabel(b)}
-                  </Text>
-                );
-              })}
-            </View>
-          ) : null}
-        </View>
-
-        {/* Optional 1-line hot take, shown next to your entry on the leaderboard + The Tea */}
-        <View style={styles.hotTakeCard}>
-          <Text style={styles.hotTakeLabel}>Add a hot take (optional)</Text>
-          <TextInput
-            value={hotTake}
-            onChangeText={(t) => setHotTake(t.slice(0, 80))}
-            placeholder="e.g. Traffic clears after 8pm 🚗"
-            placeholderTextColor={colors.textMuted}
-            maxLength={80}
-            style={[styles.hotTakeInput, { borderColor: colors.border, color: colors.textPrimary, backgroundColor: colors.surface }]}
-          />
-          <Text style={[styles.hotTakeCount, { color: colors.textMuted }]}>{hotTake.length}/80</Text>
-        </View>
+        <ArrivalPredictionCard
+          room={room}
+          predicted={predicted}
+          onPredictedChange={setPredicted}
+          hotTake={hotTake}
+          onHotTakeChange={setHotTake}
+        />
 
         {forwardCard}
 
@@ -616,52 +501,6 @@ const styles = StyleSheet.create({
   startLabel: { color: palette.textMuted, fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.4 },
   startTime: { color: palette.textPrimary, fontSize: 22, fontWeight: '900' },
   startHint: { color: palette.textSecondary, fontSize: 12, lineHeight: 17 },
-  benchPanel: {
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: palette.border,
-    backgroundColor: palette.surface,
-    padding: spacing.md,
-    gap: spacing.xs,
-  },
-  benchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  benchLabelWrap: { gap: 1 },
-  benchLabel: { color: palette.textSecondary, fontSize: 13, fontWeight: '700' },
-  benchSub: { color: palette.textMuted, fontSize: 11, fontWeight: '600' },
-  benchLegend: { color: palette.textMuted, fontSize: 12, lineHeight: 17, marginBottom: spacing.xs },
-  // Maps/host are small neutral baselines; the winner is the closest guess (your call).
-  benchTime: { color: palette.textPrimary, fontSize: 18, fontWeight: '900' },
-  benchTimeSmall: { color: palette.textSecondary, fontSize: 16, fontWeight: '800' },
-  botLine: { color: palette.violetLight, fontSize: 13, fontWeight: '800', fontStyle: 'italic' },
-  chipsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-  chip: {
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    borderColor: palette.border,
-    backgroundColor: palette.surfaceHigh,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  chipText: { color: palette.textPrimary, fontSize: 13, fontWeight: '800' },
-  chipAnchor: { borderColor: 'rgba(34,211,238,0.5)', backgroundColor: 'rgba(34,211,238,0.16)' },
-  chipAnchorText: { color: palette.violetLight, fontSize: 13, fontWeight: '900' },
-  callCard: {
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: 'rgba(34,211,238,0.35)',
-    backgroundColor: 'rgba(34,211,238,0.08)',
-    padding: spacing.lg,
-    alignItems: 'center',
-    gap: spacing.xs,
-  },
-  callLabel: { color: palette.textSecondary, fontSize: 12, fontWeight: '800', letterSpacing: 0.6, textTransform: 'uppercase' },
-  hotTakeCard: { gap: spacing.xs, marginTop: spacing.sm },
-  hotTakeLabel: { color: palette.textSecondary, fontSize: 12, fontWeight: '800', letterSpacing: 0.4, textTransform: 'uppercase' },
-  hotTakeInput: { borderRadius: radius.md, borderWidth: 1, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, fontSize: 15 },
-  hotTakeCount: { fontSize: 11, textAlign: 'right' },
-  callTime: { color: palette.textPrimary, fontSize: 32, fontWeight: '900' },
-  diffRows: { alignItems: 'center', gap: 2, marginTop: spacing.xs },
-  diffText: { fontSize: 13, fontWeight: '800' },
   fairnessNote: { color: palette.textMuted, fontSize: 12, lineHeight: 17, textAlign: 'center' },
   inputCard: { borderRadius: radius.lg, padding: spacing.lg, borderWidth: 1 },
   helperText: { fontSize: 13, lineHeight: 18, marginBottom: 12 },

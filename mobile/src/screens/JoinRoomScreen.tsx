@@ -14,7 +14,9 @@ import { setPostAuthIntent } from '../utils/postAuthIntent';
 import { createGuestSession } from '../services/guestSession';
 import { getCategoryTheme } from '../config/categoryTheme';
 import SectionHeader from '../components/SectionHeader';
-import { deriveArrivalBenchmarks, formatClock } from '../utils/benchmarks';
+import ArrivalPredictionCard from '../components/ArrivalPredictionCard';
+import { useArrivalPredictionState } from '../hooks/useArrivalPredictionState';
+import { formatClock } from '../utils/benchmarks';
 import { buildSharePayload } from '../utils/shareRoom';
 import { cardStyle, layout, palette, radius, spacing } from '../theme/designSystem';
 
@@ -31,6 +33,8 @@ export default function JoinRoomScreen({ navigation, route }: Props) {
   const [loading, setLoading] = useState(false);
   const [guestHandle, setGuestHandle] = useState('');
   const [forwardedBy, setForwardedBy] = useState<string | null>(null);
+  // Arrival-call state for the merged "Predict now" path (see showMergedPredict).
+  const { benchmarks, predicted, setPredicted, hotTake, setHotTake } = useArrivalPredictionState(room);
 
   async function handleFind(nextCode?: string) {
     const inviteCode = (nextCode ?? code).trim().toUpperCase();
@@ -79,6 +83,15 @@ export default function JoinRoomScreen({ navigation, route }: Props) {
     return { screen: 'Result' as const, params: { roomId: room.roomId } };
   }
 
+  async function submitArrivalPrediction() {
+    // Authoritative call — it also ensures room membership server-side even if the
+    // best-effort join above did not land.
+    await api.post(`/rooms/${room.roomId}/predictions`, {
+      predictedArrivalTime: predicted.toISOString(),
+      hotTake: hotTake.trim() || undefined,
+    });
+  }
+
   async function handleAction() {
     if (!room) return;
     setLoading(true);
@@ -92,7 +105,7 @@ export default function JoinRoomScreen({ navigation, route }: Props) {
           return;
         }
         const session = await createGuestSession(handle, room.roomId);
-        // Authorize the join before login() remounts the navigator to the auth stack.
+        // Authorize the join/prediction before login() remounts the navigator to the auth stack.
         setAuthToken(session.accessToken);
         let nextAction: string | undefined;
         try {
@@ -101,11 +114,36 @@ export default function JoinRoomScreen({ navigation, route }: Props) {
         } catch {
           // Best-effort: prediction submission ensures membership server-side anyway.
         }
-        // Hand the landing to the authenticated navigator — navigating across the
-        // auth-stack remount from this (unmounting) screen would be dropped.
+
+        if (showMergedPredict) {
+          // Merged "Predict now": lock the guess in HERE, before login() unmounts this
+          // screen, then hand the authenticated navigator straight to the live room.
+          await submitArrivalPrediction();
+          setPostAuthIntent({
+            screen: 'LiveRoom',
+            params: { roomId: room.roomId, isCreator: false, justPredicted: true },
+          });
+          await login(session);
+          return;
+        }
+
+        // Two-step fallback: hand the landing to the authenticated navigator — navigating
+        // across the auth-stack remount from this (unmounting) screen would be dropped.
         const target = resolveTarget(nextAction);
         setPostAuthIntent(target);
         await login(session);
+        return;
+      }
+
+      // Authenticated: already on the auth stack, navigate directly (no remount).
+      if (showMergedPredict) {
+        try {
+          await api.post(`/rooms/${room.roomId}/join`, forwardedBy ? { forwardedBy } : {});
+        } catch {
+          // Best-effort membership; the prediction below is authoritative.
+        }
+        await submitArrivalPrediction();
+        navigation.navigate('LiveRoom', { roomId: room.roomId, isCreator: false, justPredicted: true });
         return;
       }
 
@@ -113,7 +151,7 @@ export default function JoinRoomScreen({ navigation, route }: Props) {
       const target = resolveTarget(joinResponse.data?.nextAction);
       navigation.navigate(target.screen, target.params as never);
     } catch (error: unknown) {
-      Alert.alert('Could not join', getApiErrorMessage(error, 'Please try again.'));
+      Alert.alert('Could not lock it in', getApiErrorMessage(error, 'Please try again.'));
     } finally {
       setLoading(false);
     }
@@ -129,9 +167,15 @@ export default function JoinRoomScreen({ navigation, route }: Props) {
   };
   const isJoinable = canPredictNow || !!(normalizedStatus && ctaLabel[normalizedStatus]);
 
-  const benchmarks = deriveArrivalBenchmarks(room);
   const categoryTheme = getCategoryTheme(room?.category ?? room?.templateKey);
   const isGenericRoom = (room?.category ?? room?.templateKey) === 'open_prediction';
+
+  // Merged single-screen predict path: only arrival (exact_time) rooms that are
+  // predictable now, non-generic, and carry benchmarks. Anything else (non-arrival
+  // answer types, missing benchmarks, watch-only) falls back to the two-step flow.
+  const answerType = room?.answerType ?? room?.safePreview?.answerType ?? null;
+  const showMergedPredict =
+    canPredictNow && answerType === 'exact_time' && !isGenericRoom && !!benchmarks?.ordered.length;
   const roomTitle = room?.title ?? room?.roomTitle ?? (isGenericRoom ? 'A Wild Cards room' : 'A PREDIKT challenge');
   const sharePayload = useMemo(
     () =>
@@ -207,12 +251,14 @@ export default function JoinRoomScreen({ navigation, route }: Props) {
             <Text style={styles.heroLock}>🔒 {lockLabel}</Text>
           </LinearGradient>
 
-          {benchmarks?.ordered.length ? (
+          {/* Standalone benchmark card for watch/non-predict states. When predicting
+              inline (showMergedPredict), ArrivalPredictionCard renders its own. */}
+          {benchmarks?.ordered.length && !showMergedPredict ? (
             <View style={styles.benchCard}>
               {benchmarks.ordered.map((b) => (
                 <View key={b.key} style={styles.benchRow}>
                   <Text style={styles.benchLabel}>
-                    {b.key === 'maps' ? (b.verified ? b.label : 'Route estimate') : b.key === 'host' ? 'Host predicts' : 'Oracle Bot'}
+                    {b.key === 'maps' ? (b.verified ? b.label : 'Route estimate') : b.key === 'host' ? 'Host predicts' : 'The bot'}
                   </Text>
                   <Text style={styles.benchTime}>{formatClock(b.date, false)}</Text>
                 </View>
@@ -255,9 +301,22 @@ export default function JoinRoomScreen({ navigation, route }: Props) {
             </View>
           ) : null}
 
+          {/* Merged "Predict now": benchmark + time picker + hot take, so the guest
+              locks in from this one screen instead of a second Prediction step. */}
+          {showMergedPredict ? (
+            <ArrivalPredictionCard
+              room={room}
+              predicted={predicted}
+              onPredictedChange={setPredicted}
+              hotTake={hotTake}
+              onHotTakeChange={setHotTake}
+              compact
+            />
+          ) : null}
+
           {isJoinable ? (
             <PrimaryButton
-              label={canPredictNow ? 'Make my prediction' : ctaLabel[normalizedStatus as string]}
+              label={showMergedPredict ? 'Lock it in' : canPredictNow ? 'Make my prediction' : ctaLabel[normalizedStatus as string]}
               onPress={handleAction}
               loading={loading}
               icon="🎯"
