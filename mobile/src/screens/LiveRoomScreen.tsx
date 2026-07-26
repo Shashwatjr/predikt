@@ -930,6 +930,14 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
             data={predictions}
             title={isGenericRoom ? 'Prediction board' : undefined}
           />
+          {!isGenericRoom ? (
+            <LiveLeaderboard
+              data={liveLeaderboard}
+              unlockInSeconds={unlockInSeconds}
+              onLockNow={handleLockNow}
+              locking={locking}
+            />
+          ) : null}
           {!isGenericRoom
             ? checkpointList.map((cp) => (
                 <CheckpointLeaderboard key={cp} board={checkpointBoards[cp]} />
