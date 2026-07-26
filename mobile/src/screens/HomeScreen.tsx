@@ -382,10 +382,6 @@ export default function HomeScreen({ navigation, route }: Props) {
   function handleBottomNav(tab: HomeTab) {
     setActiveTab(tab);
     if (tab === 'Home') return;
-    if (tab === 'Activity') {
-      if (featureFlags.leaderboard) navigation.navigate('Leaderboard');
-      return;
-    }
     if (tab === 'Create') {
       navigation.navigate('CreateRoom');
       return;
@@ -807,11 +803,7 @@ export default function HomeScreen({ navigation, route }: Props) {
           </TouchableOpacity>
         </ScrollView>
 
-        <BottomNav
-          active={activeTab}
-          onChange={handleBottomNav}
-          hiddenTabs={featureFlags.leaderboard ? [] : ['Activity']}
-        />
+        <BottomNav active={activeTab} onChange={handleBottomNav} />
         <DashboardOnboardingOverlay visible={tourVisible} onClose={closeTour} />
         <DemoScenarioPicker
           visible={demoPickerVisible}
@@ -1190,34 +1182,4 @@ const styles = StyleSheet.create({
   mutedText: { color: 'rgba(255,255,255,0.64)', fontSize: 12, lineHeight: 18 },
   logoutButton: { alignItems: 'center', paddingVertical: 8 },
   logoutText: { color: 'rgba(255,255,255,0.46)', fontSize: 12, fontWeight: '800' },
-  bottomNav: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    minHeight: 82,
-    paddingTop: 11,
-    paddingBottom: 14,
-    paddingHorizontal: 12,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(96,165,250,0.12)',
-    backgroundColor: 'rgba(3,8,22,0.96)',
-    flexDirection: 'row',
-  },
-  navItem: { flex: 1, alignItems: 'center', gap: 5 },
-  navIcon: { color: 'rgba(255,255,255,0.62)', fontSize: 24, fontWeight: '500' },
-  navIconActive: { color: '#60a5fa' },
-  navLabel: { color: 'rgba(255,255,255,0.58)', fontSize: 10, fontWeight: '700' },
-  navLabelActive: { color: '#93c5fd' },
-  createNavIcon: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: -16,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.22)',
-  },
-  createNavPlus: { color: '#fff', fontSize: 31, lineHeight: 34, fontWeight: '300' },
 });

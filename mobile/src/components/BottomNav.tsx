@@ -3,7 +3,7 @@ import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { palette, spacing } from '../theme/designSystem';
 
-export type NavTab = 'Home' | 'Create' | 'Activity' | 'Profile';
+export type NavTab = 'Home' | 'Create' | 'Profile';
 
 type Props = {
   active: NavTab;
@@ -11,10 +11,10 @@ type Props = {
   hiddenTabs?: NavTab[];
 };
 
+// Home / raised "+" Create / Profile — the "+" is the single entry to Create.
 const TABS: Array<{ key: NavTab; label: string; icon: string }> = [
   { key: 'Home', label: 'Home', icon: '⌂' },
   { key: 'Create', label: 'Create', icon: '+' },
-  { key: 'Activity', label: 'Activity', icon: '⚡' },
   { key: 'Profile', label: 'Profile', icon: '♙' },
 ];
 
