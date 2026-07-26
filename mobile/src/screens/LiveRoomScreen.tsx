@@ -64,6 +64,7 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
   const { user } = useAuth();
   const { roomId, isCreator, justPredicted } = route.params;
   const [showLockedReassurance, setShowLockedReassurance] = useState(!!justPredicted);
+  const [showPrivacyInfo, setShowPrivacyInfo] = useState(false);
   const [liveState, setLiveState] = useState<LiveState | null>(null);
   const [room, setRoom] = useState<any | null>(null);
   const [actualOptionKey, setActualOptionKey] = useState<string | null>(null);
@@ -541,6 +542,11 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
   const isDraw = ['cancelled', 'auto_closed', 'abandoned', 'plan_changed', 'cancelled_by_host'].includes(
     liveState?.journeyStatus ?? normStatus,
   );
+  const creatorName = room?.creatorDisplayName ?? room?.creatorHandle ?? room?.creator?.name ?? 'the host';
+  // Guest-facing "what do I do now" state: they've locked in; the only remaining
+  // question is whether the journey has started.
+  const isGuestView = !isCreator && !isGenericRoom;
+  const guestNotStarted = isGuestView && (phase === 'open' || phase === 'locked');
   const lockCountdownLabel =
     lockCountdownSeconds != null && lockCountdownSeconds > 0
       ? `Locks in ${Math.floor(lockCountdownSeconds / 60)}:${String(lockCountdownSeconds % 60).padStart(2, '0')}`
@@ -742,6 +748,25 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
         </View>
       )}
 
+      {/* Guest lead: a calm confirmation of their own guess + one line on what's next. */}
+      {isGuestView && myPredictionDate ? (
+        <View style={[styles.card, styles.guestGuessCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <Text style={[styles.guestGuessLabel, { color: colors.textSecondary }]}>Your guess</Text>
+          <Text style={[styles.guestGuessTime, { color: colors.textPrimary }]}>
+            {formatClock(myPredictionDate, false)} · locked in ✓
+          </Text>
+          {guestNotStarted ? (
+            <Text style={[styles.guestGuessHint, { color: colors.textSecondary }]}>
+              Journey starts when {creatorName} taps go.
+            </Text>
+          ) : phase === 'started' ? (
+            <Text style={[styles.guestGuessHint, { color: colors.textSecondary }]}>
+              Waiting for the result — watch the progress below.
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
+
       {room && phase !== 'ended' && (isCreator || isGenericRoom) ? (
         <View style={styles.inviteRow}>
           <View style={{ flex: 1 }}>
@@ -863,20 +888,32 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
       ) : null}
 
       {!isGenericRoom ? (
-        <View style={[styles.privacyPill, { backgroundColor: colors.purpleDim }]}>
-          <Text style={[styles.privacyText, { color: colors.purpleLight }]}>
-            🔒 Ghost Mode on · exact location stays hidden · progress is delayed and shared only at key moments.
+        <View>
+          <Text
+            onPress={() => setShowPrivacyInfo((v) => !v)}
+            style={[styles.privacyLink, { color: colors.textMuted }]}
+          >
+            🔒 Location hidden ⓘ
           </Text>
+          {showPrivacyInfo ? (
+            <View style={[styles.privacyPill, { backgroundColor: colors.purpleDim }]}>
+              <Text style={[styles.privacyText, { color: colors.purpleLight }]}>
+                Exact location stays hidden. Progress is delayed and shared only at key moments.
+              </Text>
+            </View>
+          ) : null}
         </View>
       ) : null}
 
       {liveState && !isGenericRoom ? (
         <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <CoachMark
-            storageKey="coachmark:live:route_oracle"
-            title="Route Oracle"
-            body="A neutral estimate to guess against. Not the winner — that's whoever's closest."
-          />
+          {isCreator ? (
+            <CoachMark
+              storageKey="coachmark:live:route_oracle"
+              title="Map estimate"
+              body="A neutral estimate to guess against. Not the winner — that's whoever's closest."
+            />
+          ) : null}
           <Text style={[styles.creatorTitle, { color: colors.textPrimary }]}>
             {category === 'weather_rain' ? 'Weather Room Status' : 'Journey Status'}
           </Text>
@@ -887,9 +924,9 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
           </Text>
           <Text style={[styles.startDelayCopy, { color: colors.textSecondary }]}>
             {category === 'weather_rain'
-              ? 'Declare the actual rain outcome when the time window ends. Oracle Bot is a benchmark, not a guarantee.'
-              : suppressGuestStartCountdown
-                ? 'You are already in the room. The host can start the journey at any moment, and updates will appear here automatically.'
+              ? 'Declare the actual rain outcome when the time window ends. The bot is a benchmark, not a guarantee.'
+              : guestNotStarted
+                ? `Journey starts when ${creatorName} taps go.`
                 : (!isCreator && liveState.waitingForDelayedStart && trackingCountdownLabel)
                 ? trackingCountdownLabel
                 : liveState.lifecycleMessage ?? 'Approx. journey progress is shown with privacy-safe timing.'}
@@ -1128,8 +1165,13 @@ const styles = StyleSheet.create({
   },
   reviewBannerTitle: { color: '#fff', fontSize: 15, fontWeight: '900' },
   reviewBannerCopy: { color: 'rgba(255,255,255,0.82)', fontSize: 13, lineHeight: 19, fontWeight: '600' },
-  privacyPill: { borderRadius: 10, paddingHorizontal: 12, paddingVertical: 7, marginBottom: 16, alignSelf: 'flex-start' },
+  privacyPill: { borderRadius: 10, paddingHorizontal: 12, paddingVertical: 7, marginBottom: 16, marginTop: 6, alignSelf: 'flex-start' },
   privacyText: { fontSize: 12, fontWeight: '600' },
+  privacyLink: { fontSize: 12, fontWeight: '700', alignSelf: 'flex-start' },
+  guestGuessCard: { alignItems: 'center', gap: 4 },
+  guestGuessLabel: { fontSize: 12, fontWeight: '800', letterSpacing: 0.6, textTransform: 'uppercase' },
+  guestGuessTime: { fontSize: 26, fontWeight: '900' },
+  guestGuessHint: { fontSize: 13, fontWeight: '600', textAlign: 'center', marginTop: 2 },
   phaseBanner: { borderRadius: 14, borderWidth: 1, padding: 14, marginBottom: 16, gap: 4 },
   phaseOpen: { borderColor: 'rgba(34,211,238,0.45)', backgroundColor: 'rgba(34,211,238,0.10)' },
   phaseLocked: { borderColor: 'rgba(251,191,36,0.45)', backgroundColor: 'rgba(251,191,36,0.10)' },
