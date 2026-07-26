@@ -9,7 +9,7 @@ import PrimaryButton from '../components/PrimaryButton';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import api, { getApiErrorMessage, setAuthToken } from '../services/api';
-import { savePendingJoinCode } from '../utils/inviteIntent';
+import { savePendingJoinCode, resolveForwardedBy } from '../utils/inviteIntent';
 import { setPostAuthIntent } from '../utils/postAuthIntent';
 import { createGuestSession } from '../services/guestSession';
 import { getCategoryTheme } from '../config/categoryTheme';
@@ -25,11 +25,12 @@ type Props = {
 
 export default function JoinRoomScreen({ navigation, route }: Props) {
   const { colors } = useTheme();
-  const { isAuthenticated, login } = useAuth();
+  const { isAuthenticated, login, user } = useAuth();
   const [code, setCode] = useState('');
   const [room, setRoom] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [guestHandle, setGuestHandle] = useState('');
+  const [forwardedBy, setForwardedBy] = useState<string | null>(null);
 
   async function handleFind(nextCode?: string) {
     const inviteCode = (nextCode ?? code).trim().toUpperCase();
@@ -45,6 +46,11 @@ export default function JoinRoomScreen({ navigation, route }: Props) {
       setLoading(false);
     }
   }
+
+  useEffect(() => {
+    // Resolve the forwarder (if this invite was forwarded) so join can record the chain.
+    resolveForwardedBy().then((value) => value && setForwardedBy(value));
+  }, []);
 
   useEffect(() => {
     const routeCode = route.params?.joinCode?.trim().toUpperCase();
@@ -90,7 +96,7 @@ export default function JoinRoomScreen({ navigation, route }: Props) {
         setAuthToken(session.accessToken);
         let nextAction: string | undefined;
         try {
-          const joinResponse = await api.post(`/rooms/${room.roomId}/join`);
+          const joinResponse = await api.post(`/rooms/${room.roomId}/join`, forwardedBy ? { forwardedBy } : {});
           nextAction = joinResponse.data?.nextAction;
         } catch {
           // Best-effort: prediction submission ensures membership server-side anyway.
@@ -103,7 +109,7 @@ export default function JoinRoomScreen({ navigation, route }: Props) {
         return;
       }
 
-      const joinResponse = await api.post(`/rooms/${room.roomId}/join`);
+      const joinResponse = await api.post(`/rooms/${room.roomId}/join`, forwardedBy ? { forwardedBy } : {});
       const target = resolveTarget(joinResponse.data?.nextAction);
       navigation.navigate(target.screen, target.params as never);
     } catch (error: unknown) {
@@ -128,8 +134,15 @@ export default function JoinRoomScreen({ navigation, route }: Props) {
   const isGenericRoom = (room?.category ?? room?.templateKey) === 'open_prediction';
   const roomTitle = room?.title ?? room?.roomTitle ?? (isGenericRoom ? 'A Wild Cards room' : 'A PREDIKT challenge');
   const sharePayload = useMemo(
-    () => (room ? buildSharePayload({ ...room, roomTitle, inviteCode: room.inviteCode ?? code }) : null),
-    [room, roomTitle, code],
+    () =>
+      room
+        ? buildSharePayload(
+            { ...room, roomTitle, inviteCode: room.inviteCode ?? code },
+            // A guest forwarding the invite becomes the forwarder in the chain.
+            room.creatorUserId && user?.userId === room.creatorUserId ? undefined : user?.userId,
+          )
+        : null,
+    [room, roomTitle, code, user?.userId],
   );
   const lockLabel = room?.canLateJoinPredict && room?.lateJoinPredictionWindowEndsAt
     ? `Late-join guesses stay open until ${new Date(room.lateJoinPredictionWindowEndsAt).toLocaleString()}`

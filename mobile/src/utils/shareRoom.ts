@@ -30,8 +30,39 @@ function getWebBaseUrl() {
   return 'http://localhost:8081';
 }
 
-export function buildInviteUrl(inviteCode: string) {
-  return `${getWebBaseUrl()}?joinCode=${encodeURIComponent(inviteCode)}`;
+export function buildInviteUrl(inviteCode: string, forwardedBy?: string | null) {
+  const base = `${getWebBaseUrl()}?joinCode=${encodeURIComponent(inviteCode)}`;
+  // When a non-creator forwards the link, tag it so the backend can record the
+  // forward-share chain and credit the creator's "X invited N friends" banner.
+  return forwardedBy ? `${base}&forwardedBy=${encodeURIComponent(forwardedBy)}` : base;
+}
+
+/**
+ * Multi-recipient share: prefer the Web Share API where supported (lets the user
+ * pick a WhatsApp group or any target); otherwise return false so the caller can
+ * fall back to a prominent copy-the-link "paste in your group chat" path. We do
+ * NOT attempt a native contact picker on web.
+ */
+export async function shareViaWebShareApi(payload: {
+  shareTitle: string;
+  shareText: string;
+  inviteUrl: string;
+}): Promise<boolean> {
+  if (
+    typeof navigator !== 'undefined' &&
+    typeof (navigator as Navigator & { share?: unknown }).share === 'function'
+  ) {
+    try {
+      await (navigator as Navigator & {
+        share: (data: { title?: string; text?: string; url?: string }) => Promise<void>;
+      }).share({ title: payload.shareTitle, text: payload.shareText, url: payload.inviteUrl });
+      return true;
+    } catch {
+      // User cancelled or share failed — caller falls back to copy-the-link.
+      return false;
+    }
+  }
+  return false;
 }
 
 function safeChallengeLine(room: SafePreview) {
@@ -55,11 +86,11 @@ function formatLockTime(room: SafePreview) {
   return date.toLocaleString();
 }
 
-export function buildSharePayload(room: SafePreview) {
+export function buildSharePayload(room: SafePreview, forwardedBy?: string | null) {
   const category = room.category ?? room.templateKey;
   const inviteCode = room.inviteCode ?? '';
   const title = room.roomTitle ?? room.title ?? 'My Prediktion room';
-  const inviteUrl = buildInviteUrl(inviteCode);
+  const inviteUrl = buildInviteUrl(inviteCode, forwardedBy);
   const lockTime = formatLockTime(room);
   const body = [
     `Join my room on My Prediktion: ${title}`,

@@ -129,13 +129,18 @@ export default function PredictionScreen({ navigation, route }: Props) {
   const sharePayload = useMemo(
     () =>
       room
-        ? buildSharePayload({
-            ...room,
-            roomTitle: room.roomTitle ?? room.title,
-            inviteCode,
-          })
+        ? buildSharePayload(
+            {
+              ...room,
+              roomTitle: room.roomTitle ?? room.title,
+              inviteCode,
+            },
+            // Tag forwards from a non-creator so the chain is recorded (backend
+            // ignores forwardedBy when it equals the creator).
+            isCreator ? undefined : user?.userId,
+          )
         : null,
-    [room, inviteCode],
+    [room, inviteCode, isCreator, user?.userId],
   );
   const confirmScale = useRef(new Animated.Value(1)).current;
   const foodEtaBenchmarkLabel =
