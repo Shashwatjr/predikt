@@ -6,6 +6,8 @@ import { formatClock } from '../utils/benchmarks';
 export interface LiveLeaderboardStanding {
   rank: number;
   isWinnerSoFar: boolean;
+  eligibleToWin?: boolean;
+  isHost?: boolean;
   userId: string;
   prediktHandle?: string | null;
   predictedReachedTime: string;
@@ -133,7 +135,7 @@ export default function LiveLeaderboard({ data, unlockInSeconds, onLockNow, lock
               </Text>
               <Text style={[styles.guess, { color: colors.textSecondary }]}>
                 Guessed {formatClock(new Date(s.predictedReachedTime), false)}
-                {s.auraEligible === false ? ' · late' : ''}
+                {s.isHost ? ' · host (on record)' : s.auraEligible === false ? ' · late' : ''}
               </Text>
               {s.hotTake ? (
                 <Text style={[styles.hotTake, { color: colors.textMuted }]} numberOfLines={1}>

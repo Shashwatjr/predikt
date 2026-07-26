@@ -222,25 +222,42 @@ export class LeaderboardsService {
           : a.p.submittedAt.getTime() - b.p.submittedAt.getTime(),
       );
 
+    // Winner-eligibility must match end-of-room scoreMilestone: the creator's own
+    // guess (they confirm their own arrival) and Late-tier guesses are recorded and
+    // shown, but cannot win. "Winner so far" is the top ELIGIBLE prediction, and
+    // deltas are measured from that eligible leader — never from an excluded entry.
+    const creatorId = room.creatorUserId;
+    const isEligible = (e: (typeof ranked)[number]) =>
+      e.p.auraEligible !== false && e.p.userId !== creatorId;
+    const firstEligibleIdx = ranked.findIndex(isEligible);
+    const bestEligibleDiff = firstEligibleIdx >= 0 ? ranked[firstEligibleIdx].diffSeconds : null;
+
     return {
       revealed: true as const,
       basis,
       projectedArrivalAt: projectedArrival.toISOString(),
       capturedAt: (latestSnapshot?.capturedAt ?? room.lastTravellerUpdateAt ?? new Date()).toISOString(),
-      standings: ranked.map((entry, index) => ({
-        rank: index + 1,
-        isWinnerSoFar: index === 0,
-        user: safePublicUser(entry.p.user),
-        userId: entry.p.userId,
-        prediktHandle: entry.p.user.prediktHandle,
-        predictedReachedTime: entry.p.predictedReachedTime.toISOString(),
-        // Delta from the current best (leader): 0 for the leader, positive for others.
-        deltaFromBestSeconds: entry.diffSeconds - ranked[0].diffSeconds,
-        diffFromProjectedSeconds: entry.diffSeconds,
-        hotTake: entry.p.hotTake ?? null,
-        auraEligible: entry.p.auraEligible,
-        isCurrentUser: entry.p.userId === requestingUser.userId,
-      })),
+      standings: ranked.map((entry, index) => {
+        const isHost = entry.p.userId === creatorId;
+        const eligibleToWin = isEligible(entry);
+        return {
+          rank: index + 1,
+          isWinnerSoFar: index === firstEligibleIdx,
+          eligibleToWin,
+          isHost,
+          user: safePublicUser(entry.p.user),
+          userId: entry.p.userId,
+          prediktHandle: entry.p.user.prediktHandle,
+          predictedReachedTime: entry.p.predictedReachedTime.toISOString(),
+          // Delta from the eligible leader: 0 for that leader, positive for others.
+          deltaFromBestSeconds:
+            bestEligibleDiff != null ? entry.diffSeconds - bestEligibleDiff : 0,
+          diffFromProjectedSeconds: entry.diffSeconds,
+          hotTake: entry.p.hotTake ?? null,
+          auraEligible: entry.p.auraEligible,
+          isCurrentUser: entry.p.userId === requestingUser.userId,
+        };
+      }),
     };
   }
 
