@@ -307,7 +307,7 @@ export default function ProfileScreen() {
               variant="labeled"
             />
           ) : null}
-          {stats ? (
+          {stats && featureFlags.profileRewardDetail ? (
             <View style={styles.miniStatRow}>
               <MiniStat icon="📈" label="Weekly Aura" value={stats.weeklyAura} accent={colors.green} />
               <MiniStat icon="💠" label="Clout" value={stats.cloutBalance} accent={colors.amber} />
@@ -361,7 +361,7 @@ export default function ProfileScreen() {
         </View>
       ) : null}
 
-      {stats && (stats.recentReliability ?? []).length > 0 ? (
+      {featureFlags.profileRewardDetail && stats && (stats.recentReliability ?? []).length > 0 ? (
         <View style={[cardStyle(), { gap: spacing.sm }]}>
           <SectionHeader title="Recent Reliability" subtitle="Fair finishes and completed rooms build this score." />
           {(stats.recentReliability ?? []).slice(0, 3).map((entry, index) => (

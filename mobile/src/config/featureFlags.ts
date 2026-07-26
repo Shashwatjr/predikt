@@ -51,6 +51,10 @@ export const featureFlags = {
   weeklyStory: envFlag('WEEKLY_STORY', false),
   leaderboard: envFlag('LEADERBOARD', false),
   notifications: envFlag('NOTIFICATIONS', false),
+  // Secondary reward/reliability detail on Profile (Weekly Aura, Clout, Credits,
+  // Reliability chips + the Recent Reliability list). Hidden for the MVP surface;
+  // the data + code stay intact behind this flag.
+  profileRewardDetail: envFlag('PROFILE_REWARD_DETAIL', false),
   personalityUnlock: envFlag('PERSONALITY_UNLOCK', false),
   momentCardExport: envFlag('MOMENT_CARD_EXPORT', false),
 
