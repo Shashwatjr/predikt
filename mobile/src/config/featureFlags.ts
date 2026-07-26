@@ -57,6 +57,9 @@ export const featureFlags = {
   profileRewardDetail: envFlag('PROFILE_REWARD_DETAIL', false),
   personalityUnlock: envFlag('PERSONALITY_UNLOCK', false),
   momentCardExport: envFlag('MOMENT_CARD_EXPORT', false),
+  // Sponsored side-wing cards (Featured creators / Community hosts / Partner Perk /
+  // Moment Card themes). Hidden until there are real partners; config stays intact.
+  sponsoredPlacements: envFlag('SPONSORED_PLACEMENTS', false),
 
   // --- Admin portal (private beta operations) ---
   adminPortalEnabled: envFlag('ADMIN_PORTAL_ENABLED', false),

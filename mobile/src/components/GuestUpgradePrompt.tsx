@@ -105,7 +105,7 @@ export default function GuestUpgradePrompt({ variant = 'result', onUpgraded }: P
             placeholder="you@example.com"
           />
           <TextInputField
-            label="PREDIKT handle"
+            label="MyPrediktion handle"
             value={prediktHandle}
             onChangeText={setPrediktHandle}
             autoCapitalize="none"

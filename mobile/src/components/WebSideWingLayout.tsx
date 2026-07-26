@@ -2,6 +2,7 @@ import React from 'react';
 import { Platform, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { getActiveSponsoredPlacement, SponsoredPlacement } from '../config/sponsoredPlacements';
 import SponsoredPlacementCard from './SponsoredPlacementCard';
+import { featureFlags } from '../config/featureFlags';
 
 type Props = {
   children: React.ReactNode;
@@ -14,8 +15,9 @@ const WIDE_WEB_BREAKPOINT = 1280;
 export default function WebSideWingLayout({ children, leftPlacement, rightPlacement }: Props) {
   const { width } = useWindowDimensions();
   const showWings = Platform.OS === 'web' && width >= WIDE_WEB_BREAKPOINT;
-  const left = leftPlacement ? getActiveSponsoredPlacement(leftPlacement) : undefined;
-  const right = rightPlacement ? getActiveSponsoredPlacement(rightPlacement) : undefined;
+  // Sponsored placeholder cards stay hidden until there are real partners.
+  const left = featureFlags.sponsoredPlacements && leftPlacement ? getActiveSponsoredPlacement(leftPlacement) : undefined;
+  const right = featureFlags.sponsoredPlacements && rightPlacement ? getActiveSponsoredPlacement(rightPlacement) : undefined;
 
   if (!showWings || (!left && !right)) {
     return <>{children}</>;

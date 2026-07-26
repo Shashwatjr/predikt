@@ -18,7 +18,7 @@ export default function RouteMapPreview({
   const { colors } = useTheme();
   const previewTitle = preview ? `${preview.startLabel} -> ${preview.destinationLabel}` : emptyLabel;
   const previewCopy = preview
-    ? 'Route preview stays lightweight for MVP. Ghost Mode is still on and the summary below carries the key details.'
+    ? 'Route preview stays lightweight for MVP. Your location is still hidden and the summary below carries the key details.'
     : emptyCopy;
 
   return (

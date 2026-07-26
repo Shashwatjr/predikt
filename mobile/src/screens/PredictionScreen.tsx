@@ -426,7 +426,7 @@ export default function PredictionScreen({ navigation, route }: Props) {
         {answerType === 'multiple_choice' ? (
           <>
             <Text style={[styles.helperText, { color: colors.textSecondary }]}>
-              Choose the outcome you believe is most likely. Oracle Bot is only a benchmark.
+              Choose the outcome you believe is most likely. The bot is only a benchmark.
             </Text>
             <View style={styles.optionStack}>
               {multipleChoiceOptions.map((option: any) => (

@@ -61,7 +61,7 @@ const faq = [
   ['What happens after the room locks?', 'Predictions stay frozen, hidden guesses are revealed later, and the result decides who was closest.'],
   ['What is Dot Bonus?', 'Dot Bonus rewards predictions that land especially close to the actual result.'],
   ['What is a Rematch?', 'A Rematch starts a new round with the same group after results are revealed.'],
-  ['Why do I need a PREDIKT handle?', 'Your handle makes leaderboards, follows, and social identity easier to recognize.'],
+  ['Why do I need a MyPrediktion handle?', 'Your handle makes leaderboards, follows, and social identity easier to recognize.'],
 ];
 
 function HelpCard({
@@ -174,7 +174,7 @@ export default function HelpScreen({ navigation, route }: Props) {
         <Text style={[styles.bulletRow, { color: colors.textSecondary }]}>
           • The map preview is a guide for Start → Destination, distance, ETA, and privacy delay. It is not an exact live map.
         </Text>
-        <Text style={[styles.bulletRow, { color: colors.textSecondary }]}>• Ghost Mode keeps the experience privacy-safe.</Text>
+        <Text style={[styles.bulletRow, { color: colors.textSecondary }]}>• Your exact location stays hidden to keep the experience privacy-safe.</Text>
         <Text style={[styles.bulletRow, { color: colors.textSecondary }]}>• Progress is delayed before viewers see updates.</Text>
         <Text style={[styles.bulletRow, { color: colors.textSecondary }]}>• Route status is approximate in participant and public views.</Text>
         <Text style={[styles.bulletRow, { color: colors.textSecondary }]}>• Exact GPS is not shown in public or participant view.</Text>

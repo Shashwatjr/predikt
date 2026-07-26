@@ -753,10 +753,10 @@ export default function HomeScreen({ navigation, route }: Props) {
           {/* MVP cleanup: weekly personality/story surface — hidden until weeklyStory ships. */}
           {featureFlags.weeklyStory ? (
             <>
-              <SectionHeader title="Today's PREDIKTs" subtitle={dashboard?.dailyChallenge?.title ?? 'Beat the Forecast · Food ETA · Who\'s Late'} />
+              <SectionHeader title="Today's rooms" subtitle={dashboard?.dailyChallenge?.title ?? 'Beat the Forecast · Food ETA · Who\'s Late'} />
 
               <View style={[styles.weeklyCard, { borderColor: palette.border }]}>
-                <Text style={styles.weeklyTitle}>This Week in PREDIKT</Text>
+                <Text style={styles.weeklyTitle}>This Week on MyPrediktion</Text>
                 <Text style={styles.weeklyPersonality}>
                   {(summary?.currentStreak ?? 0) >= 3 ? 'Comeback Merchant' : weeklyAura > 50 ? 'Route Whisperer' : 'The Human Edge'}
                 </Text>

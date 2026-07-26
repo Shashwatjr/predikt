@@ -139,7 +139,7 @@ export default function ArrivalWaitingRoom({
           <View style={styles.metaDivider} />
           <View style={styles.metaCell}>
             <Text style={styles.metaLabel}>Privacy</Text>
-            <Text style={[styles.metaValue, styles.metaValueGreen]}>🛡 Ghost Mode ON</Text>
+            <Text style={[styles.metaValue, styles.metaValueGreen]}>🛡 Location hidden</Text>
           </View>
         </View>
       </View>
@@ -208,7 +208,7 @@ export default function ArrivalWaitingRoom({
       >
         <Text style={styles.ghostIcon}>🔒</Text>
         <View style={{ flex: 1 }}>
-          <Text style={styles.ghostTitle}>Ghost Mode is ON</Text>
+          <Text style={styles.ghostTitle}>Location is hidden</Text>
           <Text style={styles.ghostCopy}>
             Exact GPS and raw movement are hidden. {safetyMessage}
           </Text>

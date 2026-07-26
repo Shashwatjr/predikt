@@ -113,7 +113,7 @@ export default function ProfileScreen() {
     try {
       const updatedUser = await saveProfileIdentity({ name: name.trim(), prediktHandle: prediktHandle.trim() });
       updateUser(updatedUser);
-      Alert.alert('Profile updated', 'Your display name and PREDIKT handle are saved.');
+      Alert.alert('Profile updated', 'Your display name and MyPrediktion handle are saved.');
     } catch (err: unknown) {
       Alert.alert('Save failed', getApiErrorMessage(err, 'Please review your handle and try again.'));
     } finally {
@@ -264,7 +264,7 @@ export default function ProfileScreen() {
         />
         <TextInputField label="Display name" value={name} onChangeText={setName} placeholder="Your name" />
         <TextInputField
-          label="PREDIKT handle"
+          label="MyPrediktion handle"
           value={prediktHandle}
           onChangeText={setPrediktHandle}
           autoCapitalize="none"

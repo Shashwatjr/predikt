@@ -673,7 +673,7 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
         ]}
       >
         <ArrivalWaitingRoom
-          title={room?.roomTitle ?? 'Arrival PREDIKT'}
+          title={room?.roomTitle ?? 'Arrival room'}
           statusLabel={getTravelStageFromProgress(20, 'creator')}
           targetTime={waitingTargetTime}
           startLabel={room?.startingPointLabel ?? room?.routeSummary?.startLabel ?? 'Start'}
@@ -709,7 +709,7 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
           <Text style={styles.terminalTitle}>{isDraw ? '🏁 Called a draw' : "🏁 It's a wrap!"}</Text>
           <Text style={styles.terminalCopy}>
             {isDraw
-              ? 'This PREDIKT closed neutrally — nobody counted as a loss. Here’s the recap.'
+              ? 'This room closed neutrally — nobody counted as a loss. Here’s the recap.'
               : 'Predictions are in and the result is ready. See who made the closest guess.'}
           </Text>
           <PrimaryButton
@@ -853,7 +853,7 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
       ) : (
         <LiveStatusCard
           theme={categoryTheme}
-          title={room?.roomTitle ?? (category === 'weather_rain' ? 'Weather Room' : 'Live PREDIKT')}
+          title={room?.roomTitle ?? (category === 'weather_rain' ? 'Weather Room' : 'Live room')}
           statusLabel={category === 'weather_rain' ? (liveState?.journeyStatus ?? liveState?.status ?? 'live').replace(/_/g, ' ') : getTravelStageFromProgress(pct, isCreator ? 'creator' : 'guest')}
           statusTone="live"
           progress={category !== 'weather_rain' ? pct : undefined}

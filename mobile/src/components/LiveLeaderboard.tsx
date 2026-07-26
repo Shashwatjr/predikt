@@ -49,7 +49,7 @@ function deltaLabel(seconds: number): string {
 function nameFor(s: LiveLeaderboardStanding): string {
   const handle = s.prediktHandle ?? s.user?.prediktHandle;
   if (handle) return `@${handle}`;
-  return s.user?.name ?? 'PREDIKT user';
+  return s.user?.name ?? 'Player';
 }
 
 export default function LiveLeaderboard({ data, unlockInSeconds, onLockNow, locking }: Props) {

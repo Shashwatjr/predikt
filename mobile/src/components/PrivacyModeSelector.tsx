@@ -47,7 +47,7 @@ export default function PrivacyModeSelector({ value, onChange, onLearnMore, onPr
           </View>
         </View>
         <View style={styles.titleRow}>
-          <Text style={[styles.title, { color: colors.textPrimary }]}>Ghost Mode</Text>
+          <Text style={[styles.title, { color: colors.textPrimary }]}>Location hidden</Text>
           <View style={[styles.badge, { backgroundColor: colors.purpleDim, borderColor: colors.purple }]}>
             <Text style={[styles.badgeText, { color: colors.purpleLight }]}>RECOMMENDED</Text>
           </View>

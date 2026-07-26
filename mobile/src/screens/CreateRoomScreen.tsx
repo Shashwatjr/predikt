@@ -263,7 +263,7 @@ const modeOptions = [
   {
     key: 'beat_bot',
     label: 'Beat the Bot',
-    helper: "Make your call against Oracle Bot's benchmark.",
+    helper: "Make your call against the bot's benchmark.",
   },
   {
     key: 'challenge_self',
@@ -943,7 +943,7 @@ export default function CreateRoomScreen({ navigation, route }: Props) {
             ? 'Will I beat the ETA?'
             : preview.suggestedQuestion ?? 'When will I arrive?';
       const safeTitle = capWithEllipsis(
-        titleOverride.trim() || preview.suggestedRoomTitle || 'Arrival PREDIKT',
+        titleOverride.trim() || preview.suggestedRoomTitle || 'Arrival room',
         120,
       );
       const safeQuestion = capWithEllipsis(questionOverride.trim() || fallbackQuestion, 160);
@@ -987,7 +987,7 @@ export default function CreateRoomScreen({ navigation, route }: Props) {
     if (!placeholderPreset) return '';
     if (selectedCategory === 'food_eta') {
       return placeholderTitle.trim()
-        ? `Delivery ETA PREDIKT: ${placeholderTitle.trim()}`
+        ? `Delivery ETA room: ${placeholderTitle.trim()}`
         : placeholderPreset.title;
     }
     if (selectedCategory === 'gym_habit') {
@@ -1307,7 +1307,7 @@ export default function CreateRoomScreen({ navigation, route }: Props) {
           onChange={setVisibility}
           onLearnMore={() =>
             Alert.alert(
-              'Ghost Mode',
+              'Location hidden',
               'Your exact GPS and raw movement stay private. Friends only see privacy-safe progress and your final result — never your live location.',
             )
           }
@@ -1735,7 +1735,7 @@ export default function CreateRoomScreen({ navigation, route }: Props) {
               ) : null}
               <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Vendor ETA & your prediction</Text>
               <Text style={[styles.lockTimeHint, { color: colors.textSecondary }]}>
-                The vendor ETA is the Oracle Bot benchmark everyone races. Your predicted
+                The vendor ETA is the bot benchmark everyone races. Your predicted
                 arrival is your own guess — it locks with everyone else&apos;s.
               </Text>
               {providerTimingMode(

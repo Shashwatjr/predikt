@@ -78,7 +78,7 @@ export default function CheckpointLeaderboard({ board }: Props) {
             </View>
             <View style={styles.info}>
               <Text style={[styles.name, { color: colors.textPrimary }]} numberOfLines={1}>
-                {s.user?.name ?? 'PREDIKT user'}
+                {s.user?.name ?? 'Player'}
                 {isCurrent ? <Text style={{ color: colors.purple }}> (you)</Text> : null}
               </Text>
               <Text style={[styles.guess, { color: colors.textSecondary }]}>

@@ -49,7 +49,7 @@ const playModes: Array<{
     icon: '🤖',
     label: 'Beat the Bot',
     tag: 'SOON',
-    copy: 'Oracle Bot sets the benchmark. Out-predict the machine.',
+    copy: 'The bot sets the benchmark. Out-predict the machine.',
   },
 ];
 

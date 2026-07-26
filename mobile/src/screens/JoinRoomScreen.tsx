@@ -176,7 +176,7 @@ export default function JoinRoomScreen({ navigation, route }: Props) {
   const answerType = room?.answerType ?? room?.safePreview?.answerType ?? null;
   const showMergedPredict =
     canPredictNow && answerType === 'exact_time' && !isGenericRoom && !!benchmarks?.ordered.length;
-  const roomTitle = room?.title ?? room?.roomTitle ?? (isGenericRoom ? 'A Wild Cards room' : 'A PREDIKT challenge');
+  const roomTitle = room?.title ?? room?.roomTitle ?? (isGenericRoom ? 'A Wild Cards room' : 'A prediction room');
   const sharePayload = useMemo(
     () =>
       room

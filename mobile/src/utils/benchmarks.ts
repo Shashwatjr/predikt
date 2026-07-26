@@ -55,7 +55,7 @@ export function deriveArrivalBenchmarks(room: any): ArrivalBenchmarks | null {
     const hostDate = parseDate(b.hostPrediction?.arrivalTime);
     if (hostDate) host = { key: 'host', label: 'Host', date: hostDate };
     const oracleDate = parseDate(b.oracle?.arrivalTime);
-    if (oracleDate) oracle = { key: 'oracle', label: 'Oracle Bot', date: oracleDate };
+    if (oracleDate) oracle = { key: 'oracle', label: 'The bot', date: oracleDate };
   }
 
   // Fallback for older rooms without a persisted benchmark snapshot.

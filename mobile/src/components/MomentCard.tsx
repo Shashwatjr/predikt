@@ -50,7 +50,7 @@ export default function MomentCard({ title, subtitle, badge, category, handle, p
       </View>
       {oracleLabel ? (
         <View style={[styles.oracleBox, { borderColor: colors.border }]}>
-          <Text style={[styles.oracleLabel, { color: colors.textSecondary }]}>Oracle Bot</Text>
+          <Text style={[styles.oracleLabel, { color: colors.textSecondary }]}>The bot</Text>
           <Text style={[styles.oracleValue, { color: colors.textPrimary }]}>{oracleLabel}</Text>
         </View>
       ) : null}

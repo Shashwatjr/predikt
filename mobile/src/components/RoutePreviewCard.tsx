@@ -59,7 +59,7 @@ export default function RoutePreviewCard({ preview, compact = false }: Props) {
 
   const oracleLabel =
     preview.oracleBotPrediction?.label ??
-    (preview.etaLabel ? `Oracle Bot benchmark: ${preview.etaLabel}` : null);
+    (preview.etaLabel ? `The bot benchmark: ${preview.etaLabel}` : null);
 
   return (
     <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
