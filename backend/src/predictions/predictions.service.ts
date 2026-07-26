@@ -73,6 +73,8 @@ export class PredictionsService {
 
     const fallback = dto.predictedArrivalTime
       ? {
+          // Preserve the room-level hot take through the arrival compatibility path.
+          hotTake: dto.hotTake,
           predictions: await this.buildCompatibilityPayload(
             roomId,
             dto.predictedArrivalTime,

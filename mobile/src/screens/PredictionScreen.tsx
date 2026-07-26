@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, View, Text, StyleSheet, ScrollView, TouchableOpacity, Share, Linking } from 'react-native';
+import { Animated, View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Share, Linking } from 'react-native';
 import * as Location from 'expo-location';
 import { appAlert } from '../utils/appAlert';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -124,6 +124,7 @@ export default function PredictionScreen({ navigation, route }: Props) {
   );
   const [yesNoChoice, setYesNoChoice] = useState<'yes' | 'no' | null>(null);
   const [selectedOptionKey, setSelectedOptionKey] = useState<string | null>(null);
+  const [hotTake, setHotTake] = useState('');
   const inviteCode = room?.inviteCode ?? roomParam?.inviteCode ?? '';
   const sharePayload = useMemo(
     () =>
@@ -234,21 +235,22 @@ export default function PredictionScreen({ navigation, route }: Props) {
     }
     setLoading(true);
     try {
+      const trimmedHotTake = hotTake.trim();
       if (isEditing) {
         // v2 re-predict: replace the prior guess (reuse the update endpoint). The server
         // enforces the window (allowed through the 80% checkpoint, none after).
         await api.patch(
           `/rooms/${roomId}/${editPredictionId}`,
           answerType === 'multiple_choice'
-            ? { selectedOptionKey }
-            : { predictedReachedTime },
+            ? { selectedOptionKey, hotTake: trimmedHotTake || undefined }
+            : { predictedReachedTime, hotTake: trimmedHotTake || undefined },
         );
       } else {
         await api.post(
           `/rooms/${roomId}/predictions`,
           answerType === 'multiple_choice'
-            ? { selectedOptionKey }
-            : { predictedArrivalTime: predictedReachedTime },
+            ? { selectedOptionKey, hotTake: trimmedHotTake || undefined }
+            : { predictedArrivalTime: predictedReachedTime, hotTake: trimmedHotTake || undefined },
         );
       }
       Animated.sequence([
@@ -451,6 +453,20 @@ export default function PredictionScreen({ navigation, route }: Props) {
           ) : null}
         </View>
 
+        {/* Optional 1-line hot take, shown next to your entry on the leaderboard + The Tea */}
+        <View style={styles.hotTakeCard}>
+          <Text style={styles.hotTakeLabel}>Add a hot take (optional)</Text>
+          <TextInput
+            value={hotTake}
+            onChangeText={(t) => setHotTake(t.slice(0, 80))}
+            placeholder="e.g. Traffic clears after 8pm 🚗"
+            placeholderTextColor={colors.textMuted}
+            maxLength={80}
+            style={[styles.hotTakeInput, { borderColor: colors.border, color: colors.textPrimary, backgroundColor: colors.surface }]}
+          />
+          <Text style={[styles.hotTakeCount, { color: colors.textMuted }]}>{hotTake.length}/80</Text>
+        </View>
+
         {forwardCard}
 
         {peersList}
@@ -632,6 +648,10 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   callLabel: { color: palette.textSecondary, fontSize: 12, fontWeight: '800', letterSpacing: 0.6, textTransform: 'uppercase' },
+  hotTakeCard: { gap: spacing.xs, marginTop: spacing.sm },
+  hotTakeLabel: { color: palette.textSecondary, fontSize: 12, fontWeight: '800', letterSpacing: 0.4, textTransform: 'uppercase' },
+  hotTakeInput: { borderRadius: radius.md, borderWidth: 1, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, fontSize: 15 },
+  hotTakeCount: { fontSize: 11, textAlign: 'right' },
   callTime: { color: palette.textPrimary, fontSize: 32, fontWeight: '900' },
   diffRows: { alignItems: 'center', gap: 2, marginTop: spacing.xs },
   diffText: { fontSize: 13, fontWeight: '800' },
