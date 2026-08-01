@@ -7,9 +7,23 @@ interface Props {
   percentage: number;
   label?: string;
   showSegments?: boolean;
+  accentColors?: [string, string];
+  percentColor?: string;
+  trackColor?: string;
+  tickColor?: string;
+  dotColor?: string;
 }
 
-export default function ProgressBar({ percentage, label, showSegments = true }: Props) {
+export default function ProgressBar({
+  percentage,
+  label,
+  showSegments = true,
+  accentColors,
+  percentColor,
+  trackColor,
+  tickColor,
+  dotColor,
+}: Props) {
   const { colors } = useTheme();
   const clamped = Math.min(100, Math.max(0, percentage));
 
@@ -17,13 +31,13 @@ export default function ProgressBar({ percentage, label, showSegments = true }: 
     <View style={styles.container}>
       <View style={styles.header}>
         {label && <Text style={[styles.label, { color: colors.textSecondary }]}>{label}</Text>}
-        <Text style={[styles.pct, { color: colors.purple }]}>{clamped.toFixed(0)}%</Text>
+        <Text style={[styles.pct, { color: percentColor ?? colors.purple }]}>{clamped.toFixed(0)}%</Text>
       </View>
 
-      <View style={[styles.track, { backgroundColor: colors.border }]}>
+      <View style={[styles.track, { backgroundColor: trackColor ?? colors.border }]}>
         {/* Gradient fill */}
         <LinearGradient
-          colors={colors.gradPrimary}
+          colors={accentColors ?? colors.gradPrimary}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 0 }}
           style={[styles.fill, { width: `${clamped}%` }]}
@@ -34,7 +48,7 @@ export default function ProgressBar({ percentage, label, showSegments = true }: 
           <View
             style={[
               styles.dot,
-              { left: `${clamped}%`, backgroundColor: '#fff' },
+              { left: `${clamped}%`, backgroundColor: dotColor ?? '#fff' },
             ]}
           />
         )}
@@ -44,7 +58,7 @@ export default function ProgressBar({ percentage, label, showSegments = true }: 
           [25, 50, 75].map((seg) => (
             <View
               key={seg}
-              style={[styles.tick, { left: `${seg}%`, backgroundColor: colors.bg }]}
+              style={[styles.tick, { left: `${seg}%`, backgroundColor: tickColor ?? colors.bg }]}
             />
           ))}
       </View>

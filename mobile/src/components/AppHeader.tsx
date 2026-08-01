@@ -1,5 +1,6 @@
 import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import BrandLogo from './BrandLogo';
 import { palette, spacing, typography } from '../theme/designSystem';
 
 type Props = {
@@ -17,11 +18,8 @@ export default function AppHeader({ greeting, subtitle, aura, streak, onNotifica
   return (
     <View style={styles.header}>
       <View style={styles.brandRow}>
-        <View style={styles.logoMark}>
-          <Text style={styles.logoP}>P</Text>
-        </View>
         <View style={styles.brandText}>
-          <Text style={styles.wordmark}>My Prediktion</Text>
+          <BrandLogo height={38} style={styles.wordmarkLogo} />
           {greeting ? <Text style={styles.greeting}>{greeting}</Text> : subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
         </View>
       </View>
@@ -56,19 +54,8 @@ export default function AppHeader({ greeting, subtitle, aura, streak, onNotifica
 const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.sm },
   brandRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, flex: 1 },
-  logoMark: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: palette.bgElevated,
-    borderWidth: 1,
-    borderColor: palette.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  logoP: { color: palette.violet, fontSize: 22, fontWeight: '900' },
   brandText: { flex: 1 },
-  wordmark: { color: palette.textPrimary, ...typography.micro, letterSpacing: 3 },
+  wordmarkLogo: { marginBottom: 2 },
   greeting: { color: palette.textPrimary, ...typography.h3, marginTop: 2 },
   subtitle: { color: palette.textSecondary, ...typography.caption, marginTop: 2 },
   right: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },

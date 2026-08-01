@@ -32,7 +32,8 @@
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "test:journey-home-ui": "node --test tests/active-prediction-card-variant.test.mjs"
   },
   "private": true
 }

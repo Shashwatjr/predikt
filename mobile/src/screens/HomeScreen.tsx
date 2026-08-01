@@ -1,11 +1,15 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import {
+  ScrollView,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp, useFocusEffect } from '@react-navigation/native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { RootStackParamList } from '../navigation/types';
 import { useAuth } from '../context/AuthContext';
-import { useTheme } from '../context/ThemeContext';
 import api, { getApiErrorMessage } from '../services/api';
 import { fetchRoom } from '../services/dashboard';
 import { useDashboardData } from '../hooks/useDashboardData';
@@ -16,94 +20,69 @@ import {
   hasSeenDemoScenarioPicker,
   markDemoScenarioPickerSeen,
 } from '../services/demoWalkthroughStorage';
-import WebSideWingLayout from '../components/WebSideWingLayout';
-import ActivePredictionCard from '../components/ActivePredictionCard';
-import { fetchUnreadNotificationCount } from '../services/notifications';
 import {
   completeDashboardOnboarding,
   hasCompletedDashboardOnboarding,
 } from '../services/onboardingStorage';
-import AppHeader from '../components/AppHeader';
-import RewardChips from '../components/RewardChips';
 import { fetchRewardsMe, RewardsMe } from '../services/rewards';
 import BottomNav, { NavTab } from '../components/BottomNav';
-import CategoryTile from '../components/CategoryTile';
-import CategoryVotePrompt from '../components/CategoryVotePrompt';
-import SectionHeader from '../components/SectionHeader';
-import EmptyState from '../components/EmptyState';
-import { CATEGORY_LIST, CategoryTheme } from '../config/categoryTheme';
-import { featureFlags, isCategoryEnabled } from '../config/featureFlags';
-import { voteCategoryInterest } from '../utils/categoryInterest';
-import { palette } from '../theme/designSystem';
+import JourneyGlow from '../components/JourneyGlow';
+import JourneyHeader from '../components/JourneyHeader';
+import JourneyHeroCard from '../components/JourneyHeroCard';
+import JourneyListSection from '../components/JourneyListSection';
+import JourneySidebar, { JourneySidebarItem } from '../components/JourneySidebar';
+import { JOURNEY_DESKTOP_BREAKPOINT, journeyPalette } from '../theme/journeyPalette';
 import { hasSeenTodaysTea, markTodaysTeaSeen } from '../services/todaysTeaStorage';
 import { buildTodaysTea, TodaysTea } from '../utils/todaysTea';
 import TodaysTeaOverlay from '../components/TodaysTeaOverlay';
 import { SkeletonBlock, SkeletonCard } from '../components/Skeleton';
+import { appAlert } from '../utils/appAlert';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Home'>;
   route: RouteProp<RootStackParamList, 'Home'>;
 };
 
-type DemoChoice = 'Yes' | 'No' | 'Exact time';
-type HomeTab = NavTab;
-type CreateRoomPresetCategory = NonNullable<NonNullable<RootStackParamList['CreateRoom']>['presetCategory']>;
-
-const fallbackLiveRooms = [
-  {
-    roomId: 'office-demo',
-    icon: '💼',
-    color: '#2563eb',
-    question: 'When will Rohan reach office?',
-    guesses: 18,
-    timeLeft: '22m left',
-    timerColor: '#38bdf8',
-  },
-  {
-    roomId: 'delivery-demo',
-    icon: '🍅',
-    color: '#ef4444',
-    question: 'Will dinner arrive before 35 mins?',
-    guesses: 12,
-    timeLeft: '15m left',
-    timerColor: '#f59e0b',
-  },
-  {
-    roomId: 'gym-demo',
-    icon: '🏋️',
-    color: '#16a34a',
-    question: 'Will Neha go to gym tomorrow?',
-    guesses: 9,
-    timeLeft: '1d left',
-    timerColor: '#22c55e',
-  },
-];
-
-const waysToPlay = [
-  { label: 'On the Move', icon: '🚙', tint: '#2563eb' },
-  { label: 'Food', icon: '🍕', tint: '#f97316' },
-  { label: 'Gym', icon: '🏋️', tint: '#16a34a' },
-  { label: 'Friends', icon: '👥', tint: '#06B6D4' },
-  { label: 'Sports', icon: '🏆', tint: '#d97706' },
-];
+/**
+ * Journey ETA home.
+ *
+ * One screen, one component tree, two breakpoints:
+ *   • < 1024px  — single column: header → hero → journeys list → bottom nav.
+ *   • >= 1024px — dashboard: left sidebar rail + main column.
+ * The layout switches on width; the sections themselves are the same
+ * components with the same data in both.
+ *
+ * Category surface is Travel ETA only. The underlying category key stays
+ * `arrival_time`; "Journey" is the display label. Sports / Delivery / Habit /
+ * Custom stay gated off in `featureFlags`, as do RIZZ, Gems and streak.
+ */
+const HOME_JOURNEY_LIMIT = 3;
+const HOME_SUBHEADING = 'Where will you beat the ETA today?';
 
 export default function HomeScreen({ navigation, route }: Props) {
-  const { user, logout } = useAuth();
-  const { colors } = useTheme();
-  const { dashboard, activePredictions, loading, loadDashboard, reorderActivePredictions } = useDashboardData();
+  const { user } = useAuth();
+  const { width } = useWindowDimensions();
+  const isDesktop = width >= JOURNEY_DESKTOP_BREAKPOINT;
+
+  const { dashboard, activePredictions, loading, loadDashboard, reorderActivePredictions } =
+    useDashboardData();
   const [tourVisible, setTourVisible] = useState(false);
   const [demoPickerVisible, setDemoPickerVisible] = useState(false);
   const [demoHubExpanded, setDemoHubExpanded] = useState(false);
-  const [demoChoice, setDemoChoice] = useState<DemoChoice>('Yes');
-  const [activeTab, setActiveTab] = useState<HomeTab>('Home');
-  const [unreadNotifications, setUnreadNotifications] = useState(0);
+  const [activeTab, setActiveTab] = useState<NavTab>('Home');
+  const [sidebarItem, setSidebarItem] = useState<JourneySidebarItem>('Home');
+  const [showAllJourneys, setShowAllJourneys] = useState(false);
   const [todaysTea, setTodaysTea] = useState<TodaysTea | null>(null);
   const [teaVisible, setTeaVisible] = useState(false);
-  const [votePromptCategory, setVotePromptCategory] = useState<CategoryTheme | null>(null);
   const [rewards, setRewards] = useState<RewardsMe | null>(null);
   const teaTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const summary = dashboard?.summary;
   const userId = user?.userId;
+  const userName = user?.name;
+  const firstName = userName ? userName.split(' ')[0] : 'there';
+  const demoAccount = isDemoAccount(user);
+  const showDemoHub = !demoAccount || demoHubExpanded;
 
   useEffect(() => {
     let active = true;
@@ -112,37 +91,15 @@ export default function HomeScreen({ navigation, route }: Props) {
         if (active) setRewards(data);
       })
       .catch(() => {
-        // Rewards are non-critical on Home; leave chips hidden on failure.
+        // Rewards are non-critical on Home; fall back to the dashboard summary.
       });
     return () => {
       active = false;
     };
   }, [userId]);
-  const userName = user?.name;
-  const demoAccount = isDemoAccount(user);
-  const showDemoHub = !demoAccount || demoHubExpanded;
-  const sportsCategoryTheme: CategoryTheme = {
-    key: 'open_prediction',
-    label: 'Sports',
-    icon: '⚽',
-    primaryColor: '#f59e0b',
-    secondaryColor: '#ef4444',
-    gradient: ['#f59e0b', '#ef4444'],
-    badgeStyle: { bg: 'rgba(245,158,11,0.2)', border: 'rgba(245,158,11,0.45)', text: '#fde68a' },
-    emptyStateCopy: 'Kick off a sports prediction like Argentina vs Spain and add more teams or players.',
-    resultTitle: 'Sports reveal',
-    quickStartLabel: 'Sports',
-  };
 
-  useEffect(() => {
-    fetchUnreadNotificationCount()
-      .then(setUnreadNotifications)
-      .catch(() => setUnreadNotifications(0));
-  }, [dashboard]);
-
-  // Refresh the hub whenever Home regains focus (e.g. after creating a room or
-  // starting a journey in LiveRoom) so newly live rooms show up in the live
-  // section. The hook already loads on mount, so skip the first focus.
+  // Refresh whenever Home regains focus (e.g. after creating a room or starting a
+  // journey in LiveRoom). The hook already loads on mount, so skip the first focus.
   const didInitialFocusRef = useRef(false);
   useFocusEffect(
     useCallback(() => {
@@ -249,99 +206,38 @@ export default function HomeScreen({ navigation, route }: Props) {
     };
   }, []);
 
-  // Single default view — no filter tabs. Active rooms first, completed after,
-  // preserving the existing pin/displayOrder within each group (stable sort).
-  const filteredActivePredictions = useMemo(() => {
+  // Single default list — active journeys first, completed after, preserving the
+  // existing pin/displayOrder within each group (stable sort).
+  const journeys = useMemo(() => {
     const isCompleted = (status?: string) =>
       ['result_ready', 'completed', 'reached', 'cancelled'].includes(String(status));
     return [...activePredictions].sort(
       (a, b) => (isCompleted(a.status) ? 1 : 0) - (isCompleted(b.status) ? 1 : 0),
     );
   }, [activePredictions]);
-  const liveRooms = useMemo(() => {
-    const activeRooms = activePredictions;
-    if (activeRooms.length === 0) return [];
 
-    return activeRooms.slice(0, 3).map((room, index) => {
-      const fallback = fallbackLiveRooms[index] ?? fallbackLiveRooms[0];
-      return {
-        roomId: room.roomId,
-        icon: fallback.icon,
-        color: fallback.color,
-        question: room.title ?? room.roomTitle ?? fallback.question,
-        guesses: room.participantCount ?? fallback.guesses,
-        timeLeft: room.quickAction?.label ?? room.cta ?? fallback.timeLeft,
-        timerColor: fallback.timerColor,
-        status: room.status,
-        rawRoom: room,
-      };
-    });
-  }, [activePredictions]);
+  const visibleJourneys = useMemo(() => {
+    if (showAllJourneys) return journeys;
+    return journeys.slice(0, HOME_JOURNEY_LIMIT);
+  }, [journeys, showAllJourneys]);
 
-  const hasLiveHubActivity = activePredictions.length > 0;
-  const topResult = dashboard?.followingLeaderboard?.[0];
-  const hasFollowingResults =
-    (dashboard?.followingLeaderboard?.length ?? 0) > 1 || (topResult?.weeklyAura ?? 0) > 0;
-  const totalAura = summary?.totalAura ?? user?.totalAura ?? 0;
-  const weeklyAura = summary?.weeklyAura ?? user?.weeklyAura ?? 0;
-  const demoRank = topResult?.rank ?? 3;
+  // Guard `aura` as well as `rewards` — a partial payload must fall back to the
+  // dashboard summary, not throw and blank the screen.
+  const totalAura = rewards?.aura?.balance ?? summary?.totalAura ?? user?.totalAura ?? 0;
+  function startJourney() {
+    // Travel ETA create flow. Display label is "Journey"; the category key is unchanged.
+    navigation.navigate('CreateRoom', { presetCategory: 'arrival_time' });
+  }
 
-  if (loading) {
-    // Skeleton dashboard: same card shapes as the loaded state, with shimmer, so
-    // the layout does not jump when data arrives.
-    return (
-      <WebSideWingLayout leftPlacement="dashboard_left" rightPlacement="dashboard_right">
-        <View style={styles.screen}>
-          <View style={styles.bgGlowTop} />
-          <View style={styles.bgGlowBottom} />
-          <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
-            {/* Header */}
-            <View style={styles.skeletonHeaderRow}>
-              <View style={{ gap: 8, flex: 1 }}>
-                <SkeletonBlock width="55%" height={20} />
-                <SkeletonBlock width="40%" height={12} />
-              </View>
-              <SkeletonBlock width={44} height={44} radius={22} />
-            </View>
-
-            {/* Primary + secondary CTAs */}
-            <View style={styles.topCtas}>
-              <SkeletonBlock width="100%" height={52} radius={14} style={styles.ctaFlex} />
-              <SkeletonBlock width="100%" height={52} radius={14} style={styles.ctaFlex} />
-            </View>
-
-            {/* Quick start row */}
-            <SkeletonBlock width="42%" height={16} style={{ marginTop: 6 }} />
-            <View style={{ flexDirection: 'row', gap: 10 }}>
-              <SkeletonBlock width={120} height={92} radius={14} />
-              <SkeletonBlock width={120} height={92} radius={14} />
-              <SkeletonBlock width={120} height={92} radius={14} />
-            </View>
-
-            {/* Active predictions (Live PREDIKTs) */}
-            <SkeletonBlock width="38%" height={16} style={{ marginTop: 6 }} />
-            <View style={{ gap: 12 }}>
-              <SkeletonCard lines={2} />
-              <SkeletonCard lines={2} />
-            </View>
-
-            {/* Weekly card */}
-            <SkeletonBlock width="46%" height={16} style={{ marginTop: 6 }} />
-            <SkeletonCard lines={1} height={96} />
-
-            {/* Comeback / create card */}
-            <SkeletonBlock width="100%" height={120} radius={14} />
-          </ScrollView>
-        </View>
-      </WebSideWingLayout>
-    );
+  function joinWithLink() {
+    navigation.navigate('JoinRoom');
   }
 
   async function openRoom(room: any) {
     const roomId = room.rawRoom?.roomId ?? room.roomId;
     const targetScreen = room.rawRoom?.quickAction?.targetScreen;
-    if (!room.rawRoom?.roomId) {
-      navigation.navigate('CreateRoom');
+    if (!roomId) {
+      startJourney();
       return;
     }
 
@@ -349,7 +245,9 @@ export default function HomeScreen({ navigation, route }: Props) {
       const fullRoom = await fetchRoom(roomId);
       const normalizedStatus =
         fullRoom.status === 'prediction_open' ? 'predictions_open' : fullRoom.status;
-      const isCreator = fullRoom.creatorUserId === user?.userId || fullRoom.creator?.userId === user?.userId;
+      const isCreator =
+        fullRoom.creatorUserId === user?.userId || fullRoom.creator?.userId === user?.userId;
+      const hasPredicted = !!fullRoom.viewerHasPredicted || !!room.rawRoom?.hasSubmittedPrediction;
 
       if (targetScreen === 'LiveRoom') {
         navigation.navigate('LiveRoom', { roomId, isCreator });
@@ -361,7 +259,13 @@ export default function HomeScreen({ navigation, route }: Props) {
         return;
       }
 
-      if (normalizedStatus === 'predictions_open') {
+      // Already guessed → room, not the predict loop (even if status still predictions_open).
+      if (hasPredicted && normalizedStatus !== 'completed' && normalizedStatus !== 'reached') {
+        navigation.navigate('LiveRoom', { roomId, isCreator });
+        return;
+      }
+
+      if (normalizedStatus === 'predictions_open' && !hasPredicted) {
         navigation.navigate('Prediction', { roomId, room: fullRoom });
         return;
       }
@@ -373,18 +277,25 @@ export default function HomeScreen({ navigation, route }: Props) {
 
       navigation.navigate('LiveRoom', { roomId, isCreator });
     } catch (error: unknown) {
-      Alert.alert('Room unavailable', getApiErrorMessage(error, 'Could not open this room right now.'));
+      appAlert('Journey unavailable', getApiErrorMessage(error, 'Could not open this journey right now.'));
     }
   }
 
-  function handleBottomNav(tab: HomeTab) {
+  function handleBottomNav(tab: NavTab) {
     setActiveTab(tab);
     if (tab === 'Home') return;
-    if (tab === 'Create') {
-      navigation.navigate('CreateRoom');
+    navigation.navigate('Profile');
+  }
+
+  function handleSidebar(item: JourneySidebarItem) {
+    setSidebarItem(item);
+    if (item === 'StartJourney') {
+      startJourney();
       return;
     }
-    navigation.navigate('Profile');
+    if (item === 'MyJourneys') {
+      setShowAllJourneys(true);
+    }
   }
 
   async function closeTour() {
@@ -403,7 +314,7 @@ export default function HomeScreen({ navigation, route }: Props) {
     );
 
     if (!room) {
-      Alert.alert(
+      appAlert(
         'Scenario unavailable',
         `Could not find room ${scenario.inviteCode}. Re-run seed:engagement-demo and try again.`,
       );
@@ -446,705 +357,231 @@ export default function HomeScreen({ navigation, route }: Props) {
   }
 
   function deleteRoom(room: any) {
+    // Delete here is always "clear my own view" — never a cancel for the whole
+    // room, whoever created it. The journey keeps running for everyone else.
     const deleteMessage =
-      room.status === 'completed' || room.status === 'result_ready' || room.status === 'cancelled'
-        ? 'This will remove the room from your hub.'
-        : 'This will cancel the room for everyone and remove it from your hub.';
-    Alert.alert(
-      'Delete room?',
-      deleteMessage,
-      [
-        { text: 'Keep it', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => {
-            void api
-              .delete(`/rooms/${room.roomId}`)
-              .then(() => loadDashboard({ silent: true }))
-              .catch((error: unknown) => {
-                Alert.alert('Could not delete room', getApiErrorMessage(error, 'Please try again.'));
-              });
-          },
+      'This removes the journey from your list. Everyone else keeps theirs.';
+    appAlert('Remove from your list?', deleteMessage, [
+      { text: 'Keep it', style: 'cancel' },
+      {
+        text: 'Remove',
+        style: 'destructive',
+        onPress: () => {
+          void api
+            .delete(`/rooms/${room.roomId}`)
+            .then(() => loadDashboard({ silent: true }))
+            .catch((error: unknown) => {
+              appAlert('Could not remove journey', getApiErrorMessage(error, 'Please try again.'));
+            });
         },
-      ],
+      },
+    ]);
+  }
+
+  const demoBanner = demoAccount ? (
+    <DemoWalkthroughBanner
+      roomCount={activePredictions.length}
+      hubExpanded={demoHubExpanded}
+      onSelect={(scenario) => {
+        void openDemoScenario(scenario);
+      }}
+      onToggleHub={() => setDemoHubExpanded((current) => !current)}
+      onOpenPicker={() => setDemoPickerVisible(true)}
+    />
+  ) : null;
+
+  const journeyList = showDemoHub ? (
+    <JourneyListSection
+      title="Your journeys"
+      journeys={visibleJourneys}
+      cardVariant="journeyHome"
+      onOpen={(journey) => openRoom({ roomId: journey.roomId, rawRoom: journey })}
+      onDelete={deleteRoom}
+      onTogglePin={togglePin}
+      onMove={moveRoom}
+      onViewAll={
+        !showAllJourneys && journeys.length > HOME_JOURNEY_LIMIT
+          ? () => {
+              setShowAllJourneys(true);
+              setSidebarItem('MyJourneys');
+            }
+          : undefined
+      }
+    />
+  ) : null;
+
+  const overlays = (
+    <>
+      <DashboardOnboardingOverlay visible={tourVisible} onClose={closeTour} />
+      <DemoScenarioPicker
+        visible={demoPickerVisible}
+        onClose={() => {
+          void closeDemoPicker();
+        }}
+        onBrowseAll={() => setDemoHubExpanded(true)}
+        onSelect={(scenario) => {
+          void openDemoScenario(scenario);
+        }}
+      />
+      <TodaysTeaOverlay visible={teaVisible} tea={todaysTea} onClose={dismissTodaysTea} />
+    </>
+  );
+
+  if (loading) {
+    return (
+      <View style={styles.screen}>
+        <JourneyGlow />
+        <View style={isDesktop ? styles.desktopShell : styles.flexOne}>
+          {isDesktop ? <View style={styles.sidebarSkeleton} /> : null}
+          <ScrollView
+            contentContainerStyle={isDesktop ? styles.desktopContent : styles.mobileContent}
+            showsVerticalScrollIndicator={false}
+          >
+            <SkeletonBlock width="55%" height={22} />
+            <SkeletonBlock width="100%" height={isDesktop ? 300 : 260} radius={24} />
+            <SkeletonBlock width="34%" height={16} />
+            <SkeletonCard lines={2} />
+            <SkeletonCard lines={2} />
+          </ScrollView>
+        </View>
+        {!isDesktop ? <BottomNav active="Home" onChange={handleBottomNav} hiddenTabs={['Create']} /> : null}
+      </View>
     );
   }
 
-  return (
-    <WebSideWingLayout leftPlacement="dashboard_left" rightPlacement="dashboard_right">
+  // ── Desktop (>= 1024px): sidebar rail + main dashboard column ────────────────
+  if (isDesktop) {
+    return (
       <View style={styles.screen}>
-        <View style={styles.bgGlowTop} />
-        <View style={styles.bgGlowBottom} />
-
-        <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
-          <AppHeader
-            greeting={user?.name ? `Hey, ${user.name.split(' ')[0]}` : 'Hey there'}
-            subtitle="What moment do you want to turn into a game today?"
-            aura={totalAura}
-            streak={summary?.currentStreak ?? user?.currentStreak}
-            unreadCount={unreadNotifications}
-            onNotifications={
-              featureFlags.notifications ? () => navigation.navigate('Notifications') : undefined
-            }
+        <JourneyGlow />
+        <View style={styles.desktopShell}>
+          <JourneySidebar
+            active={sidebarItem}
+            onSelect={handleSidebar}
+            userName={userName ?? ''}
             onProfile={() => navigation.navigate('Profile')}
           />
+          <ScrollView contentContainerStyle={styles.desktopContent} showsVerticalScrollIndicator={false}>
+            <View style={styles.desktopHeaderRow}>
+              <View style={styles.desktopHeader}>
+                <Text style={styles.desktopGreeting}>Hey, {firstName} 👋</Text>
+                <Text style={styles.desktopTagline}>{HOME_SUBHEADING}</Text>
+              </View>
+              <View style={styles.desktopAuraChip}>
+                <Text style={styles.desktopAuraIcon}>✨</Text>
+                <Text style={styles.desktopAuraValue}>{totalAura} Aura</Text>
+              </View>
+            </View>
 
-          {rewards ? (
-            <RewardChips
-              aura={rewards.aura.balance}
-              rizz={rewards.rizz.balance}
-              gems={rewards.gems.balance}
-              variant="compact"
+            <JourneyHeroCard
+              wide
+              eyebrow="Journey ETA"
+              title="Journey ETA"
+              headline="Think you can beat the map?"
+              subtitle="Choose a route, predict your arrival and challenge your friends."
+              ctaLabel="Start a Journey"
+              onPressCta={startJourney}
+              secondaryLabel="Join a Journey"
+              onPressSecondary={joinWithLink}
             />
-          ) : null}
 
-          <LinearGradient colors={['rgba(34,211,238,0.26)', 'rgba(236,72,153,0.16)', 'rgba(56,189,248,0.12)']} style={styles.heroPanel}>
-            <View style={styles.heroGlowOrb} />
-            <View style={styles.heroGlowOrbSmall} />
-            <View style={styles.heroBadgeRow}>
-              <View style={styles.heroBadge}>
-                <Text style={styles.heroBadgeText}>BEST FIRST MOVE</Text>
-              </View>
-              <View style={[styles.heroBadge, styles.heroBadgeGhost]}>
-                <Text style={styles.heroBadgeGhostText}>Create a room and share it with friends</Text>
-              </View>
-            </View>
-            <Text style={styles.heroHeadline}>Hey, {user?.name ? user.name.split(' ')[0] : 'MVP'} 👋</Text>
-            <Text style={styles.heroCopy}>Create one playful room, send the link, and come back for The Tea. Aura and badges will make sense once you have a result.</Text>
-          </LinearGradient>
-
-          <View style={styles.metricsRow}>
-            <View style={styles.metricCard}>
-              <Text style={styles.metricValue}>{activePredictions.length}</Text>
-              <Text style={styles.metricLabel}>Rooms in play</Text>
-            </View>
-            <View style={styles.metricCard}>
-              <Text style={styles.metricValue}>#{summary?.rankAmongFollowing ?? demoRank}</Text>
-              <Text style={styles.metricLabel}>Weekly rank</Text>
-            </View>
-            <View style={styles.metricCard}>
-              <Text style={styles.metricValue}>{totalAura}</Text>
-              <Text style={styles.metricLabel}>Aura so far</Text>
-            </View>
-          </View>
-
-          <View style={styles.topCtas}>
-            <TouchableOpacity
-              style={styles.ctaFlex}
-              onPress={() =>
-                hasLiveHubActivity && liveRooms[0]
-                  ? openRoom(liveRooms[0])
-                  : navigation.navigate('CreateRoom')
-              }
-            >
-              <LinearGradient colors={['#1da1ff', '#06B6D4']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.primaryCta}>
-                <Text style={styles.ctaIcon}>⚡</Text>
-                <Text style={styles.primaryCtaText}>Start a Prediktion</Text>
-              </LinearGradient>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.secondaryCta, styles.ctaFlex]} onPress={() => navigation.navigate('JoinRoom')}>
-              <Text style={styles.ctaIcon}>🔗</Text>
-              <Text style={styles.secondaryCtaText}>Join with Code</Text>
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.nextMoveCard}>
-            <Text style={styles.sectionTitle}>What to do next</Text>
-            <Text style={styles.mutedText}>Start one quick room, share it in the group chat, then come back for the reveal.</Text>
-          </View>
-
-          <SectionHeader title="Choose a category" subtitle="Jump straight into the kind of moment you want to call" />
-          <View style={styles.categoryQuickGrid}>
-            {[sportsCategoryTheme, ...CATEGORY_LIST.filter((theme) => isCategoryEnabled(theme.key) || theme.key === 'gym_habit')].map((theme) => {
-              if (theme === sportsCategoryTheme) {
-                return (
-                  <CategoryTile
-                  key="sports-preset"
-                  theme={theme}
-                  compact
-                  centered
-                  fill
-                  locked={false}
-                  onPress={() => navigation.navigate('CreateRoom', { presetCategory: 'sports_prediction' })}
-                />
-              );
-              }
-              const enabled = isCategoryEnabled(theme.key);
-              const allowedPresetCategories: readonly CreateRoomPresetCategory[] = [
-                'arrival_time',
-                'food_eta',
-                'open_prediction',
-                'gym_habit',
-                'sports_prediction',
-              ];
-              const presetCategory = allowedPresetCategories.includes(theme.key as CreateRoomPresetCategory)
-                ? (theme.key as CreateRoomPresetCategory)
-                : undefined;
-              return (
-                <CategoryTile
-                  key={theme.key}
-                  theme={theme}
-                  compact
-                  centered
-                  fill
-                  locked={!enabled}
-                  onPress={() =>
-                    enabled
-                      ? navigation.navigate('CreateRoom', presetCategory ? { presetCategory } : undefined)
-                      : setVotePromptCategory(theme)
-                  }
-                />
-              );
-            })}
-          </View>
-
-          <SectionHeader title="Live My Prediktion rooms" live={hasLiveHubActivity} />
-
-          {demoAccount ? (
-            <DemoWalkthroughBanner
-              roomCount={activePredictions.length}
-              hubExpanded={demoHubExpanded}
-              onSelect={(scenario) => {
-                void openDemoScenario(scenario);
-              }}
-              onToggleHub={() => setDemoHubExpanded((current) => !current)}
-              onOpenPicker={() => setDemoPickerVisible(true)}
-            />
-          ) : null}
-
-          {showDemoHub ? (
-          <>
-          {filteredActivePredictions.length > 0 ? (
-            <View style={styles.activePredictionList}>
-              {filteredActivePredictions.map((room, index) => (
-                <ActivePredictionCard
-                  key={room.roomId}
-                  item={room}
-                  onOpen={() => openRoom({ roomId: room.roomId, rawRoom: room })}
-                  onDelete={() => deleteRoom(room)}
-                  onTogglePin={() => togglePin(room.roomId)}
-                  onMoveUp={() => moveRoom(room.roomId, -1)}
-                  onMoveDown={() => moveRoom(room.roomId, 1)}
-                  disableMoveUp={index === 0}
-                  disableMoveDown={index === filteredActivePredictions.length - 1}
-                />
-              ))}
-            </View>
-          ) : activePredictions.length === 0 ? (
-            <EmptyState
-              title="Create your first My Prediktion"
-              body="Start a room or join one with a code to fill your live hub."
-              primaryLabel="Start a Prediktion"
-              secondaryLabel="Join with Code"
-              onPrimary={() => navigation.navigate('CreateRoom')}
-              onSecondary={() => navigation.navigate('JoinRoom')}
-            />
-          ) : (
-            <View style={styles.emptyStateCard}>
-              <Text style={styles.emptyStateTitle}>No rooms match this filter</Text>
-              <Text style={styles.emptyStateCopy}>Try another filter or open one of your other active rooms.</Text>
-            </View>
-          )}
-          </>
-          ) : demoAccount ? (
-            <View style={styles.demoHubHint}>
-              <Text style={styles.demoHubHintTitle}>Full demo hub hidden</Text>
-              <Text style={styles.demoHubHintCopy}>
-                Use the walkthrough chips above, or expand to browse all {activePredictions.length} seeded rooms.
-              </Text>
-            </View>
-          ) : null}
-
-          {hasLiveHubActivity ? (
-            <>
-              <Text style={styles.sectionTitle}>Try it now</Text>
-              <LinearGradient colors={['rgba(37,99,235,0.22)', 'rgba(34,211,238,0.2)']} style={styles.demoCard}>
-                <View style={styles.scooterArt}>
-                  <Text style={styles.rider}>🛵</Text>
-                </View>
-                <View style={styles.demoContent}>
-                  <Text style={styles.demoQuestion}>{dashboard?.dailyChallenge?.title ?? 'Will this delivery arrive before 35 mins?'}</Text>
-                  <View style={styles.optionRow}>
-                    {(['Yes', 'No', 'Exact time'] as DemoChoice[]).map((option) => (
-                      <TouchableOpacity
-                        key={option}
-                        style={[
-                          styles.option,
-                          option === 'Yes' && styles.optionYes,
-                          option === 'No' && styles.optionNo,
-                          option === 'Exact time' && styles.optionExact,
-                          demoChoice === option && styles.optionSelected,
-                        ]}
-                        onPress={() => setDemoChoice(option)}
-                      >
-                        <Text
-                          style={[
-                            styles.optionText,
-                            option === 'Yes' && styles.optionTextYes,
-                            option === 'No' && styles.optionTextNo,
-                            option === 'Exact time' && styles.optionTextExact,
-                          ]}
-                        >
-                          {option}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                  <View style={styles.demoResult}>
-                    <Text style={styles.targetIcon}>🎯</Text>
-                    <View>
-                      <Text style={styles.demoResultText}>Your demo guess: 34 mins</Text>
-                      <Text style={styles.demoResultText}>
-                        You would currently rank <Text style={styles.rankText}>#{demoRank}</Text>
-                      </Text>
-                    </View>
-                  </View>
-                </View>
-              </LinearGradient>
-            </>
-          ) : null}
-
-          {/* MVP cleanup: "Popular ways to play" advertises categories beyond the
-              two MVP ones (Gym, Sports…) and the chips are non-interactive. Hidden
-              until any non-MVP category is re-enabled. */}
-          {featureFlags.categoryWeather || featureFlags.categoryWhosLate || featureFlags.categoryGymHabit ? (
-            <>
-              <Text style={styles.sectionTitle}>Popular ways to play</Text>
-              <View style={styles.chipRow}>
-                {waysToPlay.map((way) => (
-                  <TouchableOpacity key={way.label} style={[styles.playChip, { backgroundColor: `${way.tint}33` }]}>
-                    <Text style={styles.chipIcon}>{way.icon}</Text>
-                    <Text style={styles.chipLabel}>{way.label}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </>
-          ) : null}
-
-          {/* MVP cleanup: "Recent Results" is a following/leaderboard surface. */}
-          {featureFlags.leaderboard && hasFollowingResults ? (
-            <>
-              <Text style={styles.sectionTitle}>Recent Results</Text>
-              <View style={styles.resultCard}>
-                <View style={styles.avatarWrap}>
-                  <Text style={styles.crown}>👑</Text>
-                  <LinearGradient colors={['#fde68a', '#22D3EE']} style={styles.avatar}>
-                    <Text style={styles.avatarText}>{(topResult?.name ?? user?.name ?? 'R').charAt(0).toUpperCase()}</Text>
-                  </LinearGradient>
-                </View>
-                <View style={styles.resultMain}>
-                  <Text style={styles.resultTitle}>
-                    {topResult?.prediktHandle ? `@${topResult.prediktHandle}` : topResult?.name ?? 'Friend'} · Rank #{topResult?.rank ?? 1}
-                  </Text>
-                  <Text style={styles.resultLine}>Weekly Aura: {topResult?.weeklyAura ?? 0}</Text>
-                  <Text style={styles.resultLine}>
-                    Clout: <Text style={styles.accuracy}>{topResult?.cloutBalance ?? 0}</Text>
-                  </Text>
-                </View>
-                <View style={styles.resultBadges}>
-                  {topResult?.rank === 1 ? <Text style={styles.winnerBadge}>TOP 🏆</Text> : null}
-                  <Text style={styles.auraBadge}>💎 {topResult?.weeklyAura ?? 0} Aura this week</Text>
-                </View>
-              </View>
-            </>
-          ) : null}
-
-          {/* MVP cleanup: weekly personality/story surface — hidden until weeklyStory ships. */}
-          {featureFlags.weeklyStory ? (
-            <>
-              <SectionHeader title="Today's rooms" subtitle={dashboard?.dailyChallenge?.title ?? 'Beat the Forecast · Food ETA · Who\'s Late'} />
-
-              <View style={[styles.weeklyCard, { borderColor: palette.border }]}>
-                <Text style={styles.weeklyTitle}>This Week on MyPrediktion</Text>
-                <Text style={styles.weeklyPersonality}>
-                  {(summary?.currentStreak ?? 0) >= 3 ? 'Comeback Merchant' : weeklyAura > 50 ? 'Route Whisperer' : 'The Human Edge'}
-                </Text>
-                <Text style={styles.weeklyCopy}>
-                  {weeklyAura > 0 ? `+${weeklyAura} Aura this week. Share the story.` : 'Complete a room to unlock your weekly personality.'}
-                </Text>
-              </View>
-            </>
-          ) : null}
-
-          <LinearGradient colors={['#06B6D4', '#1d4ed8', '#0ea5e9']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.createCard}>
-            <Text style={styles.createTitle}>Create your first My Prediktion{'\n'}in 30 seconds</Text>
-            <TouchableOpacity style={styles.createButton} onPress={() => navigation.navigate('CreateRoom')}>
-              <Text style={styles.createButtonText}>Start a Prediktion</Text>
-              <Text style={styles.createBolt}>ϟ</Text>
-            </TouchableOpacity>
-          </LinearGradient>
-
-          <TouchableOpacity style={styles.logoutButton} onPress={logout}>
-            <Text style={styles.logoutText}>Log Out</Text>
-          </TouchableOpacity>
-        </ScrollView>
-
-        <BottomNav active={activeTab} onChange={handleBottomNav} />
-        <DashboardOnboardingOverlay visible={tourVisible} onClose={closeTour} />
-        <DemoScenarioPicker
-          visible={demoPickerVisible}
-          onClose={() => {
-            void closeDemoPicker();
-          }}
-          onBrowseAll={() => {
-            setDemoHubExpanded(true);
-          }}
-          onSelect={(scenario) => {
-            void openDemoScenario(scenario);
-          }}
-        />
-        <TodaysTeaOverlay visible={teaVisible} tea={todaysTea} onClose={dismissTodaysTea} />
-        <CategoryVotePrompt
-          visible={!!votePromptCategory}
-          categoryLabel={votePromptCategory?.label ?? null}
-          onVote={() => {
-            if (votePromptCategory) voteCategoryInterest(votePromptCategory.key, votePromptCategory.label);
-          }}
-          onClose={() => setVotePromptCategory(null)}
-        />
+            {demoBanner}
+            {journeyList}
+          </ScrollView>
+        </View>
+        {overlays}
       </View>
-    </WebSideWingLayout>
+    );
+  }
+
+  // ── Mobile (< 1024px): single column ─────────────────────────────────────────
+  return (
+    <View style={styles.screen}>
+      <JourneyGlow />
+      <ScrollView contentContainerStyle={styles.mobileContent} showsVerticalScrollIndicator={false}>
+        <JourneyHeader
+          aura={totalAura}
+          userName={userName ?? ''}
+          onProfile={() => navigation.navigate('Profile')}
+        />
+        <View style={styles.mobileIntro}>
+          <Text style={styles.mobileGreeting}>Hey, {firstName} 👋</Text>
+          <Text style={styles.mobileSubheading}>{HOME_SUBHEADING}</Text>
+        </View>
+
+        <JourneyHeroCard
+          eyebrow="Journey ETA"
+          title="Journey ETA"
+          headline="Think you can beat the map?"
+          subtitle="Choose a route, predict your arrival and challenge your friends."
+          ctaLabel="Start a Journey"
+          onPressCta={startJourney}
+          secondaryLabel="Join a Journey"
+          onPressSecondary={joinWithLink}
+        />
+
+        {demoBanner}
+        {journeyList}
+      </ScrollView>
+
+      <BottomNav active={activeTab} onChange={handleBottomNav} hiddenTabs={['Create']} />
+      {overlays}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#060816' },
-  bgGlowTop: {
-    position: 'absolute',
-    top: -140,
-    right: -110,
-    width: 280,
-    height: 280,
-    borderRadius: 140,
-    backgroundColor: 'rgba(34,211,238,0.45)',
-  },
-  bgGlowBottom: {
-    position: 'absolute',
-    bottom: -130,
-    left: -100,
-    width: 260,
-    height: 260,
-    borderRadius: 130,
-    backgroundColor: 'rgba(14,165,233,0.25)',
-  },
-  container: {
+  // `overflow: hidden` keeps the offscreen glow from widening the page and
+  // introducing a horizontal scrollbar on web at narrow widths.
+  screen: { flex: 1, backgroundColor: journeyPalette.bg, overflow: 'hidden' },
+  flexOne: { flex: 1 },
+
+  // Mobile
+  mobileContent: {
     width: '100%',
-    maxWidth: 980,
+    maxWidth: 520,
     alignSelf: 'center',
-    paddingTop: 56,
-    paddingHorizontal: 22,
+    paddingTop: 26,
+    paddingHorizontal: 20,
     paddingBottom: 112,
-    gap: 14,
+    gap: 16,
   },
-  heroPanel: {
-    borderRadius: 28,
-    borderWidth: 1,
-    borderColor: 'rgba(34,211,238,0.3)',
-    backgroundColor: 'rgba(9,12,25,0.96)',
-    padding: 22,
-    gap: 10,
-    overflow: 'hidden',
+  mobileIntro: { gap: 4, marginTop: 2 },
+  mobileGreeting: { color: journeyPalette.textPrimary, fontSize: 26, lineHeight: 32, fontWeight: '900' },
+  mobileSubheading: { color: journeyPalette.textSecondary, fontSize: 15, lineHeight: 21, fontWeight: '600' },
+
+  // Desktop
+  desktopShell: { flex: 1, flexDirection: 'row', alignItems: 'stretch' },
+  sidebarSkeleton: {
+    width: 248,
+    borderRightWidth: 1,
+    borderRightColor: journeyPalette.border,
+    backgroundColor: journeyPalette.surface,
   },
-  heroGlowOrb: {
-    position: 'absolute',
-    right: -28,
-    top: -26,
-    width: 180,
-    height: 180,
-    borderRadius: 90,
-    backgroundColor: 'rgba(34,211,238,0.22)',
+  desktopContent: {
+    width: '100%',
+    maxWidth: 860,
+    alignSelf: 'center',
+    paddingTop: 26,
+    paddingHorizontal: 40,
+    paddingBottom: 64,
+    gap: 18,
   },
-  heroGlowOrbSmall: {
-    position: 'absolute',
-    right: 70,
-    top: 24,
-    width: 70,
-    height: 70,
-    borderRadius: 35,
-    backgroundColor: 'rgba(236,72,153,0.18)',
-  },
-  heroBadgeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  heroBadge: {
+  desktopHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 16 },
+  desktopHeader: { gap: 6 },
+  desktopGreeting: { color: journeyPalette.textPrimary, fontSize: 28, lineHeight: 34, fontWeight: '900' },
+  desktopTagline: { color: journeyPalette.textSecondary, fontSize: 16, lineHeight: 22, fontWeight: '600' },
+  desktopAuraChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: 'rgba(236,72,153,0.4)',
-    backgroundColor: 'rgba(236,72,153,0.16)',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-  },
-  heroBadgeGhost: {
-    borderColor: 'rgba(255,255,255,0.14)',
-    backgroundColor: 'rgba(255,255,255,0.05)',
-  },
-  heroBadgeText: { color: '#F9A8D4', fontSize: 10, fontWeight: '900', letterSpacing: 0.8 },
-  heroBadgeGhostText: { color: 'rgba(255,255,255,0.78)', fontSize: 10, fontWeight: '800' },
-  heroHeadline: { color: '#fff', fontSize: 30, lineHeight: 36, fontWeight: '900', letterSpacing: -0.6 },
-  heroCopy: { color: 'rgba(255,255,255,0.76)', fontSize: 15, lineHeight: 24, maxWidth: 620 },
-  metricsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  metricCard: {
-    flexGrow: 1,
-    minWidth: '22%',
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    paddingVertical: 16,
-    paddingHorizontal: 14,
-    gap: 4,
-  },
-  metricValue: { color: '#fff', fontSize: 18, fontWeight: '900' },
-  metricLabel: { color: 'rgba(255,255,255,0.64)', fontSize: 12, fontWeight: '700' },
-  loadingState: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
-  loadingText: { marginTop: 12, fontSize: 14 },
-  skeletonHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 4 },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  brandRow: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
-  logoMark: {
-    width: 42,
-    height: 42,
-    borderRadius: 12,
-    backgroundColor: '#0f1b45',
-    borderWidth: 1,
-    borderColor: 'rgba(96,165,250,0.35)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    transform: [{ skewX: '-10deg' }],
-  },
-  logoP: { color: '#22D3EE', fontSize: 29, fontWeight: '900', transform: [{ skewX: '10deg' }] },
-  wordmark: { color: '#fff', fontSize: 27, fontWeight: '900', letterSpacing: 4 },
-  tagline: { color: 'rgba(255,255,255,0.72)', fontSize: 9, marginTop: 1, fontWeight: '700' },
-  headerIcons: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  iconButton: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
-  bell: { fontSize: 20 },
-  notifyDot: { position: 'absolute', top: 6, right: 6, width: 7, height: 7, borderRadius: 4, backgroundColor: '#ef4444' },
-  botAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(59,130,246,0.24)',
-    borderWidth: 1,
-    borderColor: 'rgba(96,165,250,0.55)',
-  },
-  botFace: { fontSize: 22 },
-  hero: { minHeight: 176, flexDirection: 'row', alignItems: 'center' },
-  heroText: { flex: 1.2 },
-  headline: { color: '#fff', fontSize: 28, lineHeight: 35, fontWeight: '900', letterSpacing: -0.4 },
-  gradientWord: { color: '#22D3EE' },
-  subtext: { color: 'rgba(255,255,255,0.7)', fontSize: 12, lineHeight: 18, marginTop: 10 },
-  heroArt: { flex: 0.85, minHeight: 160, alignItems: 'center', justifyContent: 'center' },
-  pin: { position: 'absolute', left: 0, top: 58, fontSize: 28 },
-  dumbbell: { position: 'absolute', right: -6, top: 34, fontSize: 27, transform: [{ rotate: '-24deg' }] },
-  crystalAura: {
-    width: 130,
-    height: 130,
-    borderRadius: 65,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(34,211,238,0.25)',
-  },
-  crystalShardTop: {
-    position: 'absolute',
-    top: 7,
-    width: 48,
-    height: 66,
-    backgroundColor: 'rgba(216,180,254,0.34)',
-    transform: [{ rotate: '28deg' }],
-    borderRadius: 12,
-  },
-  crystalCore: {
-    width: 58,
-    height: 92,
-    borderTopLeftRadius: 30,
-    borderTopRightRadius: 30,
-    borderBottomLeftRadius: 14,
-    borderBottomRightRadius: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.38)',
-    alignItems: 'center',
-  },
-  crystalFacet: { width: 1, flex: 1, backgroundColor: 'rgba(255,255,255,0.46)' },
-  crystalBase: {
-    position: 'absolute',
-    bottom: 13,
-    width: 68,
-    height: 28,
-    borderRadius: 9,
-    backgroundColor: 'rgba(14,116,144,0.88)',
-    borderWidth: 1,
-    borderColor: 'rgba(34,211,238,0.7)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  crystalBaseText: { color: '#fff', fontSize: 14, fontWeight: '900' },
-  topCtas: { flexDirection: 'row', gap: 12 },
-  ctaFlex: { flex: 1 },
-  primaryCta: { height: 56, borderRadius: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9 },
-  secondaryCta: {
-    height: 56,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.14)',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 9,
-    backgroundColor: 'rgba(255,255,255,0.04)',
-  },
-  ctaIcon: { color: '#fff', fontSize: 16, fontWeight: '900' },
-  primaryCtaText: { color: '#fff', fontSize: 17, fontWeight: '900' },
-  secondaryCtaText: { color: '#fff', fontSize: 17, fontWeight: '800' },
-  sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 5 },
-  sectionTitle: { color: '#fff', fontSize: 16, fontWeight: '900' },
-  categoryQuickGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, paddingBottom: 4 },
-  liveRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  liveDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: '#22D3EE' },
-  liveText: { color: '#22D3EE', fontSize: 10, fontWeight: '900', letterSpacing: 1 },
-  activePredictionList: { gap: 10 },
-  demoHubHint: {
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    padding: 14,
-    gap: 4,
-  },
-  demoHubHintTitle: { color: '#fff', fontSize: 13, fontWeight: '900' },
-  demoHubHintCopy: { color: 'rgba(255,255,255,0.68)', fontSize: 12, lineHeight: 17 },
-  liveList: { gap: 8 },
-  liveCard: {
-    minHeight: 51,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(96,165,250,0.18)',
-    backgroundColor: 'rgba(10,20,46,0.84)',
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 10,
-    gap: 10,
-  },
-  roomIconCircle: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
-  roomIcon: { fontSize: 17 },
-  roomText: { flex: 1 },
-  roomQuestion: { color: '#fff', fontSize: 12.4, fontWeight: '800', lineHeight: 16 },
-  roomGuesses: { color: 'rgba(255,255,255,0.55)', fontSize: 11, marginTop: 1 },
-  timeColumn: { alignItems: 'flex-end', flexDirection: 'row', gap: 7 },
-  timerText: { fontSize: 11.5, fontWeight: '800' },
-  chevron: { color: 'rgba(255,255,255,0.6)', fontSize: 25, fontWeight: '300' },
-  emptyStateCard: {
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(96,165,250,0.18)',
-    backgroundColor: 'rgba(10,20,46,0.84)',
-    padding: 16,
-    gap: 8,
-  },
-  emptyStateTitle: { color: '#fff', fontSize: 16, fontWeight: '900' },
-  emptyStateCopy: { color: 'rgba(255,255,255,0.72)', fontSize: 12, lineHeight: 18 },
-  emptyStateActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 6 },
-  emptyPrimary: { backgroundColor: '#22D3EE', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10 },
-  emptyPrimaryText: { color: '#fff', fontWeight: '900', fontSize: 12 },
-  emptySecondary: {
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.18)',
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    borderRadius: 10,
+    borderColor: journeyPalette.borderStrong,
+    backgroundColor: 'rgba(139,92,246,0.14)',
     paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  emptySecondaryText: { color: '#fff', fontWeight: '800', fontSize: 12 },
-  demoCard: {
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(96,165,250,0.35)',
-    minHeight: 122,
-    flexDirection: 'row',
-    padding: 10,
-    gap: 10,
-  },
-  scooterArt: { width: 102, alignItems: 'center', justifyContent: 'center' },
-  rider: { fontSize: 64 },
-  demoContent: { flex: 1, justifyContent: 'center' },
-  demoQuestion: { color: '#fff', fontSize: 13.5, fontWeight: '900', lineHeight: 18, marginBottom: 8 },
-  optionRow: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
-  option: { borderRadius: 10, borderWidth: 1, paddingVertical: 6, paddingHorizontal: 13 },
-  optionSelected: { backgroundColor: 'rgba(255,255,255,0.07)' },
-  optionYes: { borderColor: '#22c55e' },
-  optionNo: { borderColor: '#ef4444' },
-  optionExact: { borderColor: '#22D3EE' },
-  optionText: { fontSize: 11, fontWeight: '900' },
-  optionTextYes: { color: '#22c55e' },
-  optionTextNo: { color: '#ef4444' },
-  optionTextExact: { color: '#fff' },
-  demoResult: {
-    marginTop: 8,
-    borderRadius: 11,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
-    backgroundColor: 'rgba(15,23,42,0.55)',
-    paddingHorizontal: 9,
     paddingVertical: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
   },
-  targetIcon: { fontSize: 25 },
-  demoResultText: { color: 'rgba(255,255,255,0.82)', fontSize: 11.2, lineHeight: 15 },
-  rankText: { color: '#f59e0b', fontWeight: '900' },
-  chipRow: { flexDirection: 'row', gap: 7, flexWrap: 'wrap' },
-  playChip: { borderRadius: 17, paddingVertical: 8, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', gap: 5 },
-  chipIcon: { fontSize: 13 },
-  chipLabel: { color: '#fff', fontSize: 10.2, fontWeight: '800' },
-  resultCard: {
-    minHeight: 76,
-    borderRadius: 13,
-    borderWidth: 1,
-    borderColor: 'rgba(34,211,238,0.44)',
-    backgroundColor: 'rgba(20,24,62,0.92)',
-    padding: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  avatarWrap: { width: 58, height: 58, alignItems: 'center', justifyContent: 'center' },
-  crown: { position: 'absolute', top: -7, left: 0, fontSize: 20, zIndex: 2 },
-  avatar: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
-  avatarText: { color: '#fff', fontSize: 20, fontWeight: '900' },
-  resultMain: { flex: 1 },
-  resultTitle: { color: '#fff', fontSize: 13.2, fontWeight: '900', marginBottom: 3 },
-  resultLine: { color: 'rgba(255,255,255,0.66)', fontSize: 11.2, lineHeight: 15 },
-  accuracy: { color: '#22c55e', fontWeight: '900' },
-  resultBadges: { alignItems: 'flex-end', gap: 6 },
-  winnerBadge: { color: '#fbbf24', borderWidth: 1, borderColor: 'rgba(251,191,36,0.42)', borderRadius: 12, paddingHorizontal: 8, paddingVertical: 5, fontSize: 9, fontWeight: '900' },
-  auraBadge: { color: '#fff', backgroundColor: 'rgba(34,211,238,0.28)', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 6, fontSize: 10.5, fontWeight: '800' },
-  playedBadge: { color: '#dbeafe', backgroundColor: 'rgba(37,99,235,0.25)', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 6, fontSize: 10.5, fontWeight: '800' },
-  createCard: { borderRadius: 12, minHeight: 72, padding: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-  createTitle: { color: '#fff', flex: 1, fontSize: 17, lineHeight: 23, fontWeight: '900' },
-  createButton: { backgroundColor: '#fff', borderRadius: 10, paddingHorizontal: 16, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 8 },
-  createButtonText: { color: '#3730a3', fontWeight: '900', fontSize: 13.5 },
-  createBolt: { color: '#2563eb', fontWeight: '900', fontSize: 16 },
-  weeklyCard: {
-    borderRadius: 16,
-    borderWidth: 1,
-    backgroundColor: 'rgba(18,26,53,0.9)',
-    padding: 16,
-    gap: 6,
-  },
-  weeklyTitle: { color: 'rgba(255,255,255,0.65)', fontSize: 11, fontWeight: '800', letterSpacing: 0.6, textTransform: 'uppercase' },
-  weeklyPersonality: { color: '#fff', fontSize: 20, fontWeight: '900' },
-  weeklyCopy: { color: 'rgba(255,255,255,0.7)', fontSize: 13, lineHeight: 18 },
-  nextMoveCard: {
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(96,165,250,0.26)',
-    backgroundColor: 'rgba(12,23,52,0.9)',
-    padding: 14,
-    gap: 6,
-  },
-  mutedText: { color: 'rgba(255,255,255,0.64)', fontSize: 12, lineHeight: 18 },
-  logoutButton: { alignItems: 'center', paddingVertical: 8 },
-  logoutText: { color: 'rgba(255,255,255,0.46)', fontSize: 12, fontWeight: '800' },
+  desktopAuraIcon: { fontSize: 13 },
+  desktopAuraValue: { color: journeyPalette.textPrimary, fontSize: 13, fontWeight: '800' },
 });

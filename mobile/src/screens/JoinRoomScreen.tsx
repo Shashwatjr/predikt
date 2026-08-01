@@ -42,7 +42,26 @@ export default function JoinRoomScreen({ navigation, route }: Props) {
     setLoading(true);
     try {
       const res = await api.get(`/rooms/invite/${inviteCode}`);
-      setRoom(res.data);
+      let preview = res.data;
+      // Invite preview is public and user-agnostic — enrich with viewerHasPredicted when authed.
+      if (isAuthenticated && preview?.roomId) {
+        try {
+          const roomRes = await api.get(`/rooms/${preview.roomId}`);
+          preview = {
+            ...preview,
+            ...roomRes.data,
+            viewerHasPredicted: !!roomRes.data?.viewerHasPredicted,
+            // Keep invite-safe title/question/benchmarks when room detail omits them.
+            title: preview.title ?? roomRes.data?.roomTitle,
+            question: preview.question ?? roomRes.data?.question,
+            benchmarks: preview.benchmarks ?? roomRes.data?.benchmarks,
+            canLateJoinPredict: roomRes.data?.canLateJoinPredict ?? preview.canLateJoinPredict,
+          };
+        } catch {
+          // Non-member private rooms may 403; invite preview alone is still usable.
+        }
+      }
+      setRoom(preview);
       setCode(inviteCode);
     } catch (error: unknown) {
       Alert.alert('Room unavailable', getApiErrorMessage(error, 'No room with that invite code. Check it and try again.'));
@@ -63,24 +82,59 @@ export default function JoinRoomScreen({ navigation, route }: Props) {
     void handleFind(routeCode);
   }, [route.params?.joinCode]);
 
+  // If auth lands after invite preview, refresh viewerHasPredicted so we don't re-prompt.
+  useEffect(() => {
+    if (!isAuthenticated || !room?.roomId) return;
+    if (typeof room.viewerHasPredicted === 'boolean') return;
+    let cancelled = false;
+    void api
+      .get(`/rooms/${room.roomId}`)
+      .then((roomRes) => {
+        if (cancelled) return;
+        setRoom((current: any) =>
+          current
+            ? {
+                ...current,
+                ...roomRes.data,
+                viewerHasPredicted: !!roomRes.data?.viewerHasPredicted,
+                title: current.title ?? roomRes.data?.roomTitle,
+                question: current.question ?? roomRes.data?.question,
+                benchmarks: current.benchmarks ?? roomRes.data?.benchmarks,
+              }
+            : current,
+        );
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, room?.roomId, room?.viewerHasPredicted]);
+
   // Resolves which screen the join should land on, from the join response + status.
   function resolveTarget(nextAction?: string) {
     const normalizedStatus = room.status === 'prediction_open' ? 'predictions_open' : room.status;
     const predictionRoom = { ...room, ...(room?.safePreview ?? {}) };
     const toPrediction = { screen: 'Prediction' as const, params: { roomId: room.roomId, room: predictionRoom } };
     const toLive = { screen: 'LiveRoom' as const, params: { roomId: room.roomId, isCreator: false } };
+    const alreadyPredicted = !!room?.viewerHasPredicted;
 
     // nextAction from the join response is user-aware (it already accounts for
     // whether this user has predicted and whether the late window is open), so it
     // wins. canLateJoinPredict is only a fallback when nextAction is absent
     // (e.g. the guest best-effort join failed) — it's user-agnostic and would
     // otherwise send an already-predicted joiner back to re-predict.
-    if (nextAction === 'prediction') return toPrediction;
+    if (nextAction === 'prediction' && !alreadyPredicted) return toPrediction;
     if (nextAction === 'live') return toLive;
+    if (alreadyPredicted) return toLive;
 
     if (normalizedStatus === 'predictions_open' || room?.canLateJoinPredict) return toPrediction;
     if (normalizedStatus === 'live' || normalizedStatus === 'predictions_locked') return toLive;
     return { screen: 'Result' as const, params: { roomId: room.roomId } };
+  }
+
+  function goToRoom() {
+    if (!room?.roomId) return;
+    navigation.navigate('LiveRoom', { roomId: room.roomId, isCreator: false });
   }
 
   async function submitArrivalPrediction() {
@@ -158,14 +212,16 @@ export default function JoinRoomScreen({ navigation, route }: Props) {
   }
 
   const normalizedStatus = room?.status === 'prediction_open' ? 'predictions_open' : room?.status;
-  const canPredictNow = normalizedStatus === 'predictions_open' || !!room?.canLateJoinPredict;
+  const alreadyPredicted = !!room?.viewerHasPredicted;
+  const canPredictNow =
+    !alreadyPredicted && (normalizedStatus === 'predictions_open' || !!room?.canLateJoinPredict);
   const ctaLabel: Record<string, string> = {
     predictions_open: 'Make my prediction',
-    predictions_locked: 'Watch it live',
-    live: 'Watch it live',
+    predictions_locked: 'Go to room',
+    live: 'Go to room',
     completed: 'See the Tea',
   };
-  const isJoinable = canPredictNow || !!(normalizedStatus && ctaLabel[normalizedStatus]);
+  const isJoinable = alreadyPredicted || canPredictNow || !!(normalizedStatus && ctaLabel[normalizedStatus]);
 
   const categoryTheme = getCategoryTheme(room?.category ?? room?.templateKey);
   const isGenericRoom = (room?.category ?? room?.templateKey) === 'open_prediction';
@@ -242,7 +298,13 @@ export default function JoinRoomScreen({ navigation, route }: Props) {
               <Text style={styles.heroIcon}>{categoryTheme.icon}</Text>
               <Text style={styles.heroCategory}>{categoryTheme.label}</Text>
             </View>
-            <Text style={styles.heroEyebrow}>{isGenericRoom ? "You're invited to Wild Cards" : "You're invited to predict"}</Text>
+            <Text style={styles.heroEyebrow}>
+              {alreadyPredicted
+                ? "You're already in this room"
+                : isGenericRoom
+                  ? "You're invited to Wild Cards"
+                  : "You're invited to predict"}
+            </Text>
             <Text style={styles.heroTitle}>{roomTitle}</Text>
             {room.question ? <Text style={styles.heroQuestion}>{room.question}</Text> : null}
             <View style={styles.socialProofPill}>
@@ -263,7 +325,7 @@ export default function JoinRoomScreen({ navigation, route }: Props) {
                   <Text style={styles.benchTime}>{formatClock(b.date, false)}</Text>
                 </View>
               ))}
-              {isJoinable ? <Text style={styles.beatLine}>Think you can beat them?</Text> : null}
+              {isJoinable && !alreadyPredicted ? <Text style={styles.beatLine}>Think you can beat them?</Text> : null}
             </View>
           ) : null}
 
@@ -315,12 +377,32 @@ export default function JoinRoomScreen({ navigation, route }: Props) {
           ) : null}
 
           {isJoinable ? (
-            <PrimaryButton
-              label={showMergedPredict ? 'Lock it in' : canPredictNow ? 'Make my prediction' : ctaLabel[normalizedStatus as string]}
-              onPress={handleAction}
-              loading={loading}
-              icon="🎯"
-            />
+            alreadyPredicted ? (
+              <PrimaryButton
+                label="Go to room"
+                onPress={goToRoom}
+                loading={loading}
+                icon="🚪"
+              />
+            ) : (
+              <>
+                <PrimaryButton
+                  label={showMergedPredict ? 'Lock it in' : canPredictNow ? 'Make my prediction' : ctaLabel[normalizedStatus as string]}
+                  onPress={
+                    canPredictNow
+                      ? handleAction
+                      : goToRoom
+                  }
+                  loading={loading}
+                  icon={canPredictNow ? '🎯' : '🚪'}
+                />
+                {canPredictNow && normalizedStatus !== 'completed' ? (
+                  <TouchableOpacity onPress={goToRoom} style={{ paddingVertical: spacing.md, alignItems: 'center' }}>
+                    <Text style={{ color: palette.violetLight, fontWeight: '800', fontSize: 14 }}>Go to room</Text>
+                  </TouchableOpacity>
+                ) : null}
+              </>
+            )
           ) : (
             <Text style={[styles.statusMsg, { color: colors.textMuted }]}>
               This room is {String(room.status).replace(/_/g, ' ')}.

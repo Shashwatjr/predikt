@@ -7,7 +7,7 @@ import { useTheme } from '../context/ThemeContext';
 
 import LoginScreen from '../screens/LoginScreen';
 import RegisterScreen from '../screens/RegisterScreen';
-import LandingScreen from '../screens/LandingScreen';
+import LandingScreenV2 from '../screens/LandingScreen.v2';
 import HomeScreen from '../screens/HomeScreen';
 import CreateRoomScreen from '../screens/CreateRoomScreen';
 import RoomCreatedScreen from '../screens/RoomCreatedScreen';
@@ -91,7 +91,7 @@ export default function AppNavigator() {
       >
         {!isAuthenticated ? (
           <>
-            <Stack.Screen name="Landing" component={LandingScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="Landing" component={LandingScreenV2} options={{ headerShown: false }} />
             <Stack.Screen name="Login" component={LoginScreen} options={{ headerShown: false }} />
             <Stack.Screen name="Register" component={RegisterScreen} options={{ title: 'Create Account' }} />
             <Stack.Screen name="JoinRoom" component={JoinRoomScreen} options={{ title: 'Join Room' }} />

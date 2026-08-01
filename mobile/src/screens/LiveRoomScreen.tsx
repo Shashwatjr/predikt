@@ -1,5 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { Animated, ScrollView, StyleSheet, Text, View, Alert, Linking } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Animated, Pressable, ScrollView, StyleSheet, Text, View, Alert, Linking, Platform, Share, useWindowDimensions } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -7,6 +7,7 @@ import * as Location from 'expo-location';
 import { RootStackParamList } from '../navigation/types';
 import PrimaryButton from '../components/PrimaryButton';
 import ArrivalJourneyViz from '../components/ArrivalJourneyViz';
+import BrandLogo from '../components/BrandLogo';
 import FoodEtaViz from '../components/FoodEtaViz';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
@@ -20,10 +21,12 @@ import RoomPredictionList, { RoomPredictionEntry } from '../components/RoomPredi
 import CheckpointLeaderboard, { CheckpointBoard } from '../components/CheckpointLeaderboard';
 import LiveLeaderboard, { LiveLeaderboardData } from '../components/LiveLeaderboard';
 import { deriveArrivalBenchmarks, formatClock } from '../utils/benchmarks';
-import { botGuessTeaser, botEtaTeaser } from '../utils/botVoice';
+import { botGuessTeaser, botEtaTeaser, botEtaRead } from '../utils/botVoice';
 import { layout, palette } from '../theme/designSystem';
 import { featureFlags } from '../config/featureFlags';
-import { getTravelStage, getTravelStageFromProgress } from '../utils/travelProgress';
+import { formatTravelStatusWithPercent, getTravelStageFromProgress } from '../utils/travelProgress';
+import { buildSharePayload, shareViaWebShareApi } from '../utils/shareRoom';
+import { copyToClipboard } from '../utils/shareLine';
 
 // v2 (checkpoint_leaderboard_v2): six time-based checkpoints; v1 samples 50/80.
 const V2_CHECKPOINTS = [20, 40, 60, 80, 90, 100];
@@ -59,10 +62,18 @@ interface LiveState {
 
 const startDelayOptions = [3, 5, 10, 15] as const;
 
+function shortenPlaceLabel(label: string | null | undefined): string {
+  if (!label) return 'Unknown';
+  const firstChunk = label.split(',')[0]?.trim() || label.trim();
+  return firstChunk.length > 26 ? `${firstChunk.slice(0, 23).trimEnd()}…` : firstChunk;
+}
+
 export default function LiveRoomScreen({ navigation, route }: Props) {
   const { colors } = useTheme();
   const { user } = useAuth();
+  const { width } = useWindowDimensions();
   const { roomId, isCreator, justPredicted } = route.params;
+  const isDesktop = width >= layout.breakpoints.desktop;
   const [showLockedReassurance, setShowLockedReassurance] = useState(!!justPredicted);
   const [showPrivacyInfo, setShowPrivacyInfo] = useState(false);
   const [liveState, setLiveState] = useState<LiveState | null>(null);
@@ -476,7 +487,6 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
   }
 
   const pct = liveState?.progressPercentage ?? 0;
-  const travelStage = getTravelStage(pct);
   const secondsUntilStart = !isCreator && viewerCountdownSeconds != null
     ? viewerCountdownSeconds
     : isCreator && liveState?.startTime
@@ -529,6 +539,7 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
   const isTerminal = ['completed', 'cancelled'].includes(normStatus);
   const journeyStarted =
     normStatus === 'live' ||
+    !!liveState?.waitingForDelayedStart ||
     ['started', 'live', 'inactive', 'overdue', 'arrived_verified', 'completed'].includes(
       liveState?.journeyStatus ?? '',
     );
@@ -584,17 +595,22 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
     liveState?.etaMinutes == null;
 
   // Live bot voice teaser (a line, not just a number) — existing benchmark/ETA data only.
+  // Challenge CTA only when the viewer has not guessed yet.
   const liveOracle = deriveArrivalBenchmarks(room)?.oracle;
+  const liveBotEtaLabel =
+    liveState?.etaMinutes != null
+      ? `${liveState.etaMinutes} min`
+      : liveOracle
+        ? formatClock(liveOracle.date, false)
+        : room?.oracleBotPrediction?.label ?? null;
   const liveBotTeaser =
-    category === 'weather_rain'
+    category === 'weather_rain' || !liveBotEtaLabel
       ? null
-      : liveState?.etaMinutes != null
-        ? botEtaTeaser(`${liveState.etaMinutes} min`)
-        : liveOracle
-          ? botGuessTeaser(formatClock(liveOracle.date, false))
-          : room?.oracleBotPrediction?.label
-            ? botEtaTeaser(room.oracleBotPrediction.label)
-            : null;
+      : myPrediction
+        ? botEtaRead(liveBotEtaLabel)
+        : liveState?.etaMinutes != null || room?.oracleBotPrediction?.label
+          ? botEtaTeaser(liveBotEtaLabel)
+          : botGuessTeaser(liveBotEtaLabel);
 
   // ---- Pre-tracking "you're all set" waiting room (arrival only) ----
   const isArrivalCategory = category !== 'weather_rain' && category !== 'food_eta' && !isGenericRoom;
@@ -611,6 +627,17 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
     !!liveState &&
     trackingCountdownActive &&
     !['completed', 'cancelled'].includes(liveState.status);
+
+  const creatorDesktopJourneyBoard =
+    isDesktop && isCreator && !isGenericRoom && category !== 'weather_rain' && phase !== 'ended';
+
+  useEffect(() => {
+    // Custom MyPrediktion chrome replaces the stack header on the desktop journey board.
+    navigation.setOptions({ headerShown: !creatorDesktopJourneyBoard || showArrivalWaitingRoom });
+    return () => {
+      navigation.setOptions({ headerShown: true, title: '' });
+    };
+  }, [creatorDesktopJourneyBoard, showArrivalWaitingRoom, navigation]);
 
   const waitingBenchmarks = showArrivalWaitingRoom ? deriveArrivalBenchmarks(room) : null;
   const waitingTargetTime = showArrivalWaitingRoom
@@ -701,8 +728,180 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
     );
   }
 
+  const routeLabel = `${shortenPlaceLabel(room?.startingPointLabel ?? room?.routeSummary?.startLabel)} → ${shortenPlaceLabel(room?.destinationLabel ?? room?.routeSummary?.destinationLabel)}`;
+  const hostGuessLabel = myPredictionDate ? formatClock(myPredictionDate, false) : room?.benchmarks?.hostPrediction?.arrivalTime ? formatClock(new Date(room.benchmarks.hostPrediction.arrivalTime), false) : 'Pending';
+  const botGuessLabel =
+    room?.benchmarks?.oracle?.arrivalTime
+      ? formatClock(new Date(room.benchmarks.oracle.arrivalTime), false)
+      : room?.oracleBotPrediction?.label ?? 'Pending';
+  const guestCount = Math.max(0, predictions.filter((entry) => !entry.isCurrentUser && entry.status !== 'revoked').length);
+  const creatorDesktopLiveJourney = creatorDesktopJourneyBoard && phase === 'started';
+  const canStartJourney =
+    !!liveState &&
+    !isGenericRoom &&
+    category !== 'weather_rain' &&
+    phase !== 'started' &&
+    liveState.status !== 'live';
+  const participantRows = predictions
+    .filter((entry) => entry.status !== 'revoked')
+    .map((entry, index) => ({
+      key: entry.predictionId ?? `${entry.user?.userId ?? 'row'}-${index}`,
+      name:
+        entry.user?.prediktHandle ??
+        entry.user?.name ??
+        (entry.isCurrentUser ? `${user?.prediktHandle ? `@${user.prediktHandle}` : user?.name ?? 'You'} (you)` : 'Guest'),
+      locked: !!entry.predictedReachedTime || !!entry.selectedOptionKey,
+      isCurrentUser: !!entry.isCurrentUser,
+    }));
+  const creatorDesktopRankRows = liveLeaderboard?.revealed
+    ? liveLeaderboard.standings.slice(0, 6).map((standing, index) => ({
+        key: `${standing.userId}-${standing.rank}`,
+        rank: standing.rank ?? index + 1,
+        name:
+          standing.prediktHandle ??
+          standing.user?.prediktHandle ??
+          standing.user?.name ??
+          'Guest',
+        guess: formatClock(new Date(standing.predictedReachedTime), false),
+        badge: standing.isWinnerSoFar ? 'Winning' : standing.isCurrentUser ? 'You' : `+${Math.round(Math.max(0, standing.deltaFromBestSeconds) / 60)} min`,
+        highlight: standing.isWinnerSoFar || standing.isCurrentUser,
+      }))
+    : participantRows.map((participant, index) => ({
+        key: participant.key,
+        rank: index + 1,
+        name: participant.name,
+        guess: participant.locked ? 'Locked in' : 'Waiting',
+        badge: participant.isCurrentUser ? 'You' : participant.locked ? 'Predicted' : 'Pending',
+        highlight: participant.isCurrentUser,
+      }));
+  const inviteCode = room?.inviteCode ?? room?.code ?? '';
+  const sharePayload = useMemo(
+    () => (room && inviteCode ? buildSharePayload({ ...room, inviteCode }) : null),
+    [inviteCode, room],
+  );
+
+  async function handleShareInviteLink() {
+    if (!sharePayload) return;
+    if (Platform.OS === 'web') {
+      const shared = await shareViaWebShareApi({
+        shareTitle: `Join ${sharePayload.shareTitle}`,
+        shareText: sharePayload.shareText,
+        inviteUrl: sharePayload.inviteUrl,
+      });
+      if (shared) return;
+    }
+    await Share.share({
+      message: sharePayload.shareText,
+      title: `Join ${sharePayload.shareTitle}`,
+    });
+  }
+
+  async function handleCopyCode() {
+    if (!inviteCode) return;
+    const copied = await copyToClipboard(inviteCode);
+    if (copied) {
+      Alert.alert('Code copied', 'Your invite code is ready to paste.');
+      return;
+    }
+    await Share.share({ message: inviteCode, title: 'Invite code' });
+  }
+
   return (
-    <ScrollView contentContainerStyle={[styles.container, { backgroundColor: palette.bg, maxWidth: layout.maxContentWidth, alignSelf: 'center', width: '100%' }]}>
+    <ScrollView
+      contentContainerStyle={[
+        styles.container,
+        {
+          backgroundColor: palette.bg,
+          maxWidth: creatorDesktopJourneyBoard ? layout.maxWideWidth : layout.maxContentWidth,
+          alignSelf: 'center',
+          width: '100%',
+        },
+      ]}
+    >
+      {creatorDesktopJourneyBoard ? (
+        <View style={styles.myPrediktionHeader}>
+          <Pressable
+            onPress={() => navigation.goBack()}
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
+            style={styles.myPrediktionBack}
+          >
+            <Text style={styles.myPrediktionBackIcon}>←</Text>
+          </Pressable>
+          <View style={styles.myPrediktionBrand}>
+            <BrandLogo height={40} />
+          </View>
+          <View style={styles.myPrediktionHeaderActions}>
+            {inviteCode ? (
+              <>
+                <View style={styles.myPrediktionCodeChip}>
+                  <Text style={styles.myPrediktionCodeLabel}>Code</Text>
+                  <Text style={styles.myPrediktionCodeValue}>{inviteCode}</Text>
+                </View>
+                <Pressable
+                  onPress={() => void handleCopyCode()}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Copy invite code ${inviteCode}`}
+                  style={styles.myPrediktionCopyButton}
+                >
+                  <Text style={styles.myPrediktionCopyButtonText}>Copy code</Text>
+                </Pressable>
+              </>
+            ) : null}
+            <PrimaryButton
+              label="Invite friends"
+              onPress={handleInviteFriends}
+              variant="secondary"
+              icon="👥"
+              fullWidth={false}
+            />
+          </View>
+        </View>
+      ) : null}
+
+      {!isGenericRoom && room ? (
+        <LinearGradient
+          colors={['rgba(124,58,237,0.28)', 'rgba(15,21,39,0.98)', 'rgba(37,99,235,0.20)']}
+          style={styles.journeyHeroShell}
+        >
+          <View style={styles.journeyHeroHeader}>
+            <View style={styles.journeyHeroLead}>
+              <View style={styles.journeyHeroRouteIcon}>
+                <Text style={styles.journeyHeroRouteIconText}>📍</Text>
+              </View>
+              <View style={styles.journeyHeroRouteBlock}>
+                <Text style={styles.journeyHeroRoute}>{routeLabel}</Text>
+                <Text style={styles.journeyHeroMeta}>
+                  {phase === 'open'
+                    ? 'Predictions open'
+                    : phase === 'locked'
+                      ? 'Predictions closed'
+                      : phase === 'started'
+                        ? 'Journey in progress'
+                        : 'Journey complete'}
+                </Text>
+              </View>
+            </View>
+            <View style={styles.journeyHeroPills}>
+              <View style={styles.journeyHeroPrivacyPill}>
+                <Text style={styles.journeyHeroPrivacyText}>Live location hidden</Text>
+              </View>
+              <View style={styles.journeyHeroStatusPill}>
+                <View style={styles.journeyHeroStatusDot} />
+                <Text style={styles.journeyHeroStatusText}>
+                  {phase === 'started'
+                    ? 'Making progress'
+                    : phase === 'open'
+                      ? 'Predictions open'
+                      : phase === 'locked'
+                        ? 'Predictions closed'
+                        : 'Journey complete'}
+                </Text>
+              </View>
+            </View>
+          </View>
+        </LinearGradient>
+      ) : null}
 
       {phase === 'ended' ? (
         <View style={styles.terminalBanner}>
@@ -718,7 +917,7 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
             icon="🏆"
           />
         </View>
-      ) : (
+      ) : !creatorDesktopJourneyBoard ? (
         <View
           style={[
             styles.phaseBanner,
@@ -746,7 +945,7 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
                   : 'Guesses are locked. Delayed progress updates will roll in below.'}
           </Text>
         </View>
-      )}
+      ) : null}
 
       {/* Guest lead: a calm confirmation of their own guess + one line on what's next. */}
       {isGuestView && myPredictionDate ? (
@@ -767,7 +966,7 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
         </View>
       ) : null}
 
-      {room && phase !== 'ended' && (isCreator || isGenericRoom) ? (
+      {room && phase !== 'ended' && (isCreator || isGenericRoom) && !creatorDesktopJourneyBoard ? (
         <View style={styles.inviteRow}>
           <View style={{ flex: 1 }}>
             <Text style={styles.inviteTitle}>
@@ -850,11 +1049,11 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
                 : 'Voting is open.'}
           </Text>
         </View>
-      ) : (
+      ) : !creatorDesktopJourneyBoard ? (
         <LiveStatusCard
           theme={categoryTheme}
           title={room?.roomTitle ?? (category === 'weather_rain' ? 'Weather Room' : 'Live room')}
-          statusLabel={category === 'weather_rain' ? (liveState?.journeyStatus ?? liveState?.status ?? 'live').replace(/_/g, ' ') : getTravelStageFromProgress(pct, isCreator ? 'creator' : 'guest')}
+          statusLabel={category === 'weather_rain' ? (liveState?.journeyStatus ?? liveState?.status ?? 'live').replace(/_/g, ' ') : getTravelStageFromProgress(pct, isCreator ? 'creator' : 'guest', { journeyStarted: phase === 'started' })}
           statusTone="live"
           progress={category !== 'weather_rain' ? pct : undefined}
           etaLabel={
@@ -873,7 +1072,7 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
                 : (liveState?.lifecycleMessage ?? liveState?.safetyMessage)
           }
         />
-      )}
+      ) : null}
 
       {milestoneBanner ? (
         <View style={[styles.milestoneBanner, { borderColor: colors.amber, backgroundColor: colors.surfaceHigh }]}>
@@ -887,7 +1086,7 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
         </View>
       ) : null}
 
-      {!isGenericRoom ? (
+      {!isGenericRoom && !creatorDesktopJourneyBoard ? (
         <View>
           <Text
             onPress={() => setShowPrivacyInfo((v) => !v)}
@@ -905,48 +1104,240 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
         </View>
       ) : null}
 
-      {liveState && !isGenericRoom ? (
-        <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          {isCreator ? (
-            <CoachMark
-              storageKey="coachmark:live:route_oracle"
-              title="Map estimate"
-              body="A neutral estimate to guess against. Not the winner — that's whoever's closest."
+      {creatorDesktopJourneyBoard ? (
+        <View style={styles.creatorDesktopStack}>
+          <View style={[styles.creatorDesktopCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <View style={styles.creatorDesktopCardHeaderRow}>
+              <Text style={[styles.creatorDesktopTitle, { color: colors.textPrimary }]}>Journey view</Text>
+              <View style={styles.journeyViewStatusPill}>
+                <View style={styles.journeyViewStatusDot} />
+                <Text style={styles.journeyViewStatusText}>
+                  {phase === 'started' ? 'On the way' : 'Waiting for the journey to begin'}
+                </Text>
+              </View>
+            </View>
+            <ArrivalJourneyViz
+              progressPercentage={pct}
+              etaMinutes={liveState?.etaMinutes}
+              status={liveState?.journeyStatus ?? liveState?.status}
+              startLabel={room?.startingPointLabel ?? room?.routeSummary?.startLabel ?? 'Start'}
+              destinationLabel={room?.destinationLabel ?? room?.routeSummary?.destinationLabel ?? 'Destination'}
+              safetyMessage={liveState?.safetyMessage}
+              primaryColor="#A855F7"
+              secondaryColor="#3B82F6"
+              embedded
             />
-          ) : null}
-          <Text style={[styles.creatorTitle, { color: colors.textPrimary }]}>
-            {category === 'weather_rain' ? 'Weather Room Status' : 'Journey Status'}
-          </Text>
-          <Text style={[styles.statusLine, { color: colors.purpleLight }]}>
-            {category === 'weather_rain'
-              ? (liveState.journeyStatus ?? liveState.status).replace(/_/g, ' ')
-              : `${travelStage.creatorLabel} · ${travelStage.checkpoint}%`}
-          </Text>
-          <Text style={[styles.startDelayCopy, { color: colors.textSecondary }]}>
-            {category === 'weather_rain'
-              ? 'Declare the actual rain outcome when the time window ends. The bot is a benchmark, not a guarantee.'
-              : guestNotStarted
-                ? `Journey starts when ${creatorName} taps go.`
-                : (!isCreator && liveState.waitingForDelayedStart && trackingCountdownLabel)
-                ? trackingCountdownLabel
-                : liveState.lifecycleMessage ?? 'Approx. journey progress is shown with privacy-safe timing.'}
-          </Text>
-          {category !== 'weather_rain' ? (
-            <>
-              {guessSummary ? <Text style={[styles.statusMeta, { color: colors.textPrimary }]}>{guessSummary}</Text> : null}
-              {liveBotTeaser ? <Text style={styles.botTeaser}>🤖 {liveBotTeaser}</Text> : null}
-              <Text style={[styles.statusMeta, { color: colors.textSecondary }]}>
-                Expected duration: {Math.round((liveState.expectedDurationSeconds ?? 3600) / 60)} min
-              </Text>
-              {/* Auto-close time and grace buffer are internal lifecycle accounting —
-                  not user-facing. The host sees a friendly "stays open until" line near
-                  the confirm actions instead. */}
-            </>
-          ) : null}
-        </View>
-      ) : null}
+          </View>
 
-      {(isGenericRoom ? predictions.length > 0 : !!liveState && (predictions.length || anyCheckpointAvailable)) ? (
+          <View style={[styles.creatorDesktopStatusStrip, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <View style={styles.journeyHeroStats}>
+              <View style={styles.journeyHeroStat}>
+                <Text style={styles.journeyHeroStatIcon}>⏱</Text>
+                <Text style={styles.journeyHeroStatLabel}>ETA</Text>
+                <Text style={styles.journeyHeroStatValue}>
+                  {Math.round((liveState?.expectedDurationSeconds ?? 2640) / 60)} min
+                </Text>
+              </View>
+              <View style={styles.journeyHeroStatDivider} />
+              <View style={styles.journeyHeroStat}>
+                <Text style={styles.journeyHeroStatIcon}>👤</Text>
+                <Text style={styles.journeyHeroStatLabel}>Your call</Text>
+                <Text style={styles.journeyHeroStatValue}>{hostGuessLabel}</Text>
+              </View>
+              <View style={styles.journeyHeroStatDivider} />
+              <View style={styles.journeyHeroStat}>
+                <Text style={styles.journeyHeroStatIcon}>🤖</Text>
+                <Text style={styles.journeyHeroStatLabel}>Bot</Text>
+                <Text style={styles.journeyHeroStatValue}>{botGuessLabel}</Text>
+              </View>
+              <View style={styles.journeyHeroStatDivider} />
+              <View style={styles.journeyHeroStat}>
+                <Text style={styles.journeyHeroStatIcon}>👥</Text>
+                <Text style={styles.journeyHeroStatLabel}>Guests</Text>
+                <Text style={styles.journeyHeroStatValue}>{guestCount}</Text>
+              </View>
+            </View>
+          </View>
+
+          {creatorDesktopLiveJourney ? (
+            <>
+              <View style={[styles.creatorDesktopCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <View style={styles.creatorDesktopCardHeader}>
+                  <Text style={[styles.creatorDesktopIcon, { color: colors.purpleLight }]}>⌘</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.creatorDesktopTitle, { color: colors.textPrimary }]}>People predicting</Text>
+                    <Text style={[styles.creatorDesktopSub, { color: colors.textSecondary }]}>
+                      {liveLeaderboard?.revealed
+                        ? 'Live ranking based on the latest projected arrival.'
+                        : 'Predictions will line up here as friends lock in their calls.'}
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.creatorDesktopRankList}>
+                  {creatorDesktopRankRows.length ? (
+                    creatorDesktopRankRows.map((participant) => (
+                      <View
+                        key={participant.key}
+                        style={[
+                          styles.creatorDesktopRankRow,
+                          {
+                            borderColor: participant.highlight ? colors.purple : colors.border,
+                            backgroundColor: participant.highlight ? colors.purpleDim : colors.surfaceHigh,
+                          },
+                        ]}
+                      >
+                        <View style={styles.creatorDesktopRankLead}>
+                          <Text style={[styles.creatorDesktopRankNumber, { color: colors.purpleLight }]}>#{participant.rank}</Text>
+                          <View style={{ flex: 1 }}>
+                            <Text style={[styles.creatorDesktopRankName, { color: colors.textPrimary }]} numberOfLines={1}>
+                              {participant.name}
+                            </Text>
+                            <Text style={[styles.creatorDesktopRankGuess, { color: colors.textSecondary }]}>
+                              {participant.guess}
+                            </Text>
+                          </View>
+                        </View>
+                        <Text
+                          style={[
+                            styles.creatorDesktopRankBadge,
+                            { color: participant.highlight ? colors.purpleLight : colors.textMuted },
+                          ]}
+                        >
+                          {participant.badge}
+                        </Text>
+                      </View>
+                    ))
+                  ) : (
+                    <Text style={[styles.startDelayCopy, { color: colors.textSecondary, marginBottom: 0 }]}>
+                      No predictions yet. Invite friends to get the board moving.
+                    </Text>
+                  )}
+                </View>
+              </View>
+
+              <View style={[styles.creatorDesktopNotifyCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <View style={styles.creatorDesktopNotifyCopy}>
+                  <Text style={styles.creatorDesktopNotifyIcon}>🔔</Text>
+                  <Text style={[styles.creatorDesktopNotifyText, { color: colors.textSecondary }]}>
+                    We'll notify you when tracking begins.
+                  </Text>
+                </View>
+                <PrimaryButton
+                  label="Enable notifications"
+                  onPress={() =>
+                    Alert.alert(
+                      'Notifications',
+                      "You're all set — we'll surface live journey updates here when tracking changes.",
+                    )
+                  }
+                  variant="secondary"
+                  icon="🔔"
+                  fullWidth={false}
+                />
+              </View>
+            </>
+          ) : (
+          <View style={styles.creatorDesktopGrid}>
+            <View style={styles.creatorDesktopColumn}>
+            {canStartJourney ? (
+              <View style={[styles.creatorDesktopCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <View style={styles.creatorDesktopCardHeader}>
+                  <Text style={[styles.creatorDesktopIcon, { color: colors.purpleLight }]}>▷</Text>
+                  <Text style={[styles.creatorDesktopTitle, { color: colors.textPrimary }]}>Start Journey</Text>
+                </View>
+                <Text style={[styles.startDelayCopy, { color: colors.textSecondary }]}>
+                  Choose when the visible journey begins. Friends see delayed progress, not exact GPS.
+                </Text>
+                <View style={styles.delayRow}>
+                  {startDelayOptions.map((minutes) => (
+                    <Text
+                      key={minutes}
+                      onPress={() => setStartDelayMinutes(minutes)}
+                      style={[
+                        styles.delayChip,
+                        {
+                          color: colors.textPrimary,
+                          borderColor: startDelayMinutes === minutes ? colors.purple : colors.border,
+                          backgroundColor: startDelayMinutes === minutes ? colors.purpleDim : colors.surfaceHigh,
+                        },
+                      ]}
+                    >
+                      {minutes} min
+                    </Text>
+                  ))}
+                </View>
+                <PrimaryButton
+                  label="Start Journey"
+                  onPress={handleStartRoom}
+                  loading={starting}
+                  gradientColors={['#8B5CF6', '#38BDF8']}
+                />
+              </View>
+            ) : null}
+
+            <View style={[styles.creatorDesktopCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <View style={styles.creatorDesktopCardHeader}>
+                <Text style={[styles.creatorDesktopIcon, { color: colors.purpleLight }]}>⌘</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.creatorDesktopTitle, { color: colors.textPrimary }]}>People in this room</Text>
+                  <Text style={[styles.creatorDesktopSub, { color: colors.textSecondary }]}>
+                    More guesses make the reveal better!
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.peopleStack}>
+                {participantRows.length ? (
+                  participantRows.map((participant) => (
+                    <View key={participant.key} style={[styles.personRow, { borderColor: colors.border, backgroundColor: colors.surfaceHigh }]}>
+                      <View style={styles.personAvatar}>
+                        <Text style={styles.personAvatarText}>{participant.name.charAt(0).toUpperCase()}</Text>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.personName, { color: colors.textPrimary }]} numberOfLines={1}>
+                          {participant.name}
+                        </Text>
+                      </View>
+                      <Text style={[styles.personLock, { color: participant.locked ? '#86efac' : colors.textSecondary }]}>
+                        {participant.locked ? 'Locked in' : 'Waiting'}
+                      </Text>
+                    </View>
+                  ))
+                ) : (
+                  <Text style={[styles.startDelayCopy, { color: colors.textSecondary, marginBottom: 0 }]}>
+                    No one has joined yet. Share the room to start the reveal.
+                  </Text>
+                )}
+              </View>
+              <PrimaryButton
+                label="Invite friends to join"
+                onPress={handleInviteFriends}
+                variant="secondary"
+                fullWidth
+              />
+            </View>
+
+            </View>
+
+            <View style={styles.creatorDesktopColumn}>
+            <View style={[styles.creatorDesktopCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <View style={styles.creatorDesktopCardHeader}>
+                <Text style={[styles.creatorDesktopIcon, { color: colors.purpleLight }]}>⚙</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.creatorDesktopTitle, { color: colors.textPrimary }]}>Creator controls</Text>
+                  <Text style={[styles.creatorDesktopSub, { color: colors.textSecondary }]}>
+                    You're in control. Update or end the journey anytime.
+                  </Text>
+                </View>
+              </View>
+              <PrimaryButton label="Confirm arrival" onPress={handleConfirmArrival} loading={confirmingArrival} icon="✅" />
+              <PrimaryButton label="Plan changed" onPress={handleCancelJourney} loading={cancelling} variant="secondary" icon="↗" />
+              <PrimaryButton label="End room & see results" onPress={handleEndRoom} loading={ending} variant="danger" icon="🗑" />
+            </View>
+            </View>
+          </View>
+          )}
+        </View>
+      ) : (isGenericRoom ? predictions.length > 0 : !!liveState && (predictions.length || anyCheckpointAvailable)) ? (
         <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           {isGenericRoom && genericSummaryRows.length > 0 ? (
             <View style={styles.genericSummaryWrap}>
@@ -991,7 +1382,7 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
         </View>
       ) : null}
 
-      {isCreator && liveState && !isGenericRoom && category !== 'weather_rain' && (secondsUntilStart > 0 || liveState.status !== 'live') ? (
+      {isCreator && liveState && !isGenericRoom && category !== 'weather_rain' && !creatorDesktopJourneyBoard && (secondsUntilStart > 0 || liveState.status !== 'live') ? (
         <View style={[styles.creatorCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <LinearGradient colors={[colors.purple + '30', 'transparent']} style={styles.creatorHeader}>
             <Text style={[styles.creatorTitle, { color: colors.textPrimary }]}>Start Journey</Text>
@@ -1045,20 +1436,20 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
       ) : null}
 
       {/* Live visualization — SVG only, never a map */}
-      {!isGenericRoom && liveProgressPending ? (
+      {!creatorDesktopJourneyBoard && !isGenericRoom && liveProgressPending ? (
         <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <Text style={[styles.creatorTitle, { color: colors.textPrimary }]}>🚦 {getTravelStageFromProgress(20, 'creator')}</Text>
           <Text style={[styles.startDelayCopy, { color: colors.textSecondary, marginBottom: 0 }]}>
             Live progress will appear here shortly — hang tight. Guests see delayed checkpoint updates, not a live trail.
           </Text>
         </View>
-      ) : !isGenericRoom && liveState && category === 'food_eta' ? (
+      ) : !creatorDesktopJourneyBoard && !isGenericRoom && liveState && category === 'food_eta' ? (
         <FoodEtaViz
           progressPercentage={pct}
           etaMinutes={liveState.etaMinutes}
           status={liveState.journeyStatus ?? liveState.status}
         />
-      ) : !isGenericRoom && liveState && category !== 'weather_rain' ? (
+      ) : !creatorDesktopJourneyBoard && !isGenericRoom && liveState && category !== 'weather_rain' ? (
         <ArrivalJourneyViz
           progressPercentage={pct}
           etaMinutes={liveState.etaMinutes}
@@ -1069,7 +1460,7 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
           primaryColor={categoryTheme.primaryColor}
           secondaryColor={categoryTheme.secondaryColor}
         />
-      ) : !isGenericRoom ? (
+      ) : !creatorDesktopJourneyBoard && !isGenericRoom ? (
         <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <Text style={[styles.waiting, { color: colors.textMuted }]}>Waiting for live updates…</Text>
         </View>
@@ -1102,7 +1493,7 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
         </View>
       ) : null}
 
-      {isCreator && room?.answerType !== 'multiple_choice' ? (
+      {isCreator && room?.answerType !== 'multiple_choice' && !creatorDesktopJourneyBoard ? (
         <View style={[styles.creatorCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <LinearGradient colors={[colors.purple + '30', 'transparent']} style={styles.creatorHeader}>
             <Text style={[styles.creatorTitle, { color: colors.textPrimary }]}>⚙️  Creator Controls</Text>
@@ -1135,6 +1526,153 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
 
 const styles = StyleSheet.create({
   container: { flexGrow: 1, width: '100%', maxWidth: 880, alignSelf: 'center', padding: 20, paddingTop: 28 },
+  myPrediktionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 16,
+    marginBottom: 18,
+  },
+  myPrediktionBack: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    borderWidth: 1,
+    borderColor: 'rgba(148,163,184,0.28)',
+    backgroundColor: 'rgba(15,21,39,0.9)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  myPrediktionBackIcon: { color: '#FFFFFF', fontSize: 20, fontWeight: '700', marginTop: -1 },
+  myPrediktionBrand: { flex: 1, alignItems: 'center' },
+  myPrediktionHeaderActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  myPrediktionCodeChip: {
+    minHeight: 52,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(99,102,241,0.3)',
+    backgroundColor: 'rgba(49,46,129,0.28)',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+    gap: 2,
+  },
+  myPrediktionCodeLabel: {
+    color: '#9BA7C2',
+    fontSize: 11,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+  },
+  myPrediktionCodeValue: { color: '#FFFFFF', fontSize: 18, fontWeight: '900', letterSpacing: 2 },
+  myPrediktionCopyButton: {
+    minHeight: 52,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(34,211,238,0.35)',
+    backgroundColor: 'rgba(8,47,73,0.3)',
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  myPrediktionCopyButtonText: {
+    color: '#67E8F9',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  journeyHeroShell: {
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(123,63,228,0.34)',
+    backgroundColor: 'rgba(15,21,39,0.96)',
+    padding: 20,
+    marginBottom: 16,
+    gap: 10,
+  },
+  journeyHeroHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' },
+  journeyHeroLead: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 14, minWidth: 240 },
+  journeyHeroRouteIcon: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: 'rgba(168,85,247,0.22)',
+    borderWidth: 1,
+    borderColor: 'rgba(168,85,247,0.35)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  journeyHeroRouteIconText: { fontSize: 22 },
+  journeyHeroRouteBlock: { flex: 1, gap: 6 },
+  journeyHeroRoute: { color: '#FFFFFF', fontSize: 20, fontWeight: '900', lineHeight: 26 },
+  journeyHeroMeta: { color: '#9BA7C2', fontSize: 14, fontWeight: '700' },
+  journeyHeroPills: { flexDirection: 'row', gap: 10, flexWrap: 'wrap', alignItems: 'center' },
+  journeyHeroStatusPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(34,211,238,0.28)',
+    backgroundColor: 'rgba(8,47,73,0.45)',
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+  },
+  journeyHeroStatusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#22D3EE',
+  },
+  journeyHeroStatusText: { color: '#E0F2FE', fontSize: 13, fontWeight: '800' },
+  journeyHeroPrivacyPill: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(129,140,248,0.22)',
+    backgroundColor: 'rgba(49,46,129,0.22)',
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+  },
+  journeyHeroPrivacyText: { color: 'rgba(255,255,255,0.86)', fontSize: 13, fontWeight: '700' },
+  journeyViewStatusPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(168,85,247,0.35)',
+    backgroundColor: 'rgba(88,28,135,0.28)',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  journeyViewStatusDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#A855F7' },
+  journeyViewStatusText: { color: '#E9D5FF', fontSize: 12, fontWeight: '800' },
+  journeyHeroProgressRail: {
+    height: 14,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    overflow: 'hidden',
+  },
+  journeyHeroProgressFill: {
+    height: '100%',
+    borderRadius: 999,
+    backgroundColor: '#38BDF8',
+  },
+  journeyHeroStats: { flexDirection: 'row', alignItems: 'stretch', flexWrap: 'wrap' },
+  journeyHeroStat: { flex: 1, minWidth: 110, paddingHorizontal: 10, gap: 4 },
+  journeyHeroStatDivider: {
+    width: 1,
+    alignSelf: 'stretch',
+    backgroundColor: 'rgba(148,163,184,0.16)',
+    marginVertical: 4,
+  },
+  journeyHeroStatIcon: { fontSize: 14, marginBottom: 2 },
+  journeyHeroStatLabel: { color: '#9BA7C2', fontSize: 12, fontWeight: '700' },
+  journeyHeroStatValue: { color: '#FFFFFF', fontSize: 22, fontWeight: '900', marginTop: 2 },
   liveHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
   liveDot: { width: 10, height: 10, borderRadius: 5, marginRight: 6 },
   liveText: { fontWeight: '900', fontSize: 14, letterSpacing: 2 },
@@ -1219,6 +1757,154 @@ const styles = StyleSheet.create({
   genericSummaryLabel: { fontSize: 14, fontWeight: '800', textTransform: 'capitalize' },
   genericSummaryCount: { fontSize: 13, fontWeight: '900' },
   card: { borderRadius: 18, padding: 20, borderWidth: 1, marginBottom: 16 },
+  creatorDesktopStack: { gap: 16, marginBottom: 16 },
+  creatorDesktopStatusStrip: {
+    borderRadius: 20,
+    borderWidth: 1,
+    padding: 18,
+    gap: 14,
+  },
+  creatorDesktopStatusTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  creatorDesktopStatusLabel: { fontSize: 13, fontWeight: '800' },
+  creatorDesktopStatusPct: { fontSize: 15, fontWeight: '900' },
+  creatorDesktopGrid: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 16,
+  },
+  creatorDesktopRankList: { gap: 10 },
+  creatorDesktopRankRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 16,
+    borderWidth: 1,
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  creatorDesktopRankLead: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+  },
+  creatorDesktopRankNumber: {
+    width: 34,
+    fontSize: 16,
+    fontWeight: '900',
+  },
+  creatorDesktopRankName: { fontSize: 15, fontWeight: '800' },
+  creatorDesktopRankGuess: { fontSize: 12, fontWeight: '600', marginTop: 2 },
+  creatorDesktopRankBadge: { fontSize: 12, fontWeight: '800' },
+  creatorDesktopInviteCard: {
+    borderRadius: 22,
+    borderWidth: 1,
+    padding: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 20,
+  },
+  creatorDesktopInviteIntro: { flex: 1.1, flexDirection: 'row', alignItems: 'center', gap: 14 },
+  creatorDesktopGiftIcon: {
+    width: 54,
+    height: 54,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  creatorDesktopGiftEmoji: { fontSize: 26 },
+  creatorDesktopInviteCopy: { flex: 1, gap: 6 },
+  creatorDesktopInviteTitle: { fontSize: 17, fontWeight: '900' },
+  creatorDesktopInviteBody: { fontSize: 13, lineHeight: 20 },
+  creatorDesktopInviteMeta: { flex: 1, gap: 10 },
+  creatorDesktopInviteLabel: { fontSize: 12, fontWeight: '800' },
+  creatorDesktopCodeRow: { flexDirection: 'row', gap: 10, flexWrap: 'wrap' },
+  creatorDesktopCodeChip: {
+    minWidth: 52,
+    height: 60,
+    borderRadius: 14,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+  },
+  creatorDesktopCodeChipText: { color: '#FFFFFF', fontSize: 28, fontWeight: '900', letterSpacing: 1.5 },
+  creatorDesktopInviteActions: { width: 300, gap: 12 },
+  creatorDesktopInviteAction: { width: '100%' },
+  creatorDesktopNotifyCard: {
+    borderRadius: 20,
+    borderWidth: 1,
+    paddingHorizontal: 20,
+    paddingVertical: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 16,
+  },
+  creatorDesktopNotifyCopy: { flexDirection: 'row', alignItems: 'center', gap: 14, flex: 1 },
+  creatorDesktopNotifyIcon: { fontSize: 24 },
+  creatorDesktopNotifyText: { fontSize: 14, fontWeight: '600' },
+  creatorDesktopColumn: { flex: 1, gap: 16 },
+  creatorDesktopCard: {
+    borderRadius: 22,
+    borderWidth: 1,
+    padding: 20,
+  },
+  creatorDesktopCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 12,
+  },
+  creatorDesktopCardHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginBottom: 12,
+  },
+  creatorDesktopIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    overflow: 'hidden',
+    textAlign: 'center',
+    textAlignVertical: 'center',
+    fontSize: 18,
+    fontWeight: '900',
+    backgroundColor: 'rgba(99,102,241,0.18)',
+    paddingTop: 7,
+  },
+  creatorDesktopTitle: { fontSize: 17, fontWeight: '900' },
+  creatorDesktopSub: { fontSize: 13, lineHeight: 18, marginTop: 2 },
+  creatorDesktopHint: { fontSize: 13, fontWeight: '800' },
+  peopleStack: { gap: 10, marginBottom: 14 },
+  personRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderWidth: 1,
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  personAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(139,92,246,0.9)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  personAvatarText: { color: '#FFFFFF', fontSize: 18, fontWeight: '900' },
+  personName: { fontSize: 15, fontWeight: '800' },
+  personLock: { fontSize: 14, fontWeight: '800' },
   etaBlock: { alignItems: 'center', marginBottom: 16 },
   etaNum: { fontSize: 68, fontWeight: '900', lineHeight: 72 },
   etaUnit: { fontSize: 14, marginTop: -4 },

@@ -1,5 +1,14 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import {
+  Alert,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+  useWindowDimensions,
+} from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
 import * as Location from 'expo-location';
@@ -13,18 +22,18 @@ import PredictionOptionCard from '../components/PredictionOptionCard';
 import TextInputField from '../components/TextInputField';
 import TimePickerSegments from '../components/TimePickerSegments';
 import TravelModeSelector, { TravelMode } from '../components/TravelModeSelector';
-import RoutePreviewCard from '../components/RoutePreviewCard';
 import RouteMapPreview from '../components/RouteMapPreview';
 import StepProgress from '../components/StepProgress';
-import CategoryTile from '../components/CategoryTile';
 import CategoryVotePrompt from '../components/CategoryVotePrompt';
 import ModeCard from '../components/ModeCard';
-import PrivacyModeSelector, { PrivacyVisibility } from '../components/PrivacyModeSelector';
-import { getCategoryTheme, CATEGORY_LIST, CategoryTheme } from '../config/categoryTheme';
-import { featureFlags, isCategoryEnabled } from '../config/featureFlags';
+import { PrivacyVisibility } from '../components/PrivacyModeSelector';
+import { CategoryTheme } from '../config/categoryTheme';
+import { featureFlags } from '../config/featureFlags';
 import { voteCategoryInterest } from '../utils/categoryInterest';
+import { appAlert } from '../utils/appAlert';
 import { layout, palette } from '../theme/designSystem';
 import { getTravelStageFromProgress } from '../utils/travelProgress';
+import { formatClock } from '../utils/benchmarks';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'CreateRoom'>;
@@ -79,22 +88,79 @@ function capWithEllipsis(text: string, max: number) {
   return `${value.slice(0, max - 1).trimEnd()}…`;
 }
 
+function shortenJourneyPlaceLabel(label?: string | null) {
+  const raw = (label ?? '').trim();
+  if (!raw) return '';
+  const [primary] = raw.split(',').map((part) => part.trim()).filter(Boolean);
+  return capWithEllipsis(primary || raw, 24);
+}
+
+function buildJourneyRouteLabel(startLabel?: string | null, destinationLabel?: string | null) {
+  const start = shortenJourneyPlaceLabel(startLabel) || 'Start';
+  const destination = shortenJourneyPlaceLabel(destinationLabel) || 'Destination';
+  return `${start} → ${destination}`;
+}
+
+function formatDiffFrom(reference: Date, comparison: Date, label: string) {
+  const deltaSeconds = Math.round((reference.getTime() - comparison.getTime()) / 1000);
+  if (deltaSeconds === 0) return `Same as ${label}`;
+  const direction = deltaSeconds > 0 ? 'after' : 'before';
+  const abs = Math.abs(deltaSeconds);
+  const minutes = Math.floor(abs / 60);
+  const seconds = abs % 60;
+  const pieces = [
+    minutes > 0 ? `${minutes} min` : null,
+    seconds > 0 ? `${seconds} sec` : null,
+  ].filter(Boolean);
+  return `${pieces.join(' ')} ${direction} ${label}`;
+}
+
+function pickNearestDateForTimeSelection(candidate: Date, anchor: Date) {
+  const options = [-1, 0, 1].map((offsetDays) => {
+    const next = new Date(candidate);
+    next.setDate(candidate.getDate() + offsetDays);
+    return next;
+  });
+
+  return options.reduce((closest, current) => {
+    const currentDiff = Math.abs(current.getTime() - anchor.getTime());
+    const closestDiff = Math.abs(closest.getTime() - anchor.getTime());
+    return currentDiff < closestDiff ? current : closest;
+  });
+}
+
+function formatPredictionDateLabel(date: Date) {
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const startOfDate = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+  const diffDays = Math.round((startOfDate - startOfToday) / 86_400_000);
+  if (diffDays === 0) return 'Today';
+  if (diffDays === 1) return 'Tomorrow';
+  if (diffDays === -1) return 'Yesterday';
+  return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+}
+
 // A date + time picker. Labels are configurable because this widget is reused for
 // three distinct fields in the Delivery ETA form (vendor ETA, the creator's own
 // prediction, and the guesses-lock time). Hardcoding "Guesses lock" made all three
 // render identically, which read as a single widget duplicated three times.
+// `showTime={false}` keeps the date row only and leaves the time part of `value`
+// untouched — the Journey form takes its lock time from the suggested lock time,
+// so the clock wheel was three columns of noise there.
 function LockDateTimeField({
   value,
   onChange,
   dateLabel = 'Guesses lock date',
   timeLabel = 'Guesses lock time',
   hint = 'Local time · HH MM SS',
+  showTime = true,
 }: {
   value: string;
   onChange: (next: string) => void;
   dateLabel?: string;
   timeLabel?: string;
   hint?: string;
+  showTime?: boolean;
 }) {
   const parsed = splitLocalDateTimeInput(value);
 
@@ -111,16 +177,18 @@ function LockDateTimeField({
         hint="Local date · YYYY-MM-DD"
         autoCapitalize="none"
       />
-      <View style={styles.lockTimeBlock}>
-        <Text style={styles.lockTimeLabel}>{timeLabel}</Text>
-        <TimePickerSegments
-          value={parsed.timePart}
-          onChange={(nextTime) => onChange(mergeLocalDateAndTime(parsed.datePart, nextTime))}
-          showSeconds
-          showAmPm
-        />
-        <Text style={styles.lockTimeHint}>{hint}</Text>
-      </View>
+      {showTime ? (
+        <View style={styles.lockTimeBlock}>
+          <Text style={styles.lockTimeLabel}>{timeLabel}</Text>
+          <TimePickerSegments
+            value={parsed.timePart}
+            onChange={(nextTime) => onChange(mergeLocalDateAndTime(parsed.datePart, nextTime))}
+            showSeconds
+            showAmPm
+          />
+          <Text style={styles.lockTimeHint}>{hint}</Text>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -181,6 +249,16 @@ function LockDateField({
 const makeDefaultCloseAt = () => toLocalDateTimeInput(new Date(Date.now() + 60 * 60 * 1000));
 const startDelayOptions = [3, 5, 10, 15] as const;
 const visibilities = ['invite_only', 'public'] as const;
+const buildJourneyPredictionAdjustments = [
+  { key: 'maps', label: 'Maps ETA' },
+  { key: 'bot', label: 'Bot guess' },
+  { key: 'minus_1m', label: '−1 min', seconds: -60 },
+  { key: 'minus_30s', label: '−30 sec', seconds: -30 },
+  { key: 'plus_30s', label: '+30 sec', seconds: 30 },
+  { key: 'plus_1m', label: '+1 min', seconds: 60 },
+  { key: 'plus_2m', label: '+2 min', seconds: 120 },
+  { key: 'plus_5m', label: '+5 min', seconds: 300 },
+] as const;
 const forecastProviders = ['Weather app', 'Google Weather', 'IMD', 'Other'] as const;
 const timeOnlyDeliveryProviders = ['Zomato', 'Swiggy', 'Blinkit', 'Zepto', 'Porter'] as const;
 const dateOptionalDeliveryProviders = ['Amazon', 'Flipkart', 'Ekart', 'DTDC', 'Bluedart', 'India Post'] as const;
@@ -392,18 +470,10 @@ function buildBoundsFromCoordinates(coordinates: Array<{ latitude: number; longi
 
 export default function CreateRoomScreen({ navigation, route }: Props) {
   const { colors } = useTheme();
-  const sportsCategoryTheme: CategoryTheme = {
-    key: 'open_prediction',
-    label: 'Sports',
-    icon: '⚽',
-    primaryColor: '#f59e0b',
-    secondaryColor: '#ef4444',
-    gradient: ['#f59e0b', '#ef4444'],
-    badgeStyle: { bg: 'rgba(245,158,11,0.2)', border: 'rgba(245,158,11,0.45)', text: '#fde68a' },
-    emptyStateCopy: 'Kick off a sports prediction like Argentina vs Spain and add more teams or players.',
-    resultTitle: 'Sports reveal',
-    quickStartLabel: 'Sports',
-  };
+  const { width } = useWindowDimensions();
+  const isDesktop = width >= layout.breakpoints.tablet;
+  const journeyOnlyFlow =
+    !route.params?.presetCategory || route.params.presetCategory === 'arrival_time';
 
   const [selectedCategory, setSelectedCategory] = useState<(typeof categoryTiles)[number]['key']>('arrival_time');
   const [selectedMode, setSelectedMode] = useState<(typeof modeOptions)[number]['key']>('friends');
@@ -426,7 +496,7 @@ export default function CreateRoomScreen({ navigation, route }: Props) {
   const [predictionClosesAt, setPredictionClosesAt] = useState(makeDefaultCloseAt);
   const [titleOverride, setTitleOverride] = useState('');
   const [questionOverride, setQuestionOverride] = useState('');
-  const [showAdvancedOptions, setShowAdvancedOptions] = useState(true);
+  const [showAdvancedOptions, setShowAdvancedOptions] = useState(!journeyOnlyFlow);
   // Tracks whether the user has edited the (now primary-path) close time, so an
   // arriving route preview only auto-fills a suggested lock time when untouched.
   const [closeTimeEdited, setCloseTimeEdited] = useState(false);
@@ -435,6 +505,8 @@ export default function CreateRoomScreen({ navigation, route }: Props) {
   const [createLoading, setCreateLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [creatorPrediction, setCreatorPrediction] = useState<Date | null>(null);
+  const [predictionAnchor, setPredictionAnchor] = useState<'maps' | 'oracle'>('maps');
 
   const [weatherLocationLabel, setWeatherLocationLabel] = useState('');
   const [weatherWindowLabel, setWeatherWindowLabel] = useState('Today 5-8 PM');
@@ -507,7 +579,36 @@ export default function CreateRoomScreen({ navigation, route }: Props) {
       ),
     [],
   );
-  const shouldShowModeStep = enabledModes.length > 1;
+  const shouldShowModeStep = !journeyOnlyFlow && enabledModes.length > 1;
+  const mapsEtaDate = useMemo(() => {
+    if (!preview?.estimatedDurationSeconds) return null;
+    return new Date(Date.now() + preview.estimatedDurationSeconds * 1000);
+  }, [preview]);
+  const botEtaDate = useMemo(() => {
+    if (!preview?.oracleBotPrediction?.predictedDurationSeconds) return null;
+    return new Date(Date.now() + preview.oracleBotPrediction.predictedDurationSeconds * 1000);
+  }, [preview]);
+  const shortenedRouteLabel = useMemo(
+    () => buildJourneyRouteLabel(preview?.startLabel, preview?.destinationLabel),
+    [preview?.destinationLabel, preview?.startLabel],
+  );
+  const predictionComparison = useMemo(() => {
+    if (!creatorPrediction) return null;
+    if (predictionAnchor === 'oracle' && botEtaDate) {
+      return formatDiffFrom(creatorPrediction, botEtaDate, 'the bot');
+    }
+    if (mapsEtaDate) {
+      return formatDiffFrom(creatorPrediction, mapsEtaDate, 'Maps');
+    }
+    if (botEtaDate) {
+      return formatDiffFrom(creatorPrediction, botEtaDate, 'the bot');
+    }
+    return null;
+  }, [botEtaDate, creatorPrediction, mapsEtaDate, predictionAnchor]);
+  const predictionDateLabel = useMemo(
+    () => (creatorPrediction ? formatPredictionDateLabel(creatorPrediction) : null),
+    [creatorPrediction],
+  );
 
   const mapPreview = useMemo(() => {
     if (preview) return preview;
@@ -918,6 +1019,33 @@ export default function CreateRoomScreen({ navigation, route }: Props) {
     selectedRouteTemplateKey,
   ]);
 
+  useEffect(() => {
+    if (selectedCategory !== 'arrival_time') return;
+    if (!mapsEtaDate) {
+      setCreatorPrediction(null);
+      return;
+    }
+    setCreatorPrediction(new Date(mapsEtaDate));
+    setPredictionAnchor('maps');
+  }, [mapsEtaDate, preview?.destinationLabel, preview?.startLabel, selectedCategory, travelMode]);
+
+  function applyPredictionShortcut(action: (typeof buildJourneyPredictionAdjustments)[number]) {
+    if (!creatorPrediction) return;
+    if (action.key === 'maps' && mapsEtaDate) {
+      setCreatorPrediction(new Date(mapsEtaDate));
+      setPredictionAnchor('maps');
+      return;
+    }
+    if (action.key === 'bot' && botEtaDate) {
+      setCreatorPrediction(new Date(botEtaDate));
+      setPredictionAnchor('oracle');
+      return;
+    }
+    if ('seconds' in action) {
+      setCreatorPrediction(new Date(creatorPrediction.getTime() + action.seconds * 1000));
+    }
+  }
+
   async function handleCreateArrivalRoom() {
     setCreateError(null);
     if (!preview) {
@@ -933,15 +1061,15 @@ export default function CreateRoomScreen({ navigation, route }: Props) {
       setCreateError(message);
       return Alert.alert('Invalid date', message);
     }
+    if (!creatorPrediction) {
+      const message = 'Add your prediction before creating the journey.';
+      setCreateError(message);
+      return Alert.alert('Prediction needed', message);
+    }
 
     setCreateLoading(true);
     try {
-      const fallbackQuestion =
-        selectedRoutePrediction.type === 'journey_duration'
-          ? 'How long will the journey take?'
-          : selectedRoutePrediction.type === 'beat_eta'
-            ? 'Will I beat the ETA?'
-            : preview.suggestedQuestion ?? 'When will I arrive?';
+      const fallbackQuestion = preview.suggestedQuestion ?? 'When will I arrive?';
       const safeTitle = capWithEllipsis(
         titleOverride.trim() || preview.suggestedRoomTitle || 'Arrival room',
         120,
@@ -953,18 +1081,41 @@ export default function CreateRoomScreen({ navigation, route }: Props) {
         title: safeTitle,
         predictionClosesAt: closeDate.toISOString(),
         primaryPrediction: {
-          type: selectedRoutePrediction.type,
-          answerType: selectedRoutePrediction.answerType,
+          type: 'arrival_time',
+          answerType: 'exact_time',
           question: safeQuestion,
+        },
+        hostPrediction: {
+          arrivalTime: creatorPrediction.toISOString(),
         },
         category: 'arrival_time',
         mode: selectedMode,
       });
-      navigation.navigate('Prediction', {
-        roomId: res.data.roomId,
-        room: res.data,
-        returnToRoomCreated: true,
-      });
+      try {
+        await api.post(`/rooms/${res.data.roomId}/predictions`, {
+          predictedArrivalTime: creatorPrediction.toISOString(),
+        });
+        navigation.navigate('RoomCreated', {
+          room: {
+            ...res.data,
+            viewerHasPredicted: true,
+            hostPrediction: { arrivalTime: creatorPrediction.toISOString() },
+          },
+        });
+      } catch (predictionError: unknown) {
+        appAlert(
+          'Journey created',
+          getApiErrorMessage(
+            predictionError,
+            'Your journey was created, but your prediction still needs to be saved.',
+          ),
+        );
+        navigation.navigate('Prediction', {
+          roomId: res.data.roomId,
+          room: res.data,
+          returnToRoomCreated: true,
+        });
+      }
     } catch (err: unknown) {
       const message = getApiErrorMessage(err, 'Could not create the room. Try again in a moment.');
       setCreateError(message);
@@ -1274,85 +1425,89 @@ export default function CreateRoomScreen({ navigation, route }: Props) {
   // offered (in the MVP just "Play with Friends" is enabled, so it collapses to
   // Category → Setup on a single screen). Setup unlocks once the arrival route is
   // previewed, or immediately for the simpler category forms.
-  const stepLabels = shouldShowModeStep ? ['Category', 'Mode', 'Setup'] : ['Category', 'Setup'];
+  const stepLabels = journeyOnlyFlow
+    ? ['Route', 'Predict', 'Share']
+    : shouldShowModeStep
+      ? ['Category', 'Mode', 'Setup']
+      : ['Category', 'Setup'];
   const setupUnlocked = selectedCategory === 'arrival_time' ? !!preview : true;
-  const createStep = setupUnlocked ? stepLabels.length : shouldShowModeStep ? 2 : 1;
+  const createStep = journeyOnlyFlow
+    ? !readyForPreview
+      ? 1
+      : preview
+        ? 2
+        : 1
+    : setupUnlocked
+      ? stepLabels.length
+      : shouldShowModeStep
+        ? 2
+        : 1;
 
   return (
-    <ScrollView contentContainerStyle={[styles.container, { backgroundColor: palette.bg, maxWidth: layout.maxContentWidth, alignSelf: 'center', width: '100%' }]} keyboardShouldPersistTaps="handled">
-      <LinearGradient colors={['rgba(34,211,238,0.26)', 'rgba(236,72,153,0.16)', 'rgba(56,189,248,0.12)']} style={styles.heroCard}>
+    <View style={styles.screen}>
+    <ScrollView contentContainerStyle={[styles.container, isDesktop ? styles.containerDesktop : styles.containerMobile, { backgroundColor: palette.bg, maxWidth: layout.maxContentWidth, alignSelf: 'center', width: '100%' }]} keyboardShouldPersistTaps="handled">
+      <LinearGradient colors={['rgba(76,29,149,0.82)', 'rgba(30,41,59,0.94)', 'rgba(29,78,216,0.58)']} style={styles.heroCard}>
         <View style={styles.heroOrbLarge} />
         <View style={styles.heroOrbSmall} />
+        {journeyOnlyFlow ? (
+          <View style={styles.heroRouteArtRow}>
+            <View style={styles.heroRouteDot} />
+            <View style={styles.heroRouteDash} />
+            <Text style={styles.heroRouteCar}>🚗</Text>
+            <View style={[styles.heroRouteDash, styles.heroRouteDashShort]} />
+            <Text style={styles.heroRoutePin}>📍</Text>
+          </View>
+        ) : null}
         <View style={styles.heroBadgeRow}>
           <View style={styles.heroBadge}>
-            <Text style={styles.heroBadgeText}>CREATE</Text>
+            <Text style={styles.heroBadgeText}>{journeyOnlyFlow ? 'JOURNEY' : 'CREATE'}</Text>
           </View>
           <View style={[styles.heroBadge, styles.heroBadgeMuted]}>
-            <Text style={styles.heroBadgeMutedText}>Closest guess wins Aura</Text>
+            <Text style={styles.heroBadgeMutedText}>
+              {journeyOnlyFlow ? 'Launch a route challenge' : 'Closest guess wins Aura'}
+            </Text>
           </View>
         </View>
         <Text style={styles.heroHeadline}>
-          What do you want to <Text style={styles.heroHeadlineAccent}>predict?</Text>
+          {journeyOnlyFlow ? (
+            <>
+              Build your <Text style={styles.heroHeadlineAccent}>journey</Text>
+            </>
+          ) : (
+            <>
+              What do you want to <Text style={styles.heroHeadlineAccent}>predict?</Text>
+            </>
+          )}
         </Text>
         <Text style={styles.heroSubline}>
-          Pick a moment, invite friends, closest guess wins <Text style={styles.heroAura}>Aura.</Text>
+          {journeyOnlyFlow ? (
+            <>
+              Pick the route, choose how friends predict it, then share the link when you&apos;re ready.
+            </>
+          ) : (
+            <>
+              Pick a moment, invite friends, closest guess wins <Text style={styles.heroAura}>Aura.</Text>
+            </>
+          )}
         </Text>
         <StepProgress current={createStep} total={stepLabels.length} labels={stepLabels} />
       </LinearGradient>
 
-      <View style={styles.section}>
-        <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Privacy</Text>
-        <PrivacyModeSelector
-          value={visibility}
-          onChange={setVisibility}
-          onLearnMore={() =>
-            Alert.alert(
-              'Location hidden',
-              'Your exact GPS and raw movement stay private. Friends only see privacy-safe progress and your final result — never your live location.',
-            )
-          }
-        />
-      </View>
-
-      <View style={styles.section}>
-        <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Category</Text>
-        <View style={styles.categoryGrid}>
-          {[
-            sportsCategoryTheme,
-            ...categoryTiles
-              .map((tile) => {
-                if (tile.key === 'sports_prediction') {
-                  return null;
-                }
-                return getCategoryTheme(tile.key);
-              })
-              .filter((theme): theme is CategoryTheme => theme != null && isCategoryEnabled(theme.key)),
-          ].map((theme) => {
-            if (theme === sportsCategoryTheme) {
-              return (
-                <CategoryTile
-                  key="sports-preset"
-                  theme={theme}
-                  badge="POPULAR"
-                  locked={false}
-                  selected={selectedCategory === 'sports_prediction'}
-                  onPress={() => onCategorySelect('sports_prediction')}
-                />
-              );
-            }
-            return (
-              <CategoryTile
-                key={theme.key}
-                theme={theme}
-                badge={theme.key === 'arrival_time' ? 'POPULAR' : undefined}
-                locked={false}
-                selected={selectedCategory === theme.key}
-                onPress={() => onCategorySelect(theme.key as (typeof categoryTiles)[number]['key'])}
-              />
-            );
-          })}
+      {journeyOnlyFlow ? (
+        <View style={[styles.infoBanner, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <View style={styles.infoBannerRow}>
+            <View style={styles.infoBannerCopyBlock}>
+              <Text style={[styles.infoBannerTitle, { color: colors.textPrimary }]}>Location hidden by default</Text>
+              <Text style={[styles.infoBannerCopy, { color: colors.textSecondary }]}>
+                Friends can follow delayed progress and the finish moment, but your live location stays private.
+              </Text>
+            </View>
+            <TouchableOpacity onPress={() => navigation.navigate('Help')}>
+              <Text style={[styles.infoBannerAction, { color: colors.purpleLight }]}>Learn more</Text>
+            </TouchableOpacity>
+          </View>
         </View>
-      </View>
+      ) : null}
 
       {shouldShowModeStep ? (
       <View style={styles.section}>
@@ -1378,212 +1533,305 @@ export default function CreateRoomScreen({ navigation, route }: Props) {
       {selectedCategory === 'arrival_time' ? (
         <View style={[styles.card, styles.routeCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <View style={styles.cardHeader}>
-            <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>📍 Your route</Text>
+            <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>Your route</Text>
             <View style={styles.cardHeaderActions}>
               <TouchableOpacity
-                onPress={swapRoute}
-                style={[styles.swapButton, { borderColor: colors.border, backgroundColor: colors.surfaceHigh }]}
-                accessibilityLabel="Swap start and destination"
+                onPress={useCurrentLocationForStart}
+                disabled={locatingStart}
+                style={[styles.currentLocationButton, { borderColor: colors.border, backgroundColor: colors.surfaceHigh }]}
               >
-                <Text style={[styles.swapIcon, { color: colors.purpleLight }]}>⇅</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={useCurrentLocationForStart} disabled={locatingStart}>
                 <Text style={[styles.linkAction, { color: colors.purpleLight }]}>
-                  {locatingStart ? 'Locating…' : '📍 Use current location'}
+                  {locatingStart ? 'Locating…' : '⌖ Use current location'}
                 </Text>
               </TouchableOpacity>
             </View>
           </View>
 
-          <View style={styles.searchFields}>
-            <RoutePlaceSearchInput
-              label="From"
-              stackPriority={30}
-              value={startQuery}
-              onChangeValue={(value) => {
-                setStartQuery(value);
-                setPreview(null);
-                if (value !== startLabel) {
-                  setStartPlaceId('');
-                  setStartLocation(null);
-                  setSelectedStartPoint(null);
-                }
-              }}
-              selectedPlaceId={startPlaceId}
-              onSelect={async (suggestion) => {
-                setStartPlaceId(suggestion.placeId);
-                setStartLocation(null);
-                setStartLabel(suggestion.label);
-                setStartQuery(suggestion.label);
-                setPreview(null);
-                const point = await resolveSelectedPlace(suggestion);
-                setSelectedStartPoint(point);
-              }}
-              placeholder="Start location"
+          <View style={styles.primaryJourneySetupStack}>
+            <TextInputField
+              label="Room title"
+              value={titleOverride}
+              onChangeText={setTitleOverride}
+              placeholder={preview?.suggestedRoomTitle ?? 'Arrival room'}
+              hint="Optional"
+              maxLength={120}
             />
-
-            <RoutePlaceSearchInput
-              label="To"
-              stackPriority={20}
-              value={destinationQuery}
-              onChangeValue={(value) => {
-                setDestinationQuery(value);
-                setPreview(null);
-                if (value !== destinationLabel) {
-                  setDestinationPlaceId('');
-                  setSelectedDestinationPoint(null);
-                }
+            <LockDateTimeField
+              value={predictionClosesAt}
+              onChange={(value) => {
+                setCloseTimeEdited(true);
+                setPredictionClosesAt(value);
               }}
-              selectedPlaceId={destinationPlaceId}
-              onSelect={async (suggestion) => {
-                setDestinationPlaceId(suggestion.placeId);
-                setDestinationLabel(suggestion.label);
-                setDestinationQuery(suggestion.label);
-                setPreview(null);
-                const point = await resolveSelectedPlace(suggestion);
-                setSelectedDestinationPoint(point);
-              }}
-              placeholder="Destination"
+              showTime={false}
             />
           </View>
 
-          <TravelModeSelector value={travelMode} onChange={setTravelMode} />
+          <View style={[styles.searchFields, isDesktop ? styles.routeFieldsDesktop : styles.routeFieldsMobile]}>
+            <View style={styles.routeFieldColumn}>
+              <RoutePlaceSearchInput
+                label="Start"
+                stackPriority={30}
+                value={startQuery}
+                onChangeValue={(value) => {
+                  setStartQuery(value);
+                  setPreview(null);
+                  if (value !== startLabel) {
+                    setStartPlaceId('');
+                    setStartLocation(null);
+                    setSelectedStartPoint(null);
+                  }
+                }}
+                selectedPlaceId={startPlaceId}
+                onSelect={async (suggestion) => {
+                  setStartPlaceId(suggestion.placeId);
+                  setStartLocation(null);
+                  setStartLabel(suggestion.label);
+                  setStartQuery(suggestion.label);
+                  setPreview(null);
+                  const point = await resolveSelectedPlace(suggestion);
+                  setSelectedStartPoint(point);
+                }}
+                placeholder="Start location"
+              />
+            </View>
 
-          <RouteMapPreview
-            preview={mapPreview}
-            loading={previewLoading}
-            emptyLabel="Map preview"
-            emptyCopy="Search and pick From and To to see places on the map."
-          />
+            <TouchableOpacity
+              onPress={swapRoute}
+              style={[styles.swapButton, isDesktop ? styles.swapButtonDesktop : styles.swapButtonMobile, { borderColor: colors.border, backgroundColor: colors.surfaceHigh }]}
+              accessibilityLabel="Swap start and destination"
+            >
+              <Text style={[styles.swapIcon, { color: colors.purpleLight }]}>⇅</Text>
+            </TouchableOpacity>
+
+            <View style={styles.routeFieldColumn}>
+              <RoutePlaceSearchInput
+                label="Destination"
+                stackPriority={20}
+                value={destinationQuery}
+                onChangeValue={(value) => {
+                  setDestinationQuery(value);
+                  setPreview(null);
+                  if (value !== destinationLabel) {
+                    setDestinationPlaceId('');
+                    setSelectedDestinationPoint(null);
+                  }
+                }}
+                selectedPlaceId={destinationPlaceId}
+                onSelect={async (suggestion) => {
+                  setDestinationPlaceId(suggestion.placeId);
+                  setDestinationLabel(suggestion.label);
+                  setDestinationQuery(suggestion.label);
+                  setPreview(null);
+                  const point = await resolveSelectedPlace(suggestion);
+                  setSelectedDestinationPoint(point);
+                }}
+                placeholder="Destination"
+              />
+            </View>
+          </View>
+
+          <View style={styles.travelModeBlock}>
+            <Text style={[styles.travelModeTitle, { color: colors.textPrimary }]}>How are you travelling?</Text>
+            <TravelModeSelector value={travelMode} onChange={setTravelMode} />
+          </View>
+
+          {!preview ? (
+            <View style={[styles.inlinePrivacyNotice, { borderColor: colors.border, backgroundColor: colors.surfaceHigh }]}>
+              <Text style={[styles.inlinePrivacyTitle, { color: colors.textPrimary }]}>Location hidden by default</Text>
+              <Text style={[styles.inlinePrivacyCopy, { color: colors.textSecondary }]}>
+                Friends only see delayed progress, not your live location.
+              </Text>
+            </View>
+          ) : null}
+
+          {preview ? (
+            <View style={[styles.routeEstimateCard, { borderColor: colors.border, backgroundColor: colors.surfaceHigh }]}>
+              <View style={styles.routeSummaryHeader}>
+                <View style={styles.routeSummaryHeaderCopy}>
+                  <Text style={[styles.inlinePrivacyTitle, { color: colors.textPrimary }]}>Location hidden by default</Text>
+                  <Text style={[styles.inlinePrivacyCopy, { color: colors.textSecondary }]}>
+                    Friends only see delayed progress, not your live location.
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.routeSummaryIdentity}>
+                <Text style={[styles.routeSummaryRoute, { color: colors.textPrimary }]}>{shortenedRouteLabel}</Text>
+                <Text style={[styles.routeSummaryMeta, { color: colors.textSecondary }]}>
+                  Route locked in. Here&apos;s the estimate you&apos;re trying to beat.
+                </Text>
+              </View>
+              <View style={styles.routeEstimateHeader}>
+                <Text style={[styles.routeEstimateLabel, { color: colors.textSecondary }]}>Journey time</Text>
+                <Text style={[styles.routeEstimateLabel, { color: colors.textSecondary }]}>Distance</Text>
+                <Text style={[styles.routeEstimateLabel, { color: colors.textSecondary }]}>Mode</Text>
+              </View>
+              <View style={styles.routeEstimateMetrics}>
+                <Text style={[styles.routeEstimateValue, { color: colors.textPrimary }]}>{preview.estimatedDurationLabel}</Text>
+                <Text style={[styles.routeEstimateValue, { color: colors.textPrimary }]}>{preview.distanceLabel}</Text>
+                <Text style={[styles.routeEstimateValue, { color: colors.textPrimary }]}>{preview.travelModeLabel}</Text>
+              </View>
+              {mapsEtaDate ? (
+                <Text style={[styles.routeEstimateArrival, { color: colors.textPrimary }]}>
+                  Estimated arrival: {formatClock(mapsEtaDate, false)}
+                </Text>
+              ) : null}
+              {preview.isApproximate ? (
+                <Text style={[styles.routeEstimateWarning, { color: colors.textMuted }]}>
+                  Approximate estimate based on distance and travel mode
+                </Text>
+              ) : null}
+            </View>
+          ) : null}
+
+          {!preview ? (
+            <RouteMapPreview
+              preview={mapPreview}
+              loading={previewLoading}
+              emptyLabel="Map preview"
+              emptyCopy="Search and pick From and To to see places on the map."
+            />
+          ) : null}
 
           {previewError ? <Text style={[styles.errorText, { color: colors.red }]}>{previewError}</Text> : null}
 
           {preview ? (
             <View style={styles.previewBlock}>
-              <RoutePreviewCard preview={preview} compact />
-              <Text style={[styles.generatedTitle, { color: colors.textPrimary }]}>
-                {titleOverride.trim() || preview.suggestedRoomTitle}
-              </Text>
-              <Text style={[styles.generatedQuestion, { color: colors.textSecondary }]}>
-                {questionOverride.trim() || preview.suggestedQuestion}
-              </Text>
-              <Text style={[styles.privacyNote, { color: colors.green }]}>
-                Friends predict when you will arrive. They see delayed progress, not your exact location.
-              </Text>
-
-              <TouchableOpacity onPress={() => setShowAdvancedOptions((value) => !value)}>
-                <Text style={[styles.advancedToggle, { color: colors.purpleLight }]}>
-                  {showAdvancedOptions ? 'Hide options' : 'More options'}
+              <View style={[styles.predictionSection, { borderColor: colors.border, backgroundColor: colors.surfaceHigh }]}>
+                <Text style={[styles.predictionSectionTitle, { color: colors.textPrimary }]}>Make your call</Text>
+                <Text style={[styles.predictionSectionHelper, { color: colors.textSecondary }]}>
+                  Closest to the real arrival wins.
                 </Text>
-              </TouchableOpacity>
 
-              {showAdvancedOptions ? (
-                <View style={styles.advancedStack}>
-                  <TextInputField
-                    label="Room title"
-                    value={titleOverride}
-                    onChangeText={setTitleOverride}
-                    placeholder={preview.suggestedRoomTitle}
-                    hint="Defaults to the route title."
-                    maxLength={120}
-                  />
-                  <LockDateTimeField
-                    value={predictionClosesAt}
-                    onChange={(value) => {
-                      setCloseTimeEdited(true);
-                      setPredictionClosesAt(value);
-                    }}
-                  />
-                  <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Visibility</Text>
-                  <View style={styles.optionRow}>
-                    {visibilities.map((mode) => (
-                      <TouchableOpacity
-                        key={mode}
-                        style={[
-                          styles.chip,
-                          {
-                            borderColor: visibility === mode ? colors.purple : colors.border,
-                            backgroundColor: visibility === mode ? colors.purpleDim : colors.surfaceHigh,
-                          },
-                        ]}
-                        onPress={() => setVisibility(mode)}
-                      >
-                        <Text style={[styles.chipText, { color: colors.textPrimary }]}>{mode.replace('_', ' ')}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-
-                  <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Start delay</Text>
-                  <View style={styles.optionRow}>
-                    {startDelayOptions.map((minutes) => (
-                      <TouchableOpacity
-                        key={minutes}
-                        style={[
-                          styles.chip,
-                          {
-                            borderColor: startDelayMinutes === minutes ? colors.purple : colors.border,
-                            backgroundColor: startDelayMinutes === minutes ? colors.purpleDim : colors.surfaceHigh,
-                          },
-                        ]}
-                        onPress={() => setStartDelayMinutes(minutes)}
-                      >
-                        <Text style={[styles.chipText, { color: colors.textPrimary }]}>{minutes} min</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                  <Text style={[styles.fieldHint, { color: colors.textMuted }]}>
-                    Viewers first see {getTravelStageFromProgress(20)} after the privacy delay.
-                  </Text>
-
-                  <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Prediction type</Text>
-                  <View style={styles.predictionGrid}>
-                    {routePredictionOptions.map((option) => (
-                      <PredictionOptionCard
-                        key={option.type}
-                        title={option.title}
-                        description={option.description}
-                        answerType={option.answerType}
-                        example={option.example}
-                        icon={option.icon}
-                        recommended={'recommended' in option ? Boolean(option.recommended) : false}
-                        selected={selectedRoutePredictionType === option.type}
-                        onPress={() => setSelectedRoutePredictionType(option.type)}
-                      />
-                    ))}
-                  </View>
-
-                  <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Template</Text>
-                  <View style={styles.optionRow}>
-                    {routeTemplates.map((template) => (
-                      <TouchableOpacity
-                        key={template.key}
-                        style={[
-                          styles.chip,
-                          {
-                            borderColor: selectedRouteTemplateKey === template.key ? colors.purple : colors.border,
-                            backgroundColor: selectedRouteTemplateKey === template.key ? colors.purpleDim : colors.surfaceHigh,
-                          },
-                        ]}
-                        onPress={() => setSelectedRouteTemplateKey(template.key)}
-                      >
-                        <Text style={[styles.chipText, { color: colors.textPrimary }]}>{template.label}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-
-                  <TextInputField
-                    label="Custom question"
-                    value={questionOverride}
-                    onChangeText={setQuestionOverride}
-                    placeholder={preview.suggestedQuestion}
-                    hint="Optional. Max 160 characters."
-                    maxLength={160}
-                  />
+                <View style={styles.benchmarkStack}>
+                  {mapsEtaDate ? (
+                    <View style={styles.benchmarkRow}>
+                      <Text style={[styles.benchmarkLabel, { color: colors.textSecondary }]}>Maps estimate</Text>
+                      <Text style={[styles.benchmarkValue, { color: colors.textPrimary }]}>{formatClock(mapsEtaDate, false)}</Text>
+                    </View>
+                  ) : null}
+                  {botEtaDate ? (
+                    <View style={styles.benchmarkRow}>
+                      <Text style={[styles.benchmarkLabel, { color: colors.textSecondary }]}>Bot prediction</Text>
+                      <Text style={[styles.benchmarkValue, { color: colors.textPrimary }]}>{formatClock(botEtaDate, false)}</Text>
+                    </View>
+                  ) : null}
                 </View>
-              ) : null}
+
+                <Text style={[styles.predictionInputLabel, { color: colors.textPrimary }]}>Your prediction</Text>
+                {creatorPrediction ? (
+                  <View style={styles.predictionInputBlock}>
+                    <TimePickerSegments
+                      value={creatorPrediction}
+                      onChange={(next) => {
+                        const anchor = mapsEtaDate ?? botEtaDate ?? next;
+                        setCreatorPrediction(pickNearestDateForTimeSelection(next, anchor));
+                        setPredictionAnchor('maps');
+                      }}
+                      showSeconds={false}
+                      showAmPm
+                    />
+                  </View>
+                ) : null}
+
+                {predictionDateLabel ? (
+                  <Text style={[styles.predictionDateLabel, { color: colors.textMuted }]}>
+                    Date auto-set to {predictionDateLabel}
+                  </Text>
+                ) : null}
+
+                <ScrollView
+                  horizontal={!isDesktop}
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={[styles.shortcutRow, !isDesktop && styles.shortcutRowMobile]}
+                >
+                  {buildJourneyPredictionAdjustments.map((shortcut) => {
+                    const disabled = shortcut.key === 'bot' && !botEtaDate;
+                    return (
+                      <TouchableOpacity
+                        key={shortcut.key}
+                        disabled={disabled}
+                        style={[
+                          styles.shortcutChip,
+                          {
+                            borderColor: colors.border,
+                            backgroundColor: disabled ? 'rgba(255,255,255,0.04)' : colors.surface,
+                          },
+                          disabled && styles.shortcutChipDisabled,
+                        ]}
+                        onPress={() => applyPredictionShortcut(shortcut)}
+                      >
+                        <Text style={[styles.shortcutChipText, { color: disabled ? colors.textMuted : colors.textPrimary }]}>
+                          {shortcut.label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+
+                {predictionComparison ? (
+                  <Text style={[styles.predictionComparison, { color: colors.purpleLight }]}>
+                    {predictionComparison}
+                  </Text>
+                ) : null}
+              </View>
+
+              {/* No advanced-options toggle here: the Journey form is short enough
+                  that hiding four fields behind a link cost more than it saved. */}
+              <View style={styles.advancedStack}>
+                <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Start delay</Text>
+                <View style={styles.optionRow}>
+                  {startDelayOptions.map((minutes) => (
+                    <TouchableOpacity
+                      key={minutes}
+                      style={[
+                        styles.chip,
+                        {
+                          borderColor: startDelayMinutes === minutes ? colors.purple : colors.border,
+                          backgroundColor: startDelayMinutes === minutes ? colors.purpleDim : colors.surfaceHigh,
+                        },
+                      ]}
+                      onPress={() => setStartDelayMinutes(minutes)}
+                    >
+                      <Text style={[styles.chipText, { color: colors.textPrimary }]}>{minutes} min</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                <Text style={[styles.fieldHint, { color: colors.textMuted }]}>
+                  Viewers first see {getTravelStageFromProgress(20)} after the privacy delay.
+                </Text>
+
+                <TextInputField
+                  label="Custom question"
+                  value={questionOverride}
+                  onChangeText={setQuestionOverride}
+                  placeholder={preview.suggestedQuestion}
+                  hint="Optional"
+                  maxLength={160}
+                />
+              </View>
 
               {createError ? <Text style={[styles.errorText, { color: colors.red }]}>{createError}</Text> : null}
-              <PrimaryButton label="Start a Prediktion" onPress={handleCreateArrivalRoom} loading={createLoading} icon="🎯" />
+              {isDesktop ? (
+                <View style={[styles.finalSummaryCard, { borderColor: colors.border, backgroundColor: colors.surfaceHigh }]}>
+                  <View style={styles.finalSummaryMeta}>
+                    <Text style={[styles.finalSummaryRoute, { color: colors.textPrimary }]}>{shortenedRouteLabel}</Text>
+                    <Text style={[styles.finalSummaryLine, { color: colors.textSecondary }]}>
+                      Maps ETA: {mapsEtaDate ? formatClock(mapsEtaDate, false) : 'Pending'}
+                    </Text>
+                    <Text style={[styles.finalSummaryLine, { color: colors.textSecondary }]}>
+                      Your prediction: {creatorPrediction ? `${formatPredictionDateLabel(creatorPrediction)} · ${formatClock(creatorPrediction, false)}` : 'Add your call'}
+                    </Text>
+                  </View>
+                  <View style={styles.finalSummaryCta}>
+                    <PrimaryButton
+                      label="Create Journey"
+                      onPress={handleCreateArrivalRoom}
+                      loading={createLoading}
+                      gradientColors={['#8B5CF6', '#3B82F6']}
+                    />
+                  </View>
+                </View>
+              ) : null}
             </View>
           ) : null}
         </View>
@@ -2009,44 +2257,87 @@ export default function CreateRoomScreen({ navigation, route }: Props) {
         onClose={() => setVotePromptCategory(null)}
       />
     </ScrollView>
+    {!isDesktop && selectedCategory === 'arrival_time' && preview ? (
+      <View style={[styles.mobileStickyFooter, { borderTopColor: colors.border, backgroundColor: colors.surface }]}>
+        <View style={styles.mobileStickyMeta}>
+          <Text style={[styles.finalSummaryRoute, { color: colors.textPrimary }]}>{shortenedRouteLabel}</Text>
+          <Text style={[styles.finalSummaryLine, { color: colors.textSecondary }]}>
+            Maps ETA: {mapsEtaDate ? formatClock(mapsEtaDate, false) : 'Pending'}
+          </Text>
+          <Text style={[styles.finalSummaryLine, { color: colors.textSecondary }]}>
+            Your prediction: {creatorPrediction ? `${formatPredictionDateLabel(creatorPrediction)} · ${formatClock(creatorPrediction, false)}` : 'Add your call'}
+          </Text>
+        </View>
+        <PrimaryButton
+          label="Create Journey"
+          onPress={handleCreateArrivalRoom}
+          loading={createLoading}
+          gradientColors={['#8B5CF6', '#3B82F6']}
+        />
+      </View>
+    ) : null}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  screen: { flex: 1, backgroundColor: palette.bg },
   container: { flexGrow: 1, width: '100%', maxWidth: 720, alignSelf: 'center', padding: 20, gap: 16, paddingBottom: 40 },
+  containerDesktop: { paddingBottom: 48 },
+  containerMobile: { paddingBottom: 172 },
   heroCard: {
     borderRadius: 28,
     borderWidth: 1,
-    borderColor: 'rgba(34,211,238,0.32)',
-    backgroundColor: 'rgba(9,12,25,0.96)',
-    padding: 18,
-    gap: 12,
+    borderColor: 'rgba(129,140,248,0.34)',
+    backgroundColor: 'rgba(9,12,25,0.98)',
+    paddingHorizontal: 20,
+    paddingVertical: 18,
+    gap: 10,
     overflow: 'hidden',
   },
   heroOrbLarge: {
     position: 'absolute',
     right: -26,
     top: -24,
-    width: 170,
-    height: 170,
-    borderRadius: 85,
-    backgroundColor: 'rgba(34,211,238,0.2)',
+    width: 150,
+    height: 150,
+    borderRadius: 75,
+    backgroundColor: 'rgba(59,130,246,0.22)',
   },
   heroOrbSmall: {
     position: 'absolute',
-    right: 52,
-    top: 28,
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: 'rgba(236,72,153,0.18)',
+    right: 54,
+    top: 34,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(236,72,153,0.16)',
   },
+  heroRouteArtRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 8, marginBottom: 2 },
+  heroRouteDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#A855F7',
+    shadowColor: '#A855F7',
+    shadowOpacity: 0.45,
+    shadowRadius: 10,
+  },
+  heroRouteDash: {
+    width: 72,
+    borderStyle: 'dashed',
+    borderTopWidth: 2.5,
+    borderColor: 'rgba(168,85,247,0.75)',
+  },
+  heroRouteDashShort: { width: 52, borderColor: 'rgba(59,130,246,0.75)' },
+  heroRouteCar: { fontSize: 20 },
+  heroRoutePin: { fontSize: 24 },
   heroBadgeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   heroBadge: {
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: 'rgba(236,72,153,0.4)',
-    backgroundColor: 'rgba(236,72,153,0.16)',
+    borderColor: 'rgba(168,85,247,0.42)',
+    backgroundColor: 'rgba(124,58,237,0.3)',
     paddingHorizontal: 10,
     paddingVertical: 5,
   },
@@ -2054,16 +2345,35 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.14)',
     backgroundColor: 'rgba(255,255,255,0.05)',
   },
-  heroBadgeText: { color: '#F9A8D4', fontSize: 10, fontWeight: '900', letterSpacing: 0.8 },
+  heroBadgeText: { color: '#F5D0FE', fontSize: 10, fontWeight: '900', letterSpacing: 0.8 },
   heroBadgeMutedText: { color: 'rgba(255,255,255,0.78)', fontSize: 10, fontWeight: '800' },
   hero: { gap: 4, marginTop: 4 },
   heading: { fontSize: 26, fontWeight: '900' },
   sub: { fontSize: 14, lineHeight: 20 },
-  heroHeadline: { color: '#FFFFFF', fontSize: 28, lineHeight: 34, fontWeight: '900', letterSpacing: -0.4 },
-  heroHeadlineAccent: { color: '#A5F3FC' },
-  heroSubline: { color: 'rgba(255,255,255,0.82)', fontSize: 14, lineHeight: 20, marginBottom: 4 },
+  infoBanner: {
+    borderRadius: 20,
+    borderWidth: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    gap: 6,
+  },
+  infoBannerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 16 },
+  infoBannerCopyBlock: { flex: 1, gap: 4 },
+  infoBannerTitle: { fontSize: 14, fontWeight: '900' },
+  infoBannerCopy: { fontSize: 13, lineHeight: 18 },
+  infoBannerAction: { fontSize: 13, fontWeight: '900' },
+  heroHeadline: { color: '#FFFFFF', fontSize: 24, lineHeight: 29, fontWeight: '900', letterSpacing: -0.4 },
+  heroHeadlineAccent: { color: '#93C5FD' },
+  heroSubline: { color: 'rgba(255,255,255,0.82)', fontSize: 13, lineHeight: 18, marginBottom: 2 },
   heroAura: { color: '#A5F3FC', fontWeight: '900' },
   cardHeaderActions: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  primaryJourneySetupStack: { gap: 10 },
+  currentLocationButton: {
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+  },
   swapButton: {
     width: 34,
     height: 34,
@@ -2072,6 +2382,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  swapButtonDesktop: { alignSelf: 'flex-start', marginTop: 32 },
+  swapButtonMobile: { alignSelf: 'center' },
   swapIcon: { fontSize: 16, fontWeight: '900' },
   section: { gap: 8 },
   sectionLabel: { fontSize: 12, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5 },
@@ -2093,14 +2405,72 @@ const styles = StyleSheet.create({
   modeChipText: { fontSize: 13, fontWeight: '800' },
   card: { borderRadius: 16, padding: 16, borderWidth: 1, gap: 12 },
   routeCard: { overflow: 'visible' },
-  searchFields: { gap: 2, overflow: 'visible', zIndex: 20 },
+  searchFields: { gap: 8, overflow: 'visible', zIndex: 20, alignItems: 'stretch' },
+  routeFieldsDesktop: { flexDirection: 'row' },
+  routeFieldsMobile: { flexDirection: 'column' },
+  routeFieldColumn: { flex: 1 },
   cardHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   cardTitle: { fontSize: 17, fontWeight: '900' },
   linkAction: { fontSize: 13, fontWeight: '800' },
+  travelModeBlock: { gap: 10, paddingTop: 4, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.06)' },
+  travelModeTitle: { fontSize: 15, fontWeight: '900' },
   previewBlock: { gap: 10, marginTop: 4 },
+  predictionSection: { gap: 12, marginTop: 6, borderRadius: 18, borderWidth: 1, padding: 16 },
+  predictionSectionTitle: { fontSize: 18, fontWeight: '900' },
+  predictionSectionHelper: { fontSize: 13, lineHeight: 18 },
+  benchmarkStack: { gap: 8 },
+  benchmarkRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  benchmarkLabel: { fontSize: 13, fontWeight: '700' },
+  benchmarkValue: { fontSize: 15, fontWeight: '800' },
+  predictionInputLabel: { fontSize: 13, fontWeight: '800' },
+  predictionInputBlock: {
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(139,92,246,0.24)',
+    backgroundColor: 'rgba(17,24,39,0.72)',
+    padding: 12,
+  },
+  predictionDateLabel: { fontSize: 12, lineHeight: 16, marginTop: -2 },
+  shortcutRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  shortcutRowMobile: { paddingRight: 12 },
+  shortcutChip: { borderRadius: 999, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 10 },
+  shortcutChipDisabled: { opacity: 0.5 },
+  shortcutChipText: { fontSize: 12, fontWeight: '800' },
+  predictionComparison: { fontSize: 13, fontWeight: '700' },
   generatedTitle: { fontSize: 15, fontWeight: '900', lineHeight: 21 },
   generatedQuestion: { fontSize: 13, lineHeight: 18 },
   privacyNote: { fontSize: 12, fontWeight: '700' },
+  inlinePrivacyNotice: {
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 2,
+  },
+  inlinePrivacyTitle: { fontSize: 12, fontWeight: '800' },
+  inlinePrivacyCopy: { fontSize: 12, lineHeight: 16 },
+  routeEstimateCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    gap: 12,
+  },
+  routeSummaryHeader: {
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.06)',
+  },
+  routeSummaryHeaderCopy: { gap: 3 },
+  routeSummaryIdentity: { gap: 4 },
+  routeSummaryRoute: { fontSize: 18, lineHeight: 24, fontWeight: '900' },
+  routeSummaryMeta: { fontSize: 13, lineHeight: 18 },
+  routeEstimateHeader: { flexDirection: 'row', justifyContent: 'space-between', gap: 12 },
+  routeEstimateLabel: { flex: 1, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
+  routeEstimateMetrics: { flexDirection: 'row', justifyContent: 'space-between', gap: 12 },
+  routeEstimateValue: { flex: 1, fontSize: 18, fontWeight: '900' },
+  routeEstimateArrival: { fontSize: 14, fontWeight: '800' },
+  routeEstimateWarning: { fontSize: 12, lineHeight: 17 },
   optionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   optionInputRow: { gap: 10 },
   optionInputField: { flex: 1 },
@@ -2127,6 +2497,29 @@ const styles = StyleSheet.create({
   advancedToggle: { fontSize: 13, fontWeight: '800', paddingVertical: 4 },
   advancedStack: { gap: 10 },
   fieldHint: { fontSize: 12, lineHeight: 17 },
+  finalSummaryCard: {
+    borderRadius: 18,
+    borderWidth: 1,
+    padding: 18,
+    gap: 12,
+    marginTop: 4,
+  },
+  finalSummaryMeta: { gap: 4 },
+  finalSummaryRoute: { fontSize: 15, fontWeight: '900' },
+  finalSummaryLine: { fontSize: 13, lineHeight: 18, fontWeight: '600' },
+  finalSummaryCta: { width: '100%' },
+  mobileStickyFooter: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderTopWidth: 1,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 16,
+    gap: 10,
+  },
+  mobileStickyMeta: { gap: 2 },
   lockFieldWrap: { gap: 8 },
   lockTimeBlock: {
     borderRadius: 16,

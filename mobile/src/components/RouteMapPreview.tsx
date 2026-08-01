@@ -7,6 +7,7 @@ interface Props {
   loading?: boolean;
   emptyLabel?: string;
   emptyCopy?: string;
+  embedded?: boolean;
 }
 
 export default function RouteMapPreview({
@@ -14,6 +15,7 @@ export default function RouteMapPreview({
   loading = false,
   emptyLabel = 'Map preview loading',
   emptyCopy = 'Select both locations to see the route preview.',
+  embedded = false,
 }: Props) {
   const { colors } = useTheme();
   const previewTitle = preview ? `${preview.startLabel} -> ${preview.destinationLabel}` : emptyLabel;
@@ -22,7 +24,12 @@ export default function RouteMapPreview({
     : emptyCopy;
 
   return (
-    <View style={[styles.fallback, { backgroundColor: colors.surfaceHigh, borderColor: colors.border }]}>
+    <View
+      style={[
+        embedded ? styles.embedded : styles.fallback,
+        { backgroundColor: colors.surfaceHigh, borderColor: colors.border },
+      ]}
+    >
       <Text style={[styles.fallbackTitle, { color: colors.textPrimary }]}>
         {previewTitle}
       </Text>
@@ -50,6 +57,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     padding: 18,
     justifyContent: 'center',
+    gap: 8,
+  },
+  embedded: {
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 16,
     gap: 8,
   },
   fallbackTitle: {

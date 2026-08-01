@@ -18,3 +18,9 @@ export function botEtaTeaser(etaLabel?: string | null): string | null {
   if (!etaLabel) return null;
   return `The bot's read: ${etaLabel}. Think you're closer?`;
 }
+
+/** Spectator / already-guessed copy — no predict CTA. */
+export function botEtaRead(etaLabel?: string | null): string | null {
+  if (!etaLabel) return null;
+  return `The bot's read: ${etaLabel}.`;
+}

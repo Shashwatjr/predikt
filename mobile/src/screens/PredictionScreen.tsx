@@ -1,5 +1,16 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, View, Text, StyleSheet, ScrollView, Share, Linking } from 'react-native';
+import {
+  Animated,
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  Share,
+  Linking,
+  TouchableOpacity,
+  useWindowDimensions,
+} from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import * as Location from 'expo-location';
 import { appAlert } from '../utils/appAlert';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -11,14 +22,14 @@ import { useAuth } from '../context/AuthContext';
 import api, { getApiErrorMessage } from '../services/api';
 import InfoTip from '../components/InfoTip';
 import SectionHeader from '../components/SectionHeader';
-import ArrivalPredictionCard from '../components/ArrivalPredictionCard';
 import PredictionInputDuration from '../components/PredictionInputDuration';
 import PredictionInputYesNo from '../components/PredictionInputYesNo';
 import RoomPredictionList, { RoomPredictionEntry } from '../components/RoomPredictionList';
 import { buildSharePayload } from '../utils/shareRoom';
-import { formatClock, formatDateLabel } from '../utils/benchmarks';
+import { diffLabel, formatClock, formatDateLabel } from '../utils/benchmarks';
 import { useArrivalPredictionState } from '../hooks/useArrivalPredictionState';
 import { layout, palette, radius, spacing } from '../theme/designSystem';
+import TimePickerSegments from '../components/TimePickerSegments';
 
 type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Prediction'>;
@@ -27,10 +38,32 @@ type Props = {
 
 const durationChoices = [20, 30, 45, 60];
 
+function shortenPlaceLabel(label: string | null | undefined): string {
+  if (!label) return 'Unknown';
+  const firstChunk = label.split(',')[0]?.trim() || label.trim();
+  return firstChunk.length > 28 ? `${firstChunk.slice(0, 25).trimEnd()}…` : firstChunk;
+}
+
+function buildRouteLabel(room: any) {
+  const start = shortenPlaceLabel(room?.startingPointLabel ?? room?.routeSummary?.startLabel);
+  const end = shortenPlaceLabel(room?.destinationLabel ?? room?.routeSummary?.destinationLabel);
+  return `${start} → ${end}`;
+}
+
+function formatFriendlyDiff(prediction: Date, benchmark: Date, label: string) {
+  const delta = diffLabel(prediction, benchmark);
+  if (delta === 'same') return `Same as ${label}`;
+  const direction = delta.startsWith('+') ? 'after' : 'before';
+  const clean = delta.replace(/^[+-]/, '').replace(/m/g, ' min').replace(/s/g, ' sec');
+  return `${clean} ${direction} ${label}`;
+}
+
 export default function PredictionScreen({ navigation, route }: Props) {
   const { colors } = useTheme();
   const { user } = useAuth();
+  const { width } = useWindowDimensions();
   const { roomId, room: roomParam, editPredictionId, returnToRoomCreated } = route.params;
+  const isDesktop = width >= layout.breakpoints.tablet;
   const isEditing = !!editPredictionId;
   const [room, setRoom] = useState<any>(roomParam);
   const [loading, setLoading] = useState(false);
@@ -47,6 +80,7 @@ export default function PredictionScreen({ navigation, route }: Props) {
 
   const answerType = room?.answerType ?? 'exact_time';
   const isArrival = answerType === 'exact_time';
+  const alreadyPredicted = !!room?.viewerHasPredicted && !isEditing;
   const { benchmarks, predicted, setPredicted, hotTake, setHotTake } = useArrivalPredictionState(room);
   const journeyStart =
     room?.journeyStartedAt || room?.journeyScheduledStartAt || room?.startTime || room?.plannedStartTime
@@ -320,8 +354,7 @@ export default function PredictionScreen({ navigation, route }: Props) {
       </View>
     ) : null;
 
-  // ---- Arrival (benchmark-anchored) experience ----
-  if (isArrival) {
+  if (alreadyPredicted) {
     return (
       <ScrollView
         contentContainerStyle={[
@@ -331,33 +364,204 @@ export default function PredictionScreen({ navigation, route }: Props) {
         keyboardShouldPersistTaps="handled"
       >
         <SectionHeader
-          title="What's your call?"
-          subtitle="Line up your guess against the benchmarks below. Closest to the real arrival wins."
+          title="You're already in"
+          subtitle="Your prediction is saved for this room. Jump back in to follow the live updates."
         />
+        {peersList}
+        <PrimaryButton
+          label="Go to room"
+          onPress={() => navigation.navigate('LiveRoom', { roomId, isCreator })}
+          icon="🚪"
+        />
+        {forwardCard}
+      </ScrollView>
+    );
+  }
+
+  // ---- Arrival (benchmark-anchored) experience ----
+  if (isArrival) {
+    const routeLabel = buildRouteLabel(room);
+    const mapsBenchmark = benchmarks?.maps ?? benchmarks?.primary ?? null;
+    const botBenchmark = benchmarks?.oracle ?? null;
+    const hostBenchmark = benchmarks?.host ?? null;
+    const expectedDurationMinutes = Math.max(
+      1,
+      Math.round(
+        (room?.route?.estimatedDurationSeconds ??
+          room?.routeSummary?.estimatedDurationSeconds ??
+          room?.baselineValue ??
+          0) / 60,
+      ),
+    );
+    const travelModeLabel =
+      String(room?.route?.travelModeLabel ?? room?.route?.travelMode ?? room?.routeSummary?.travelMode ?? 'Car')
+        .replace(/_/g, ' ')
+        .replace(/\b\w/g, (char) => char.toUpperCase());
+    const participantCount =
+      typeof room?.participantCount === 'number'
+        ? room.participantCount
+        : typeof room?.participantsCount === 'number'
+          ? room.participantsCount
+          : others.length + (alreadyPredicted ? 1 : 0);
+    const countdownCopy = lockedOut
+      ? 'Predictions are closed for this journey.'
+      : secondsLeft != null
+        ? `Predictions close in ${Math.floor(secondsLeft / 60)}:${String(secondsLeft % 60).padStart(2, '0')}`
+        : room?.predictionCloseTime
+          ? `Locks at ${formatClock(new Date(room.predictionCloseTime), false)}`
+          : 'Make your prediction before it closes.';
+    const comparisonToShow = mapsBenchmark
+      ? formatFriendlyDiff(predicted, mapsBenchmark.date, 'Maps')
+      : botBenchmark
+        ? formatFriendlyDiff(predicted, botBenchmark.date, 'the bot')
+        : null;
+
+    return (
+      <ScrollView
+        contentContainerStyle={[
+          styles.container,
+          styles.journeyContainer,
+          { backgroundColor: palette.bg, maxWidth: layout.maxWideWidth, alignSelf: 'center', width: '100%' },
+        ]}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={styles.journeyTitleRow}>
+          <Text style={styles.journeyRouteTitle}>{routeLabel}</Text>
+          <View style={styles.journeyStatusPill}>
+            <Text style={styles.journeyStatusText}>{lockedOut ? 'Journey locked' : 'Journey open'}</Text>
+          </View>
+        </View>
+
+        <LinearGradient colors={['rgba(123,63,228,0.18)', 'rgba(59,130,246,0.08)']} style={styles.journeyHeroCard}>
+          <View style={styles.journeyHeroTop}>
+            <View style={styles.journeyHeroCopy}>
+              <Text style={styles.journeyHeroTitle}>{lockedOut ? 'Journey is locked' : 'Journey is open'}</Text>
+              <Text style={styles.journeyHeroSubtitle}>
+                {lockedOut ? 'Predictions are in. The reveal comes next.' : 'Make your prediction before it closes.'}
+              </Text>
+            </View>
+            {sharePayload ? (
+              <View style={styles.heroInviteButton}>
+                <PrimaryButton
+                  label="Invite friends"
+                  onPress={handleForwardInvite}
+                  variant="secondary"
+                  fullWidth={false}
+                />
+              </View>
+            ) : null}
+          </View>
+          <View style={styles.journeyHeroBottom}>
+            <Text style={styles.journeyCountdown}>{countdownCopy}</Text>
+            {room?.predictionCloseTime ? (
+              <Text style={styles.journeyCountdownMeta}>
+                Locks at {formatClock(new Date(room.predictionCloseTime), false)}
+              </Text>
+            ) : null}
+          </View>
+        </LinearGradient>
+
+        <View style={styles.metricStrip}>
+          <View style={styles.metricCell}>
+            <Text style={styles.metricLabel}>Expected duration</Text>
+            <Text style={styles.metricValue}>{expectedDurationMinutes} min</Text>
+          </View>
+          <View style={styles.metricCell}>
+            <Text style={styles.metricLabel}>Mode</Text>
+            <Text style={styles.metricValue}>{travelModeLabel}</Text>
+          </View>
+          <View style={styles.metricCell}>
+            <Text style={styles.metricLabel}>Privacy</Text>
+            <Text style={[styles.metricValue, styles.metricValueSuccess]}>Location hidden</Text>
+          </View>
+        </View>
 
         {lateJoinBanner}
 
-        <Text style={styles.routeLine}>
-          {room?.startingPointLabel ?? room?.routeSummary?.startLabel ?? 'Start'} →{' '}
-          {room?.destinationLabel ?? room?.routeSummary?.destinationLabel ?? 'Destination'} ·{' '}
-          {formatDateLabel(predicted)}
-        </Text>
+        <Text style={styles.routeLine}>{formatDateLabel(predicted)} · {participantCount} {participantCount === 1 ? 'friend' : 'friends'} in the room</Text>
 
         {journeyStart ? (
           <View style={styles.startCard}>
             <Text style={styles.startLabel}>Journey start</Text>
             <Text style={styles.startTime}>{formatClock(journeyStart, false)}</Text>
-            <Text style={styles.startHint}>Use the actual start time plus the benchmark end times below to make your call.</Text>
+            <Text style={styles.startHint}>Use the route estimate, the bot, or your own instinct to make the best call.</Text>
           </View>
         ) : null}
 
-        <ArrivalPredictionCard
-          room={room}
-          predicted={predicted}
-          onPredictedChange={setPredicted}
-          hotTake={hotTake}
-          onHotTakeChange={setHotTake}
-        />
+        <View style={styles.predictionJourneyCard}>
+          <View style={styles.predictionJourneyHeader}>
+            <View>
+              <Text style={styles.predictionJourneyTitle}>Make your prediction</Text>
+              <Text style={styles.predictionJourneyHelper}>Closest to the actual arrival time wins.</Text>
+            </View>
+            <TouchableOpacity onPress={() => navigation.navigate('Help')}>
+              <Text style={styles.predictionHowItWorks}>How it works</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={[styles.benchmarkCardsRow, !isDesktop && styles.benchmarkCardsColumn]}>
+            {mapsBenchmark ? (
+              <View style={styles.benchmarkCard}>
+                <Text style={styles.benchmarkCardLabel}>Google Maps</Text>
+                <Text style={styles.benchmarkCardSub}>Baseline estimate</Text>
+                <Text style={styles.benchmarkCardValue}>{formatClock(mapsBenchmark.date, false)}</Text>
+              </View>
+            ) : null}
+            {botBenchmark ? (
+              <View style={styles.benchmarkCard}>
+                <Text style={styles.benchmarkCardLabel}>The bot</Text>
+                <Text style={styles.benchmarkCardSub}>Bot prediction</Text>
+                <Text style={styles.benchmarkCardValue}>{formatClock(botBenchmark.date, false)}</Text>
+              </View>
+            ) : null}
+            <View style={[styles.benchmarkCard, styles.predictionCenterCard]}>
+              <Text style={styles.predictionCenterLabel}>Your prediction</Text>
+              <TimePickerSegments value={predicted} onChange={setPredicted} showSeconds={false} showAmPm />
+              {comparisonToShow ? <Text style={styles.predictionCenterHint}>{comparisonToShow}</Text> : null}
+            </View>
+            {hostBenchmark ? (
+              <View style={styles.benchmarkCard}>
+                <Text style={styles.benchmarkCardLabel}>Host guess</Text>
+                <Text style={styles.benchmarkCardSub}>Host call</Text>
+                <Text style={styles.benchmarkCardValue}>{formatClock(hostBenchmark.date, false)}</Text>
+              </View>
+            ) : null}
+          </View>
+
+          <ScrollView horizontal={!isDesktop} showsHorizontalScrollIndicator={false} contentContainerStyle={styles.predictionShortcutRow}>
+            {benchmarks?.ordered.map((benchmark) => (
+              <TouchableOpacity
+                key={benchmark.key}
+                style={[styles.predictionShortcut, styles.predictionShortcutAccent]}
+                onPress={() => setPredicted(new Date(benchmark.date))}
+              >
+                <Text style={styles.predictionShortcutAccentText}>
+                  {benchmark.key === 'maps' ? 'Maps ETA' : benchmark.key === 'oracle' ? 'Bot guess' : 'Host guess'}
+                </Text>
+              </TouchableOpacity>
+            ))}
+            {[
+              { label: '−1 min', seconds: -60 },
+              { label: '−30 sec', seconds: -30 },
+              { label: '+30 sec', seconds: 30 },
+              { label: '+1 min', seconds: 60 },
+              { label: '+2 min', seconds: 120 },
+              { label: '+5 min', seconds: 300 },
+            ].map((chip) => (
+              <TouchableOpacity
+                key={chip.label}
+                style={styles.predictionShortcut}
+                onPress={() => setPredicted(new Date(predicted.getTime() + chip.seconds * 1000))}
+              >
+                <Text style={styles.predictionShortcutText}>{chip.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+
+          <View style={styles.tipBanner}>
+            <Text style={styles.tipBannerText}>Tip: You can change your prediction any time before it locks.</Text>
+          </View>
+        </View>
 
         {forwardCard}
 
@@ -369,9 +573,15 @@ export default function PredictionScreen({ navigation, route }: Props) {
             onPress={handleSubmit}
             loading={loading}
             disabled={lockedOut}
-            icon="🎯"
+            gradientColors={['#7C3AED', '#2563EB']}
           />
         </Animated.View>
+        <PrimaryButton
+          label="Go to room"
+          onPress={() => navigation.navigate('LiveRoom', { roomId, isCreator })}
+          variant="secondary"
+          icon="🚪"
+        />
         <Text style={styles.fairnessNote}>
           Benchmarks just help you decide — only the real arrival time decides the winner.
         </Text>
@@ -457,18 +667,65 @@ export default function PredictionScreen({ navigation, route }: Props) {
           icon="🎯"
         />
       </Animated.View>
+      <PrimaryButton
+        label="Go to room"
+        onPress={() => navigation.navigate('LiveRoom', { roomId, isCreator })}
+        variant="secondary"
+        icon="🚪"
+      />
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flexGrow: 1, width: '100%', maxWidth: 720, alignSelf: 'center', padding: spacing.xl, gap: spacing.md },
+  journeyContainer: { paddingTop: spacing.lg, paddingBottom: spacing.xxxl },
+  journeyTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md },
+  journeyRouteTitle: { flex: 1, color: palette.textPrimary, fontSize: 18, fontWeight: '900', lineHeight: 24 },
+  journeyStatusPill: {
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: 'rgba(52,211,153,0.28)',
+    backgroundColor: 'rgba(17,94,89,0.28)',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  journeyStatusText: { color: '#E5FFF4', fontSize: 12, fontWeight: '800' },
+  journeyHeroCard: {
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: 'rgba(123,63,228,0.35)',
+    backgroundColor: 'rgba(15,21,39,0.95)',
+    padding: spacing.xl,
+    gap: spacing.lg,
+  },
+  journeyHeroTop: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: spacing.md },
+  journeyHeroCopy: { flex: 1, gap: 4 },
+  journeyHeroTitle: { color: palette.textPrimary, fontSize: 17, fontWeight: '900' },
+  journeyHeroSubtitle: { color: 'rgba(255,255,255,0.82)', fontSize: 14, lineHeight: 20 },
+  heroInviteButton: { minWidth: 170 },
+  journeyHeroBottom: { gap: 4 },
+  journeyCountdown: { color: '#FFFFFF', fontSize: 22, fontWeight: '900' },
+  journeyCountdownMeta: { color: palette.textSecondary, fontSize: 13, fontWeight: '700' },
+  metricStrip: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(123,63,228,0.22)',
+    backgroundColor: 'rgba(15,21,39,0.92)',
+    overflow: 'hidden',
+  },
+  metricCell: { flex: 1, minWidth: 160, paddingHorizontal: spacing.lg, paddingVertical: spacing.md, gap: 4 },
+  metricLabel: { color: palette.textSecondary, fontSize: 12, fontWeight: '700' },
+  metricValue: { color: palette.textPrimary, fontSize: 16, fontWeight: '900' },
+  metricValueSuccess: { color: '#4ADE80' },
   routeLine: { color: palette.textSecondary, fontSize: 13, fontWeight: '700' },
   lateCard: {
     borderRadius: radius.lg,
     borderWidth: 1,
-    borderColor: 'rgba(34,211,238,0.45)',
-    backgroundColor: 'rgba(34,211,238,0.10)',
+    borderColor: 'rgba(123,63,228,0.4)',
+    backgroundColor: 'rgba(91,33,182,0.14)',
     padding: spacing.md,
     gap: 3,
   },
@@ -480,6 +737,67 @@ const styles = StyleSheet.create({
   lateLine: { color: palette.textSecondary, fontSize: 13, fontWeight: '700' },
   lateNote: { color: palette.textMuted, fontSize: 12, lineHeight: 17, marginTop: 2 },
   peersWrap: { marginTop: spacing.xs },
+  predictionJourneyCard: {
+    borderRadius: 26,
+    borderWidth: 1,
+    borderColor: 'rgba(123,63,228,0.28)',
+    backgroundColor: 'rgba(12,18,36,0.96)',
+    padding: spacing.xl,
+    gap: spacing.lg,
+  },
+  predictionJourneyHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: spacing.md },
+  predictionJourneyTitle: { color: palette.textPrimary, fontSize: 18, fontWeight: '900' },
+  predictionJourneyHelper: { color: palette.textSecondary, fontSize: 14, lineHeight: 20, marginTop: 4 },
+  predictionHowItWorks: { color: '#67E8F9', fontSize: 14, fontWeight: '800' },
+  benchmarkCardsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
+  benchmarkCardsColumn: { flexDirection: 'column' },
+  benchmarkCard: {
+    flex: 1,
+    minWidth: 160,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(123,63,228,0.2)',
+    backgroundColor: 'rgba(18,26,47,0.9)',
+    padding: spacing.lg,
+    gap: 6,
+  },
+  benchmarkCardLabel: { color: '#7DD3FC', fontSize: 15, fontWeight: '900' },
+  benchmarkCardSub: { color: palette.textSecondary, fontSize: 13, lineHeight: 18 },
+  benchmarkCardValue: { color: palette.textPrimary, fontSize: 20, fontWeight: '900' },
+  predictionCenterCard: { minWidth: 260, alignItems: 'center' },
+  predictionCenterLabel: {
+    color: '#C4B5FD',
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    alignSelf: 'center',
+  },
+  predictionCenterHint: { color: '#C4B5FD', fontSize: 13, fontWeight: '700', textAlign: 'center', marginTop: 8 },
+  predictionShortcutRow: { flexDirection: 'row', gap: spacing.sm },
+  predictionShortcut: {
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: 'rgba(123,63,228,0.24)',
+    backgroundColor: 'rgba(18,26,47,0.9)',
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+  },
+  predictionShortcutAccent: {
+    borderColor: 'rgba(103,232,249,0.4)',
+    backgroundColor: 'rgba(14,116,144,0.14)',
+  },
+  predictionShortcutText: { color: palette.textPrimary, fontSize: 13, fontWeight: '800' },
+  predictionShortcutAccentText: { color: '#67E8F9', fontSize: 13, fontWeight: '900' },
+  tipBanner: {
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(123,63,228,0.16)',
+    backgroundColor: 'rgba(30,41,59,0.7)',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+  },
+  tipBannerText: { color: palette.textSecondary, fontSize: 13, lineHeight: 18, fontWeight: '600' },
   forwardCard: {
     borderRadius: radius.lg,
     borderWidth: 1,

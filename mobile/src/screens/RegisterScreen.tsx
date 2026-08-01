@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Alert } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { LinearGradient } from 'expo-linear-gradient';
 import { RootStackParamList } from '../navigation/types';
+import BrandLogo from '../components/BrandLogo';
 import TextInputField from '../components/TextInputField';
 import PrimaryButton from '../components/PrimaryButton';
 import { useAuth } from '../context/AuthContext';
@@ -62,9 +62,7 @@ export default function RegisterScreen({ navigation }: Props) {
         <View style={[styles.betaPill, { backgroundColor: p.surfaceTint, borderColor: p.coral }]}>
           <Text style={[styles.betaPillText, { color: p.coral }]}>BETA</Text>
         </View>
-        <LinearGradient colors={p.gradPrimary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.logoGradient}>
-          <Text style={[styles.logoText, { color: p.onSurfaceDark }]}>My Prediktion</Text>
-        </LinearGradient>
+        <BrandLogo height={74} variant={isDark ? 'onDark' : 'brand'} style={styles.logoImage} />
         <Text style={[styles.tagline, { color: p.textSoft }]}>Create your account for the beta.</Text>
       </View>
 
@@ -135,8 +133,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   betaPillText: { fontSize: 11, fontWeight: '900', letterSpacing: 1.2 },
-  logoGradient: { borderRadius: 12, paddingHorizontal: 20, paddingVertical: 8, marginBottom: 8 },
-  logoText: { color: '#fff', fontSize: 38, fontWeight: '900', letterSpacing: 4 },
+  logoImage: { marginBottom: 8 },
   tagline: { fontSize: 16 },
   card: { borderRadius: 20, padding: 20, borderWidth: 1, marginBottom: 8 },
 });

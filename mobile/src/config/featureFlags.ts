@@ -56,6 +56,10 @@ export const featureFlags = {
   // the data + code stay intact behind this flag.
   profileRewardDetail: envFlag('PROFILE_REWARD_DETAIL', false),
   personalityUnlock: envFlag('PERSONALITY_UNLOCK', false),
+  // Home stats row beyond Aura (Journeys / Predictions counts). The tiles render
+  // through the same code path as Aura but stay off until those counts are backed
+  // by real data rather than a length-of-list approximation.
+  homeSecondaryStats: envFlag('HOME_SECONDARY_STATS', false),
   momentCardExport: envFlag('MOMENT_CARD_EXPORT', false),
   // Sponsored side-wing cards (Featured creators / Community hosts / Partner Perk /
   // Moment Card themes). Hidden until there are real partners; config stays intact.
