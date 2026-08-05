@@ -60,6 +60,10 @@ interface LiveState {
   milestoneBanner?: { checkpoint: number; message: string } | null;
 }
 
+function toArray<T>(value: unknown): T[] {
+  return Array.isArray(value) ? (value as T[]) : [];
+}
+
 const startDelayOptions = [3, 5, 10, 15] as const;
 
 function shortenPlaceLabel(label: string | null | undefined): string {
@@ -100,6 +104,7 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
   const sampledCheckpoints = useRef<Set<number>>(new Set());
   const firedMilestones = useRef<Set<number>>(new Set());
   const viewerCountdownInterval = useRef<ReturnType<typeof setInterval> | null>(null);
+  const safePredictions = toArray<RoomPredictionEntry>(predictions);
 
   // Pulsing LIVE dot animation
   const pulse = useRef(new Animated.Value(1)).current;
@@ -258,7 +263,7 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
   }, [liveState?.status, room?.status, room?.predictionCloseTime, room?.lockTime]);
 
   useEffect(() => {
-    const mine = predictions.find((entry: any) => entry.isCurrentUser && entry.status !== 'revoked');
+    const mine = safePredictions.find((entry: any) => entry.isCurrentUser && entry.status !== 'revoked');
     const rawDeadline = mine?.editDeadline;
     if (!featureFlags.checkpointLeaderboardV2 || !rawDeadline) {
       setReviewCountdownSeconds(null);
@@ -273,7 +278,7 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
     tick();
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
-  }, [predictions]);
+  }, [safePredictions]);
 
   async function fetchRoom() {
     try {
@@ -315,7 +320,35 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
   async function fetchLiveLeaderboard() {
     try {
       const res = await api.get(`/rooms/${roomId}/live-leaderboard`);
-      setLiveLeaderboard(res.data as LiveLeaderboardData);
+      const payload = res.data as Partial<LiveLeaderboardData> | null;
+      if (!payload || typeof payload !== 'object') {
+        setLiveLeaderboard(null);
+        return;
+      }
+      if (payload.revealed === true) {
+        setLiveLeaderboard({
+          revealed: true,
+          basis:
+            payload.basis === 'snapshot_eta' || payload.basis === 'checkpoint' || payload.basis === 'plan'
+              ? payload.basis
+              : 'plan',
+          projectedArrivalAt:
+            typeof payload.projectedArrivalAt === 'string'
+              ? payload.projectedArrivalAt
+              : new Date().toISOString(),
+          capturedAt:
+            typeof payload.capturedAt === 'string' ? payload.capturedAt : new Date().toISOString(),
+          standings: toArray(payload.standings),
+        });
+        return;
+      }
+      const hiddenReason =
+        'reason' in payload && typeof payload.reason === 'string' ? payload.reason : 'not_locked';
+      setLiveLeaderboard({
+        revealed: false,
+        reason: hiddenReason,
+        standings: [],
+      });
     } catch {
       // live leaderboard is best-effort; hidden until predictions lock
     }
@@ -517,7 +550,7 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
   const categoryTheme = getCategoryTheme(category);
   const isGenericRoom = category === 'open_prediction';
 
-  const visibleOptionPredictions = predictions.filter(
+  const visibleOptionPredictions = safePredictions.filter(
     (entry) => entry.status === 'visible' && !!entry.selectedOptionKey,
   );
   const genericVoteSummary = visibleOptionPredictions.reduce<Record<string, number>>((acc, entry) => {
@@ -526,7 +559,7 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
     return acc;
   }, {});
   const genericSummaryRows = Object.entries(genericVoteSummary).sort((a, b) => b[1] - a[1]);
-  const myVisiblePrediction = predictions.find(
+  const myVisiblePrediction = safePredictions.find(
     (entry) => entry.isCurrentUser && entry.status !== 'revoked',
   );
 
@@ -566,7 +599,7 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
         : null;
 
   // v2 re-predict: a viewer may replace their guess through the 80% checkpoint.
-  const myPrediction = predictions.find((p) => p.isCurrentUser && p.status !== 'revoked');
+  const myPrediction = safePredictions.find((p) => p.isCurrentUser && p.status !== 'revoked');
   const reached80 = [80, 90, 100].some((cp) => checkpointBoards[cp]?.available);
   const canRePredict =
     featureFlags.checkpointLeaderboardV2 &&
@@ -630,6 +663,11 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
 
   const creatorDesktopJourneyBoard =
     isDesktop && isCreator && !isGenericRoom && category !== 'weather_rain' && phase !== 'ended';
+  const inviteCode = room?.inviteCode ?? room?.code ?? '';
+  const sharePayload = useMemo(
+    () => (room && inviteCode ? buildSharePayload({ ...room, inviteCode }) : null),
+    [inviteCode, room],
+  );
 
   useEffect(() => {
     // Custom MyPrediktion chrome replaces the stack header on the desktop journey board.
@@ -734,7 +772,7 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
     room?.benchmarks?.oracle?.arrivalTime
       ? formatClock(new Date(room.benchmarks.oracle.arrivalTime), false)
       : room?.oracleBotPrediction?.label ?? 'Pending';
-  const guestCount = Math.max(0, predictions.filter((entry) => !entry.isCurrentUser && entry.status !== 'revoked').length);
+  const guestCount = Math.max(0, safePredictions.filter((entry) => !entry.isCurrentUser && entry.status !== 'revoked').length);
   const creatorDesktopLiveJourney = creatorDesktopJourneyBoard && phase === 'started';
   const canStartJourney =
     !!liveState &&
@@ -742,7 +780,7 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
     category !== 'weather_rain' &&
     phase !== 'started' &&
     liveState.status !== 'live';
-  const participantRows = predictions
+  const participantRows = safePredictions
     .filter((entry) => entry.status !== 'revoked')
     .map((entry, index) => ({
       key: entry.predictionId ?? `${entry.user?.userId ?? 'row'}-${index}`,
@@ -753,8 +791,12 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
       locked: !!entry.predictedReachedTime || !!entry.selectedOptionKey,
       isCurrentUser: !!entry.isCurrentUser,
     }));
+  const liveLeaderboardStandings =
+    liveLeaderboard?.revealed && Array.isArray(liveLeaderboard.standings)
+      ? liveLeaderboard.standings
+      : [];
   const creatorDesktopRankRows = liveLeaderboard?.revealed
-    ? liveLeaderboard.standings.slice(0, 6).map((standing, index) => ({
+    ? liveLeaderboardStandings.slice(0, 6).map((standing, index) => ({
         key: `${standing.userId}-${standing.rank}`,
         rank: standing.rank ?? index + 1,
         name:
@@ -762,7 +804,9 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
           standing.user?.prediktHandle ??
           standing.user?.name ??
           'Guest',
-        guess: formatClock(new Date(standing.predictedReachedTime), false),
+        guess: standing.predictedReachedTime
+          ? formatClock(new Date(standing.predictedReachedTime), false)
+          : 'Pending',
         badge: standing.isWinnerSoFar ? 'Winning' : standing.isCurrentUser ? 'You' : `+${Math.round(Math.max(0, standing.deltaFromBestSeconds) / 60)} min`,
         highlight: standing.isWinnerSoFar || standing.isCurrentUser,
       }))
@@ -774,12 +818,6 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
         badge: participant.isCurrentUser ? 'You' : participant.locked ? 'Predicted' : 'Pending',
         highlight: participant.isCurrentUser,
       }));
-  const inviteCode = room?.inviteCode ?? room?.code ?? '';
-  const sharePayload = useMemo(
-    () => (room && inviteCode ? buildSharePayload({ ...room, inviteCode }) : null),
-    [inviteCode, room],
-  );
-
   async function handleShareInviteLink() {
     if (!sharePayload) return;
     if (Platform.OS === 'web') {
@@ -805,6 +843,51 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
     }
     await Share.share({ message: inviteCode, title: 'Invite code' });
   }
+
+  const stageLabel = getTravelStageFromProgress(pct, 'creator', { journeyStarted: phase === 'started' });
+  const etaMinutesLabel =
+    liveState?.etaMinutes != null
+      ? `${liveState.etaMinutes} min`
+      : `${Math.round((liveState?.expectedDurationSeconds ?? 2640) / 60)} min`;
+  const heroMetaCopy =
+    phase === 'open'
+      ? lockCountdownLabel
+        ? `${lockCountdownLabel} left to lock guesses`
+        : 'Friends can still lock in their calls'
+      : phase === 'locked'
+        ? 'Guesses are locked — ready when you are'
+        : phase === 'started'
+          ? pct > 0
+            ? `${stageLabel} · ${Math.round(pct)}% along the way`
+            : 'Just started · first privacy-safe update coming soon'
+          : 'Journey complete';
+  const statusPillLabel =
+    phase === 'started'
+      ? stageLabel
+      : phase === 'open'
+        ? 'Predictions open'
+        : phase === 'locked'
+          ? 'Predictions closed'
+          : 'Journey complete';
+  const inviteNudgeCopy =
+    guestCount === 0
+      ? 'Share your code — the reveal gets better with every guess.'
+      : guestCount === 1
+        ? 'One guest is in. A couple more guesses makes this spicy.'
+        : `${guestCount} guests are watching. Keep the room buzzing.`;
+  const botVsYouHint = (() => {
+    const hostMs = myPredictionDate?.getTime()
+      ?? (room?.benchmarks?.hostPrediction?.arrivalTime
+        ? new Date(room.benchmarks.hostPrediction.arrivalTime).getTime()
+        : null);
+    const botMs = room?.benchmarks?.oracle?.arrivalTime
+      ? new Date(room.benchmarks.oracle.arrivalTime).getTime()
+      : null;
+    if (hostMs == null || botMs == null || Number.isNaN(hostMs) || Number.isNaN(botMs)) return 'just for fun';
+    const diffMin = Math.round((botMs - hostMs) / 60000);
+    if (Math.abs(diffMin) < 2) return 'neck and neck';
+    return diffMin > 0 ? `${diffMin} min later than you` : `${Math.abs(diffMin)} min earlier than you`;
+  })();
 
   return (
     <ScrollView
@@ -834,17 +917,14 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
           <View style={styles.myPrediktionHeaderActions}>
             {inviteCode ? (
               <>
-                <View style={styles.myPrediktionCodeChip}>
-                  <Text style={styles.myPrediktionCodeLabel}>Code</Text>
-                  <Text style={styles.myPrediktionCodeValue}>{inviteCode}</Text>
-                </View>
                 <Pressable
                   onPress={() => void handleCopyCode()}
                   accessibilityRole="button"
                   accessibilityLabel={`Copy invite code ${inviteCode}`}
-                  style={styles.myPrediktionCopyButton}
+                  style={styles.myPrediktionCodeChip}
                 >
-                  <Text style={styles.myPrediktionCopyButtonText}>Copy code</Text>
+                  <Text style={styles.myPrediktionCodeLabel}>Code</Text>
+                  <Text style={styles.myPrediktionCodeValue}>{inviteCode}</Text>
                 </Pressable>
               </>
             ) : null}
@@ -861,7 +941,7 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
 
       {!isGenericRoom && room ? (
         <LinearGradient
-          colors={['rgba(124,58,237,0.28)', 'rgba(15,21,39,0.98)', 'rgba(37,99,235,0.20)']}
+          colors={['rgba(124,58,237,0.32)', 'rgba(15,21,39,0.98)', 'rgba(37,99,235,0.22)']}
           style={styles.journeyHeroShell}
         >
           <View style={styles.journeyHeroHeader}>
@@ -871,35 +951,46 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
               </View>
               <View style={styles.journeyHeroRouteBlock}>
                 <Text style={styles.journeyHeroRoute}>{routeLabel}</Text>
-                <Text style={styles.journeyHeroMeta}>
-                  {phase === 'open'
-                    ? 'Predictions open'
-                    : phase === 'locked'
-                      ? 'Predictions closed'
-                      : phase === 'started'
-                        ? 'Journey in progress'
-                        : 'Journey complete'}
-                </Text>
+                <Text style={styles.journeyHeroMeta}>{heroMetaCopy}</Text>
               </View>
             </View>
             <View style={styles.journeyHeroPills}>
-              <View style={styles.journeyHeroPrivacyPill}>
-                <Text style={styles.journeyHeroPrivacyText}>Live location hidden</Text>
-              </View>
+              <Pressable
+                onPress={() => setShowPrivacyInfo((v) => !v)}
+                accessibilityRole="button"
+                accessibilityLabel="Why live location is hidden"
+                style={styles.journeyHeroPrivacyPill}
+              >
+                <Text style={styles.journeyHeroPrivacyText}>🛡 Live location hidden</Text>
+              </Pressable>
               <View style={styles.journeyHeroStatusPill}>
-                <View style={styles.journeyHeroStatusDot} />
-                <Text style={styles.journeyHeroStatusText}>
-                  {phase === 'started'
-                    ? 'Making progress'
-                    : phase === 'open'
-                      ? 'Predictions open'
-                      : phase === 'locked'
-                        ? 'Predictions closed'
-                        : 'Journey complete'}
-                </Text>
+                <View style={[styles.journeyHeroStatusDot, phase === 'started' && styles.journeyHeroStatusDotLive]} />
+                <Text style={styles.journeyHeroStatusText}>{statusPillLabel}</Text>
               </View>
             </View>
           </View>
+          {showPrivacyInfo ? (
+            <Text style={styles.journeyHeroPrivacyHint}>
+              Friends never see your exact GPS. They follow delayed progress checkpoints so the race stays fun and private.
+            </Text>
+          ) : null}
+          {creatorDesktopJourneyBoard && phase === 'started' ? (
+            <View style={styles.journeyHeroSoftProgress}>
+              <View style={styles.journeyHeroSoftProgressTrack}>
+                <View
+                  style={[
+                    styles.journeyHeroSoftProgressFill,
+                    { width: `${Math.max(6, Math.min(100, pct || 4))}%` },
+                  ]}
+                />
+              </View>
+              <Text style={styles.journeyHeroSoftProgressLabel}>
+                {pct <= 0
+                  ? 'Tracking just started · first checkpoint is privacy-delayed'
+                  : `${Math.round(pct)}% complete · privacy-safe updates`}
+              </Text>
+            </View>
+          ) : null}
         </LinearGradient>
       ) : null}
 
@@ -1106,13 +1197,18 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
 
       {creatorDesktopJourneyBoard ? (
         <View style={styles.creatorDesktopStack}>
-          <View style={[styles.creatorDesktopCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <View style={[styles.creatorDesktopCard, styles.creatorDesktopJourneyCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <View style={styles.creatorDesktopCardHeaderRow}>
-              <Text style={[styles.creatorDesktopTitle, { color: colors.textPrimary }]}>Journey view</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.creatorDesktopTitle, { color: colors.textPrimary }]}>Journey view</Text>
+                <Text style={[styles.creatorDesktopSub, { color: colors.textSecondary }]}>
+                  Friends follow delayed progress — never your exact spot.
+                </Text>
+              </View>
               <View style={styles.journeyViewStatusPill}>
-                <View style={styles.journeyViewStatusDot} />
+                <View style={[styles.journeyViewStatusDot, phase === 'started' && styles.journeyViewStatusDotLive]} />
                 <Text style={styles.journeyViewStatusText}>
-                  {phase === 'started' ? 'On the way' : 'Waiting for the journey to begin'}
+                  {phase === 'started' ? stageLabel : 'Waiting to start'}
                 </Text>
               </View>
             </View>
@@ -1133,107 +1229,199 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
             <View style={styles.journeyHeroStats}>
               <View style={styles.journeyHeroStat}>
                 <Text style={styles.journeyHeroStatIcon}>⏱</Text>
-                <Text style={styles.journeyHeroStatLabel}>ETA</Text>
-                <Text style={styles.journeyHeroStatValue}>
-                  {Math.round((liveState?.expectedDurationSeconds ?? 2640) / 60)} min
+                <Text style={styles.journeyHeroStatLabel}>
+                  {liveState?.etaMinutes != null ? 'Time left' : 'ETA'}
                 </Text>
+                <Text style={styles.journeyHeroStatValue}>{etaMinutesLabel}</Text>
+                <Text style={styles.journeyHeroStatHint}>privacy-safe</Text>
               </View>
               <View style={styles.journeyHeroStatDivider} />
               <View style={styles.journeyHeroStat}>
                 <Text style={styles.journeyHeroStatIcon}>👤</Text>
                 <Text style={styles.journeyHeroStatLabel}>Your call</Text>
                 <Text style={styles.journeyHeroStatValue}>{hostGuessLabel}</Text>
+                <Text style={styles.journeyHeroStatHint}>locked in</Text>
               </View>
               <View style={styles.journeyHeroStatDivider} />
               <View style={styles.journeyHeroStat}>
                 <Text style={styles.journeyHeroStatIcon}>🤖</Text>
                 <Text style={styles.journeyHeroStatLabel}>Bot</Text>
                 <Text style={styles.journeyHeroStatValue}>{botGuessLabel}</Text>
+                <Text style={styles.journeyHeroStatHint}>{botVsYouHint}</Text>
               </View>
               <View style={styles.journeyHeroStatDivider} />
               <View style={styles.journeyHeroStat}>
                 <Text style={styles.journeyHeroStatIcon}>👥</Text>
                 <Text style={styles.journeyHeroStatLabel}>Guests</Text>
                 <Text style={styles.journeyHeroStatValue}>{guestCount}</Text>
+                <Text style={styles.journeyHeroStatHint}>
+                  {guestCount === 0 ? 'invite a friend' : 'in the room'}
+                </Text>
               </View>
             </View>
           </View>
 
           {creatorDesktopLiveJourney ? (
             <>
-              <View style={[styles.creatorDesktopCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <View style={[styles.creatorDesktopCard, styles.creatorDesktopControlsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                 <View style={styles.creatorDesktopCardHeader}>
-                  <Text style={[styles.creatorDesktopIcon, { color: colors.purpleLight }]}>⌘</Text>
+                  <Text style={[styles.creatorDesktopIcon, { color: colors.purpleLight }]}>⚙</Text>
                   <View style={{ flex: 1 }}>
-                    <Text style={[styles.creatorDesktopTitle, { color: colors.textPrimary }]}>People predicting</Text>
+                  <Text style={[styles.creatorDesktopTitle, { color: colors.textPrimary }]}>Host tools</Text>
                     <Text style={[styles.creatorDesktopSub, { color: colors.textSecondary }]}>
-                      {liveLeaderboard?.revealed
-                        ? 'Live ranking based on the latest projected arrival.'
-                        : 'Predictions will line up here as friends lock in their calls.'}
+                      {staysOpenUntilLabel ?? 'Confirm arrival, cancel fairly, or wrap it up.'}
                     </Text>
                   </View>
                 </View>
-                <View style={styles.creatorDesktopRankList}>
-                  {creatorDesktopRankRows.length ? (
-                    creatorDesktopRankRows.map((participant) => (
-                      <View
-                        key={participant.key}
-                        style={[
-                          styles.creatorDesktopRankRow,
-                          {
-                            borderColor: participant.highlight ? colors.purple : colors.border,
-                            backgroundColor: participant.highlight ? colors.purpleDim : colors.surfaceHigh,
-                          },
-                        ]}
-                      >
-                        <View style={styles.creatorDesktopRankLead}>
-                          <Text style={[styles.creatorDesktopRankNumber, { color: colors.purpleLight }]}>#{participant.rank}</Text>
-                          <View style={{ flex: 1 }}>
-                            <Text style={[styles.creatorDesktopRankName, { color: colors.textPrimary }]} numberOfLines={1}>
-                              {participant.name}
-                            </Text>
-                            <Text style={[styles.creatorDesktopRankGuess, { color: colors.textSecondary }]}>
-                              {participant.guess}
-                            </Text>
-                          </View>
-                        </View>
-                        <Text
-                          style={[
-                            styles.creatorDesktopRankBadge,
-                            { color: participant.highlight ? colors.purpleLight : colors.textMuted },
-                          ]}
-                        >
-                          {participant.badge}
-                        </Text>
-                      </View>
-                    ))
-                  ) : (
-                    <Text style={[styles.startDelayCopy, { color: colors.textSecondary, marginBottom: 0 }]}>
-                      No predictions yet. Invite friends to get the board moving.
-                    </Text>
-                  )}
+                <View style={styles.creatorDesktopControlsRow}>
+                  <View style={styles.creatorDesktopControlAction}>
+                    <PrimaryButton
+                      label="Confirm arrival"
+                      onPress={handleConfirmArrival}
+                      loading={confirmingArrival}
+                      icon="✅"
+                    />
+                  </View>
+                  <View style={styles.creatorDesktopControlAction}>
+                    <PrimaryButton
+                      label="Plan changed"
+                      onPress={handleCancelJourney}
+                      loading={cancelling}
+                      variant="secondary"
+                      icon="🛑"
+                    />
+                  </View>
+                  <View style={styles.creatorDesktopControlAction}>
+                    <PrimaryButton
+                      label="End room"
+                      onPress={handleEndRoom}
+                      loading={ending}
+                      variant="danger"
+                      icon="🏁"
+                    />
+                  </View>
                 </View>
               </View>
 
-              <View style={[styles.creatorDesktopNotifyCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <View style={styles.creatorDesktopNotifyCopy}>
-                  <Text style={styles.creatorDesktopNotifyIcon}>🔔</Text>
-                  <Text style={[styles.creatorDesktopNotifyText, { color: colors.textSecondary }]}>
-                    We'll notify you when tracking begins.
-                  </Text>
+              <View style={styles.creatorDesktopLiveSplit}>
+                <View style={[styles.creatorDesktopCard, styles.creatorDesktopSplitCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                  <View style={styles.creatorDesktopInviteIntro}>
+                    <View style={[styles.creatorDesktopGiftIcon, { backgroundColor: 'rgba(139,92,246,0.18)' }]}>
+                      <Text style={styles.creatorDesktopGiftEmoji}>🎁</Text>
+                    </View>
+                    <View style={styles.creatorDesktopInviteCopy}>
+                      <Text style={[styles.creatorDesktopInviteTitle, { color: colors.textPrimary }]}>
+                        Invite friends & win
+                      </Text>
+                      <Text style={[styles.creatorDesktopInviteBody, { color: colors.textSecondary }]}>
+                        {inviteNudgeCopy}
+                      </Text>
+                    </View>
+                  </View>
+                  <Text style={[styles.creatorDesktopInviteLabel, { color: colors.textSecondary }]}>Invite code · tap to copy</Text>
+                  <Pressable
+                    onPress={() => void handleCopyCode()}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Copy invite code ${inviteCode}`}
+                    style={styles.creatorDesktopCodeRow}
+                  >
+                    {inviteCode.split('').map((char: string, index: number) => (
+                      <View
+                        key={`${char}-${index}`}
+                        style={[
+                          styles.creatorDesktopCodeChip,
+                          { backgroundColor: 'rgba(79,70,229,0.4)', borderColor: colors.border },
+                        ]}
+                      >
+                        <Text style={styles.creatorDesktopCodeChipText}>{char}</Text>
+                      </View>
+                    ))}
+                  </Pressable>
+                  <View style={styles.creatorDesktopInviteActionsInline}>
+                    <View style={styles.creatorDesktopInviteActionGrow}>
+                      <PrimaryButton
+                        label="Share link"
+                        onPress={() => void handleShareInviteLink()}
+                        gradientColors={['#8B5CF6', '#3B82F6']}
+                        icon="🔗"
+                      />
+                    </View>
+                    <View style={styles.creatorDesktopInviteActionGrow}>
+                      <PrimaryButton
+                        label="Copy code"
+                        onPress={() => void handleCopyCode()}
+                        variant="secondary"
+                        icon="📋"
+                      />
+                    </View>
+                  </View>
                 </View>
-                <PrimaryButton
-                  label="Enable notifications"
-                  onPress={() =>
-                    Alert.alert(
-                      'Notifications',
-                      "You're all set — we'll surface live journey updates here when tracking changes.",
-                    )
-                  }
-                  variant="secondary"
-                  icon="🔔"
-                  fullWidth={false}
-                />
+
+                <View style={[styles.creatorDesktopCard, styles.creatorDesktopSplitCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                  <View style={styles.creatorDesktopCardHeader}>
+                    <Text style={[styles.creatorDesktopIcon, { color: colors.purpleLight }]}>🏆</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.creatorDesktopTitle, { color: colors.textPrimary }]}>Who's closest</Text>
+                      <Text style={[styles.creatorDesktopSub, { color: colors.textSecondary }]}>
+                        {liveLeaderboard?.revealed
+                          ? 'Live ranking from the latest projected arrival.'
+                          : guestCount === 0
+                            ? 'You are alone on the board — invite someone.'
+                            : 'Guesses line up here as friends lock in.'}
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={styles.creatorDesktopRankList}>
+                    {creatorDesktopRankRows.length ? (
+                      creatorDesktopRankRows.map((participant) => (
+                        <View
+                          key={participant.key}
+                          style={[
+                            styles.creatorDesktopRankRow,
+                            {
+                              borderColor: participant.highlight ? colors.purple : colors.border,
+                              backgroundColor: participant.highlight ? colors.purpleDim : colors.surfaceHigh,
+                            },
+                          ]}
+                        >
+                          <View style={styles.creatorDesktopRankLead}>
+                            <Text style={[styles.creatorDesktopRankNumber, { color: colors.purpleLight }]}>
+                              #{participant.rank}
+                            </Text>
+                            <View style={{ flex: 1 }}>
+                              <Text style={[styles.creatorDesktopRankName, { color: colors.textPrimary }]} numberOfLines={1}>
+                                {participant.name}
+                              </Text>
+                              <Text style={[styles.creatorDesktopRankGuess, { color: colors.textSecondary }]}>
+                                {participant.guess}
+                              </Text>
+                            </View>
+                          </View>
+                          <Text
+                            style={[
+                              styles.creatorDesktopRankBadge,
+                              { color: participant.highlight ? colors.purpleLight : colors.textMuted },
+                            ]}
+                          >
+                            {participant.badge}
+                          </Text>
+                        </View>
+                      ))
+                    ) : (
+                      <View style={styles.creatorDesktopEmptyInvite}>
+                        <Text style={[styles.startDelayCopy, { color: colors.textSecondary, marginBottom: 12 }]}>
+                          The board is quiet. Share your code and get the first guess in.
+                        </Text>
+                        <PrimaryButton
+                          label="Invite a friend"
+                          onPress={handleInviteFriends}
+                          gradientColors={['#8B5CF6', '#3B82F6']}
+                          icon="📨"
+                        />
+                      </View>
+                    )}
+                  </View>
+                </View>
               </View>
             </>
           ) : (
@@ -1323,7 +1511,7 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
               <View style={styles.creatorDesktopCardHeader}>
                 <Text style={[styles.creatorDesktopIcon, { color: colors.purpleLight }]}>⚙</Text>
                 <View style={{ flex: 1 }}>
-                  <Text style={[styles.creatorDesktopTitle, { color: colors.textPrimary }]}>Creator controls</Text>
+                  <Text style={[styles.creatorDesktopTitle, { color: colors.textPrimary }]}>Host tools</Text>
                   <Text style={[styles.creatorDesktopSub, { color: colors.textSecondary }]}>
                     You're in control. Update or end the journey anytime.
                   </Text>
@@ -1337,7 +1525,7 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
           </View>
           )}
         </View>
-      ) : (isGenericRoom ? predictions.length > 0 : !!liveState && (predictions.length || anyCheckpointAvailable)) ? (
+      ) : (isGenericRoom ? safePredictions.length > 0 : !!liveState && (safePredictions.length || anyCheckpointAvailable)) ? (
         <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           {isGenericRoom && genericSummaryRows.length > 0 ? (
             <View style={styles.genericSummaryWrap}>
@@ -1355,7 +1543,7 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
             </View>
           ) : null}
           <RoomPredictionList
-            data={predictions}
+            data={safePredictions}
             title={isGenericRoom ? 'Prediction board' : undefined}
           />
           {!isGenericRoom ? (
@@ -1470,12 +1658,12 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
       {isCreator && room?.answerType === 'multiple_choice' ? (
         <View style={[styles.creatorCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <LinearGradient colors={[colors.purple + '30', 'transparent']} style={styles.creatorHeader}>
-            <Text style={[styles.creatorTitle, { color: colors.textPrimary }]}>{category === 'open_prediction' ? 'Creator Attest Result' : 'Declare Result'}</Text>
+            <Text style={[styles.creatorTitle, { color: colors.textPrimary }]}>{category === 'open_prediction' ? 'Host Confirms Result' : 'Declare Result'}</Text>
           </LinearGradient>
           <View style={styles.creatorBody}>
             <Text style={[styles.startDelayCopy, { color: colors.textSecondary }]}>
               {category === 'open_prediction'
-                ? 'Choose the actual outcome from the original options. MVP rule: creator-attest only, no screenshot upload. Predictors can challenge afterward.'
+                ? 'Choose the actual outcome from the original options. MVP rule: host-confirmed only, no screenshot upload. Predictors can challenge afterward.'
                 : 'Choose the actual outcome from the original options. Predictions stay hidden until lock.'}
             </Text>
             <View style={styles.resultOptionStack}>
@@ -1496,7 +1684,7 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
       {isCreator && room?.answerType !== 'multiple_choice' && !creatorDesktopJourneyBoard ? (
         <View style={[styles.creatorCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <LinearGradient colors={[colors.purple + '30', 'transparent']} style={styles.creatorHeader}>
-            <Text style={[styles.creatorTitle, { color: colors.textPrimary }]}>⚙️  Creator Controls</Text>
+            <Text style={[styles.creatorTitle, { color: colors.textPrimary }]}>⚙️  Host tools</Text>
           </LinearGradient>
           <View style={styles.creatorBody}>
             <Text style={[styles.startDelayCopy, { color: colors.textSecondary }]}>
@@ -1628,6 +1816,13 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     backgroundColor: '#22D3EE',
   },
+  journeyHeroStatusDotLive: {
+    backgroundColor: '#34D399',
+    shadowColor: '#34D399',
+    shadowOpacity: 0.8,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 0 },
+  },
   journeyHeroStatusText: { color: '#E0F2FE', fontSize: 13, fontWeight: '800' },
   journeyHeroPrivacyPill: {
     borderRadius: 999,
@@ -1638,6 +1833,26 @@ const styles = StyleSheet.create({
     paddingVertical: 9,
   },
   journeyHeroPrivacyText: { color: 'rgba(255,255,255,0.86)', fontSize: 13, fontWeight: '700' },
+  journeyHeroPrivacyHint: {
+    color: '#C4B5FD',
+    fontSize: 13,
+    lineHeight: 19,
+    fontWeight: '600',
+    marginTop: 4,
+  },
+  journeyHeroSoftProgress: { gap: 8, marginTop: 4 },
+  journeyHeroSoftProgressTrack: {
+    height: 8,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    overflow: 'hidden',
+  },
+  journeyHeroSoftProgressFill: {
+    height: '100%',
+    borderRadius: 999,
+    backgroundColor: '#A855F7',
+  },
+  journeyHeroSoftProgressLabel: { color: '#9BA7C2', fontSize: 12, fontWeight: '700' },
   journeyViewStatusPill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1650,6 +1865,13 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
   },
   journeyViewStatusDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#A855F7' },
+  journeyViewStatusDotLive: {
+    backgroundColor: '#34D399',
+    shadowColor: '#34D399',
+    shadowOpacity: 0.75,
+    shadowRadius: 5,
+    shadowOffset: { width: 0, height: 0 },
+  },
   journeyViewStatusText: { color: '#E9D5FF', fontSize: 12, fontWeight: '800' },
   journeyHeroProgressRail: {
     height: 14,
@@ -1663,16 +1885,17 @@ const styles = StyleSheet.create({
     backgroundColor: '#38BDF8',
   },
   journeyHeroStats: { flexDirection: 'row', alignItems: 'stretch', flexWrap: 'wrap' },
-  journeyHeroStat: { flex: 1, minWidth: 110, paddingHorizontal: 10, gap: 4 },
+  journeyHeroStat: { flex: 1, minWidth: 120, paddingHorizontal: 12, gap: 3 },
   journeyHeroStatDivider: {
     width: 1,
     alignSelf: 'stretch',
     backgroundColor: 'rgba(148,163,184,0.16)',
     marginVertical: 4,
   },
-  journeyHeroStatIcon: { fontSize: 14, marginBottom: 2 },
-  journeyHeroStatLabel: { color: '#9BA7C2', fontSize: 12, fontWeight: '700' },
-  journeyHeroStatValue: { color: '#FFFFFF', fontSize: 22, fontWeight: '900', marginTop: 2 },
+  journeyHeroStatIcon: { fontSize: 16, marginBottom: 2 },
+  journeyHeroStatLabel: { color: '#9BA7C2', fontSize: 13, fontWeight: '700' },
+  journeyHeroStatValue: { color: '#FFFFFF', fontSize: 24, fontWeight: '900', marginTop: 2 },
+  journeyHeroStatHint: { color: '#8B93B3', fontSize: 12, fontWeight: '600', marginTop: 2 },
   liveHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
   liveDot: { width: 10, height: 10, borderRadius: 5, marginRight: 6 },
   liveText: { fontWeight: '900', fontSize: 14, letterSpacing: 2 },
@@ -1757,11 +1980,33 @@ const styles = StyleSheet.create({
   genericSummaryLabel: { fontSize: 14, fontWeight: '800', textTransform: 'capitalize' },
   genericSummaryCount: { fontSize: 13, fontWeight: '900' },
   card: { borderRadius: 18, padding: 20, borderWidth: 1, marginBottom: 16 },
-  creatorDesktopStack: { gap: 16, marginBottom: 16 },
+  creatorDesktopStack: { gap: 14, marginBottom: 16 },
+  creatorDesktopJourneyCard: { paddingBottom: 16 },
+  creatorDesktopControlsCard: {
+    borderColor: 'rgba(168,85,247,0.35)',
+    backgroundColor: 'rgba(24,16,48,0.9)',
+  },
+  creatorDesktopLiveSplit: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    gap: 14,
+    flexWrap: 'wrap',
+  },
+  creatorDesktopSplitCard: {
+    flex: 1,
+    minWidth: 300,
+    gap: 14,
+  },
+  creatorDesktopInviteActionsInline: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  creatorDesktopInviteActionGrow: { flex: 1 },
   creatorDesktopStatusStrip: {
     borderRadius: 20,
     borderWidth: 1,
-    padding: 18,
+    paddingVertical: 18,
+    paddingHorizontal: 12,
     gap: 14,
   },
   creatorDesktopStatusTop: {
@@ -1802,6 +2047,17 @@ const styles = StyleSheet.create({
   creatorDesktopRankName: { fontSize: 15, fontWeight: '800' },
   creatorDesktopRankGuess: { fontSize: 12, fontWeight: '600', marginTop: 2 },
   creatorDesktopRankBadge: { fontSize: 12, fontWeight: '800' },
+  creatorDesktopEmptyInvite: { gap: 4 },
+  creatorDesktopControlsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  creatorDesktopControlAction: {
+    flexGrow: 1,
+    flexBasis: 180,
+    minWidth: 160,
+  },
   creatorDesktopInviteCard: {
     borderRadius: 22,
     borderWidth: 1,
@@ -1810,31 +2066,31 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 20,
   },
-  creatorDesktopInviteIntro: { flex: 1.1, flexDirection: 'row', alignItems: 'center', gap: 14 },
+  creatorDesktopInviteIntro: { flexDirection: 'row', alignItems: 'center', gap: 14 },
   creatorDesktopGiftIcon: {
-    width: 54,
-    height: 54,
-    borderRadius: 16,
+    width: 48,
+    height: 48,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  creatorDesktopGiftEmoji: { fontSize: 26 },
-  creatorDesktopInviteCopy: { flex: 1, gap: 6 },
+  creatorDesktopGiftEmoji: { fontSize: 24 },
+  creatorDesktopInviteCopy: { flex: 1, gap: 4 },
   creatorDesktopInviteTitle: { fontSize: 17, fontWeight: '900' },
-  creatorDesktopInviteBody: { fontSize: 13, lineHeight: 20 },
+  creatorDesktopInviteBody: { fontSize: 13, lineHeight: 19 },
   creatorDesktopInviteMeta: { flex: 1, gap: 10 },
   creatorDesktopInviteLabel: { fontSize: 12, fontWeight: '800' },
-  creatorDesktopCodeRow: { flexDirection: 'row', gap: 10, flexWrap: 'wrap' },
+  creatorDesktopCodeRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
   creatorDesktopCodeChip: {
-    minWidth: 52,
-    height: 60,
-    borderRadius: 14,
+    minWidth: 44,
+    height: 52,
+    borderRadius: 12,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
   },
-  creatorDesktopCodeChipText: { color: '#FFFFFF', fontSize: 28, fontWeight: '900', letterSpacing: 1.5 },
+  creatorDesktopCodeChipText: { color: '#FFFFFF', fontSize: 24, fontWeight: '900', letterSpacing: 1.2 },
   creatorDesktopInviteActions: { width: 300, gap: 12 },
   creatorDesktopInviteAction: { width: '100%' },
   creatorDesktopNotifyCard: {
@@ -1849,7 +2105,8 @@ const styles = StyleSheet.create({
   },
   creatorDesktopNotifyCopy: { flexDirection: 'row', alignItems: 'center', gap: 14, flex: 1 },
   creatorDesktopNotifyIcon: { fontSize: 24 },
-  creatorDesktopNotifyText: { fontSize: 14, fontWeight: '600' },
+  creatorDesktopNotifyTitle: { fontSize: 15, fontWeight: '800', marginBottom: 2 },
+  creatorDesktopNotifyText: { fontSize: 13, fontWeight: '600', lineHeight: 18 },
   creatorDesktopColumn: { flex: 1, gap: 16 },
   creatorDesktopCard: {
     borderRadius: 22,

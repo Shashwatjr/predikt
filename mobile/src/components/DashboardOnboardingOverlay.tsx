@@ -18,7 +18,7 @@ interface Props {
 const steps: DashboardOnboardingStep[] = [
   {
     title: 'Welcome to My Prediktion',
-    body: 'This is your prediction arena. Create rooms, join challenges, and see who gets closest.',
+    body: 'This is your playful prediction corner. Start a room, share it fast, and see who gets closest.',
     sectionLabel: 'Dashboard overview',
   },
   {
@@ -27,14 +27,14 @@ const steps: DashboardOnboardingStep[] = [
     sectionLabel: 'Aura stat',
   },
   {
-    title: 'Clout',
-    body: 'Clout reflects your hosting and social influence. Create engaging rooms and bring real players to build Clout.',
-    sectionLabel: 'Clout stat',
+    title: 'Everyone can host',
+    body: 'You do not need a special role to start the fun. Create a room, drop the link in chat, and let friends pile in.',
+    sectionLabel: 'Host flow',
   },
   {
-    title: 'Credits',
-    body: 'Credits unlock in-app features.',
-    sectionLabel: 'Credits and feature unlocks',
+    title: 'Share-first rooms',
+    body: 'The fastest way to play is simple: make a call, send the room, and let the group chat react.',
+    sectionLabel: 'Sharing',
   },
   {
     title: 'Leaderboard',
@@ -48,7 +48,7 @@ const steps: DashboardOnboardingStep[] = [
   },
   {
     title: 'Create room',
-    body: 'Start your own Prediction Room. Try arrival, delivery, gym, friend challenge, or custom.',
+    body: 'Start a room in a few taps. Arrival rooms stay privacy-safe, and friends only see delayed progress.',
     sectionLabel: 'Create and join actions',
   },
   {
@@ -60,11 +60,6 @@ const steps: DashboardOnboardingStep[] = [
     title: 'Route room privacy',
     body: 'Route rooms are privacy-safe. Participants see delayed or approximate progress, not exact live GPS.',
     sectionLabel: 'Journey privacy',
-  },
-  {
-    title: 'Daily challenge and Drops',
-    body: 'Daily challenges and Drops keep the game fun with virtual rewards.',
-    sectionLabel: 'Daily challenge and Drops',
   },
   {
     title: 'Help and safety',

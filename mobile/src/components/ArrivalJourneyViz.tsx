@@ -19,11 +19,11 @@ import { getTravelStageFromProgress } from '../utils/travelProgress';
  */
 
 const VIEW_W = 640;
-const VIEW_H = 280;
+const VIEW_H = 300;
 
-const P0 = { x: 88, y: 168 };
-const P1 = { x: 300, y: 48 };
-const P2 = { x: 552, y: 150 };
+const P0 = { x: 72, y: 176 };
+const P1 = { x: 300, y: 52 };
+const P2 = { x: 568, y: 158 };
 const PATH_D = `M${P0.x},${P0.y} Q${P1.x},${P1.y} ${P2.x},${P2.y}`;
 
 function pointAt(t: number) {
@@ -76,12 +76,18 @@ export default function ArrivalJourneyViz({
   embedded = false,
 }: Props) {
   const clamped = Math.max(0, Math.min(100, progressPercentage ?? 0));
-  const anim = useRef(new Animated.Value(clamped)).current;
-  const [t, setT] = useState(clamped / 100);
+  // Keep the car slightly ahead of the start pin when tracking has begun but
+  // the first delayed checkpoint has not arrived yet — feels alive, not stuck.
+  const displayProgress = clamped <= 0 && ['live', 'started', 'inactive', 'overdue'].includes(String(status ?? '').toLowerCase())
+    ? 4
+    : clamped;
+  const anim = useRef(new Animated.Value(displayProgress)).current;
+  const [t, setT] = useState(displayProgress / 100);
   const [reduceMotion, setReduceMotion] = useState(false);
   const journeyStarted = ['live', 'started', 'inactive', 'overdue', 'arrived_verified'].includes(
     String(status ?? '').toLowerCase(),
   );
+  const awaitingFirstUpdate = journeyStarted && clamped <= 0;
 
   useEffect(() => {
     const id = anim.addListener(({ value }) => setT(Math.max(0, Math.min(1, value / 100))));
@@ -94,22 +100,30 @@ export default function ArrivalJourneyViz({
 
   useEffect(() => {
     if (reduceMotion) {
-      anim.setValue(clamped);
+      anim.setValue(displayProgress);
       return;
     }
-    Animated.timing(anim, { toValue: clamped, duration: 600, useNativeDriver: false }).start();
-  }, [clamped, anim, reduceMotion]);
+    Animated.timing(anim, { toValue: displayProgress, duration: 700, useNativeDriver: false }).start();
+  }, [displayProgress, anim, reduceMotion]);
 
   const dot = pointAt(t);
   const angle = tangentAngleAt(t);
   const dashOffset = TOTAL_LEN * (1 - t);
   const stageLabel = getTravelStageFromProgress(clamped, 'guest', { journeyStarted });
+  const roundedPct = Math.round(clamped);
+  const progressChipText = awaitingFirstUpdate
+    ? 'Waiting for first update'
+    : `${roundedPct}% along the way`;
   const movingCopy =
-    etaMinutes != null
-      ? `The journey is moving · ~${etaMinutes} min to go`
-      : journeyStarted
-        ? 'The journey is moving'
-        : 'Waiting for the journey to begin';
+    awaitingFirstUpdate
+      ? etaMinutes != null
+        ? `Just started · ~${etaMinutes} min to go · privacy delay on`
+        : 'Just started · first privacy-safe update coming soon'
+      : etaMinutes != null
+        ? `On the move · about ${etaMinutes} min left`
+        : journeyStarted
+          ? 'On the move · updates stay privacy-safe'
+          : 'Tap Start Journey when you are ready to roll';
 
   return (
     <View style={[styles.wrap, !embedded && styles.wrapCard]}>
@@ -124,53 +138,56 @@ export default function ArrivalJourneyViz({
       ) : null}
 
       <View style={styles.mapFrame}>
-        <Svg viewBox={`0 0 ${VIEW_W} ${VIEW_H}`} width="100%" height={embedded ? 260 : 220}>
+        {journeyStarted ? (
+          <View style={[styles.progressChip, awaitingFirstUpdate && styles.progressChipWaiting]}>
+            <Text style={styles.progressChipText}>{progressChipText}</Text>
+          </View>
+        ) : null}
+
+        <Svg viewBox={`0 0 ${VIEW_W} ${VIEW_H}`} width="100%" height={embedded ? 280 : 236}>
           <Defs>
             <SvgGradient id="arrivalTrack" x1="0" y1="0" x2="1" y2="0">
               <Stop offset="0" stopColor={primaryColor} />
               <Stop offset="1" stopColor={secondaryColor} />
             </SvgGradient>
             <SvgGradient id="mapFade" x1="0" y1="0" x2="0" y2="1">
-              <Stop offset="0" stopColor="#0B1224" stopOpacity="0.2" />
-              <Stop offset="1" stopColor="#070B16" stopOpacity="0.85" />
+              <Stop offset="0" stopColor="#121A33" stopOpacity="0.35" />
+              <Stop offset="1" stopColor="#070B16" stopOpacity="0.92" />
             </SvgGradient>
           </Defs>
 
-          <Rect x={0} y={0} width={VIEW_W} height={VIEW_H} rx={18} fill="#0A1020" />
+          <Rect x={0} y={0} width={VIEW_W} height={VIEW_H} rx={18} fill="#0C1426" />
           <Rect x={0} y={0} width={VIEW_W} height={VIEW_H} rx={18} fill="url(#mapFade)" />
 
-          {/* Soft street grid — decorative only */}
-          {[40, 90, 140, 190, 240].map((y) => (
-            <Path
-              key={`h-${y}`}
-              d={`M12 ${y} H${VIEW_W - 12}`}
-              stroke="rgba(148,163,184,0.08)"
-              strokeWidth={1}
-            />
+          {[56, 110, 164, 218, 272].map((y) => (
+            <Path key={`h-${y}`} d={`M16 ${y} H${VIEW_W - 16}`} stroke="rgba(148,163,184,0.08)" strokeWidth={1} />
           ))}
-          {[60, 140, 220, 300, 380, 460, 540].map((x) => (
-            <Path
-              key={`v-${x}`}
-              d={`M${x} 12 V${VIEW_H - 12}`}
-              stroke="rgba(148,163,184,0.07)"
-              strokeWidth={1}
-            />
+          {[80, 170, 260, 350, 440, 530].map((x) => (
+            <Path key={`v-${x}`} d={`M${x} 16 V${VIEW_H - 16}`} stroke="rgba(148,163,184,0.06)" strokeWidth={1} />
           ))}
-          {/* Remaining route (dashed) */}
+          <Path
+            d="M28 220 C150 180, 210 250, 320 210 S470 140, 620 200"
+            stroke="rgba(96,165,250,0.12)"
+            strokeWidth={14}
+            fill="none"
+            strokeLinecap="round"
+          />
+
+          {/* Full remaining route */}
           <Path
             d={PATH_D}
             fill="none"
-            stroke="rgba(96,165,250,0.55)"
+            stroke="rgba(96,165,250,0.45)"
             strokeWidth={4}
-            strokeDasharray="2 10"
+            strokeDasharray="3 11"
             strokeLinecap="round"
           />
-          {/* Traveled route (solid glow) */}
+          {/* Traveled glow + solid */}
           <Path
             d={PATH_D}
             fill="none"
             stroke={primaryColor}
-            strokeWidth={7}
+            strokeWidth={9}
             strokeLinecap="round"
             strokeDasharray={`${TOTAL_LEN}`}
             strokeDashoffset={dashOffset}
@@ -180,56 +197,48 @@ export default function ArrivalJourneyViz({
             d={PATH_D}
             fill="none"
             stroke="url(#arrivalTrack)"
-            strokeWidth={4}
+            strokeWidth={5}
             strokeLinecap="round"
             strokeDasharray={`${TOTAL_LEN}`}
             strokeDashoffset={dashOffset}
           />
 
-          {/* Start pin */}
-          <Circle cx={P0.x} cy={P0.y} r={22} fill={primaryColor} opacity={0.18} />
-          <Circle cx={P0.x} cy={P0.y} r={11} fill={primaryColor} opacity={0.35} />
-          <Circle cx={P0.x} cy={P0.y} r={6} fill={primaryColor} />
-          <Circle cx={P0.x} cy={P0.y} r={2.4} fill="#FFFFFF" />
-
-          {/* Destination pin */}
-          <Circle cx={P2.x} cy={P2.y} r={22} fill={secondaryColor} opacity={0.18} />
-          <Circle cx={P2.x} cy={P2.y} r={11} fill={secondaryColor} opacity={0.35} />
-          <Circle cx={P2.x} cy={P2.y} r={6} fill={secondaryColor} />
-          <Circle cx={P2.x} cy={P2.y} r={2.4} fill="#FFFFFF" />
-
-          {/* Labels near pins */}
-          <SvgText
-            x={P0.x + 16}
-            y={P0.y + 28}
-            fill="rgba(255,255,255,0.88)"
-            fontSize="12"
-            fontWeight="700"
-          >
-            {truncateLabel(startLabel, 34)}
+          {/* Start */}
+          <Circle cx={P0.x} cy={P0.y} r={24} fill={primaryColor} opacity={0.18} />
+          <Circle cx={P0.x} cy={P0.y} r={12} fill={primaryColor} opacity={0.4} />
+          <Circle cx={P0.x} cy={P0.y} r={6.5} fill={primaryColor} />
+          <Circle cx={P0.x} cy={P0.y} r={2.5} fill="#FFFFFF" />
+          <SvgText x={P0.x - 10} y={P0.y - 34} fill="#C4B5FD" fontSize="11" fontWeight="800">
+            FROM
           </SvgText>
-          <SvgText
-            x={Math.min(P2.x - 8, VIEW_W - 210)}
-            y={P2.y + 28}
-            fill="rgba(255,255,255,0.88)"
-            fontSize="12"
-            fontWeight="700"
-          >
-            {truncateLabel(destinationLabel, 38)}
+          <SvgText x={P0.x - 10} y={P0.y + 38} fill="rgba(255,255,255,0.92)" fontSize="13" fontWeight="700">
+            {truncateLabel(startLabel, 28)}
           </SvgText>
 
-          {/* Car marker */}
-          <Circle cx={dot.x} cy={dot.y} r={18} fill="#EF4444" opacity={0.18} />
+          {/* Destination */}
+          <Circle cx={P2.x} cy={P2.y} r={24} fill={secondaryColor} opacity={0.18} />
+          <Circle cx={P2.x} cy={P2.y} r={12} fill={secondaryColor} opacity={0.4} />
+          <Circle cx={P2.x} cy={P2.y} r={6.5} fill={secondaryColor} />
+          <Circle cx={P2.x} cy={P2.y} r={2.5} fill="#FFFFFF" />
+          <SvgText x={P2.x - 70} y={P2.y - 34} fill="#93C5FD" fontSize="11" fontWeight="800">
+            TO
+          </SvgText>
+          <SvgText x={P2.x - 120} y={P2.y + 38} fill="rgba(255,255,255,0.92)" fontSize="13" fontWeight="700">
+            {truncateLabel(destinationLabel, 28)}
+          </SvgText>
+
+          <Circle cx={dot.x} cy={dot.y} r={28} fill="#EF4444" opacity={0.12} />
+          <Circle cx={dot.x} cy={dot.y} r={17} fill="#EF4444" opacity={0.2} />
           <G transform={`translate(${dot.x}, ${dot.y}) rotate(${angle})`}>
-            <SvgText x={0} y={5} fontSize="20" textAnchor="middle">
+            <SvgText x={0} y={6} fontSize="24" textAnchor="middle">
               🚗
             </SvgText>
           </G>
         </Svg>
 
         <View style={styles.etaPillRow} pointerEvents="none">
-          <View style={styles.etaPill}>
-            <Text style={styles.etaPillIcon}>⏱</Text>
+          <View style={[styles.etaPill, awaitingFirstUpdate && styles.etaPillWaiting]}>
+            <Text style={styles.etaPillIcon}>{awaitingFirstUpdate ? '✨' : '⏱'}</Text>
             <Text style={styles.etaPillText}>{movingCopy}</Text>
           </View>
         </View>
@@ -241,9 +250,9 @@ export default function ArrivalJourneyViz({
 }
 
 function truncateLabel(label: string, max: number) {
-  const trimmed = label.trim();
-  if (trimmed.length <= max) return trimmed;
-  return `${trimmed.slice(0, max - 1).trimEnd()}…`;
+  const first = label.split(',')[0]?.trim() || label.trim();
+  if (first.length <= max) return first;
+  return `${first.slice(0, max - 1).trimEnd()}…`;
 }
 
 const styles = StyleSheet.create({
@@ -279,11 +288,28 @@ const styles = StyleSheet.create({
   mapFrame: {
     borderRadius: 18,
     overflow: 'hidden',
-    backgroundColor: '#0A1020',
+    backgroundColor: '#0C1426',
     borderWidth: 1,
-    borderColor: 'rgba(148,163,184,0.12)',
+    borderColor: 'rgba(148,163,184,0.14)',
     position: 'relative',
   },
+  progressChip: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    zIndex: 2,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(168,85,247,0.35)',
+    backgroundColor: 'rgba(15,21,39,0.9)',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  progressChipWaiting: {
+    borderColor: 'rgba(52,211,153,0.35)',
+    backgroundColor: 'rgba(6,78,59,0.55)',
+  },
+  progressChipText: { color: '#E9D5FF', fontSize: 12, fontWeight: '800' },
   etaPillRow: {
     position: 'absolute',
     left: 0,
@@ -299,10 +325,15 @@ const styles = StyleSheet.create({
     gap: 8,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
-    backgroundColor: 'rgba(8,12,24,0.82)',
+    borderColor: 'rgba(255,255,255,0.14)',
+    backgroundColor: 'rgba(8,12,24,0.88)',
     paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingVertical: 11,
+    maxWidth: '94%',
+  },
+  etaPillWaiting: {
+    borderColor: 'rgba(168,85,247,0.4)',
+    backgroundColor: 'rgba(46,16,101,0.82)',
   },
   etaPillIcon: { fontSize: 13 },
   etaPillText: { color: '#FFFFFF', fontSize: 13, fontWeight: '700' },

@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 
-const mobileRoot = '/Users/krivikshaaitech/predikt/mobile';
+// Derived from this file's location — an absolute path here breaks on any other
+// machine and in CI.
+const mobileRoot = path.resolve(import.meta.dirname, '..');
 const srcRoot = path.join(mobileRoot, 'src');
 
 function read(relativePath) {
@@ -62,9 +64,9 @@ test('Journey Home limits cards, uses friendly section naming, and shows view al
 test('journeyHome cards use shortened route labels and friendly actions by status', () => {
   const cardSource = read('src/components/ActivePredictionCard.tsx');
 
-  assert.match(cardSource, /function shortenJourneyPlaceLabel/);
-  assert.match(cardSource, /split\(','\)/);
-  assert.match(cardSource, /function formatJourneyRoute/);
+  // The route/label helpers now live in utils/journeyCardStatus.ts, which is
+  // framework-free and unit tested directly in journey-home-redesign.test.mjs.
+  assert.match(cardSource, /from '\.\.\/utils\/journeyCardStatus'/);
   assert.match(cardSource, /return 'View Result';/);
   assert.match(cardSource, /return 'Predict now';/);
   assert.match(cardSource, /return 'Open Journey';/);

@@ -18,6 +18,7 @@ export interface PlaceSuggestion {
 interface MapsConfig {
   placeSearchProvider?: string;
   olaConfigured?: boolean;
+  googleConfigured?: boolean;
 }
 
 interface Props {
@@ -142,10 +143,14 @@ export default function RoutePlaceSearchInput({
     value.trim().length >= 2 &&
     (loading || Boolean(error) || suggestions.length > 0);
 
+  const activeSearchProvider =
+    searchProvider || mapsConfig?.placeSearchProvider || null;
   const selectedProviderLabel =
-    searchProvider === 'ola' || mapsConfig?.placeSearchProvider === 'ola'
+    activeSearchProvider === 'ola'
       ? 'Ola Maps'
-      : 'OpenStreetMap';
+      : activeSearchProvider === 'google'
+        ? 'Google Maps'
+        : 'OpenStreetMap';
 
   function handleSelect(suggestion: PlaceSuggestion) {
     if (blurTimerRef.current) clearTimeout(blurTimerRef.current);
@@ -245,9 +250,11 @@ export default function RoutePlaceSearchInput({
                 {suggestion.secondaryText || suggestion.label}
                 {suggestion.provider === 'ola'
                   ? ' · Ola Maps'
-                  : suggestion.provider === 'openstreetmap'
-                    ? ' · OpenStreetMap'
-                    : ''}
+                  : suggestion.provider === 'google'
+                    ? ' · Google Maps'
+                    : suggestion.provider === 'openstreetmap'
+                      ? ' · OpenStreetMap'
+                      : ''}
               </Text>
             </Pressable>
           ))}

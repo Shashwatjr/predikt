@@ -3,9 +3,19 @@ import { StyleSheet, View } from 'react-native';
 import Svg, { Circle, Defs, G, LinearGradient, Path, Rect, Stop } from 'react-native-svg';
 import { journeyPalette } from '../theme/journeyPalette';
 
+/** viewBox of the built-in illustration. Exported so callers can reserve a box
+ *  with the same shape and avoid letterboxing the SVG inside it. */
+export const JOURNEY_ROUTE_ART_ASPECT = 320 / 120;
+
 type Props = {
   /** Rendered height of the art block. Width always fills the parent. */
   height?: number;
+  /**
+   * Derive the height from the width via the art's own aspect ratio instead of
+   * pinning it. The SVG uses `meet`, so a box of any other shape letterboxes it —
+   * this keeps the drawing flush with its container at every viewport width.
+   */
+  fitWidth?: boolean;
   /**
    * ────────────────────────── ART SWAP SLOT ──────────────────────────
    * Pass richer artwork here (Lottie, an <Image>, a 3D render) and it
@@ -21,13 +31,15 @@ type Props = {
  * marker partway along it. Pure SVG so it ships with no asset pipeline and
  * scales cleanly at every breakpoint.
  */
-export default function JourneyRouteArt({ height = 132, artwork }: Props) {
+export default function JourneyRouteArt({ height = 132, fitWidth = false, artwork }: Props) {
+  const box = fitWidth ? { aspectRatio: JOURNEY_ROUTE_ART_ASPECT } : { height };
+
   if (artwork) {
-    return <View style={[styles.wrap, { height }]}>{artwork}</View>;
+    return <View style={[styles.wrap, box]}>{artwork}</View>;
   }
 
   return (
-    <View style={[styles.wrap, { height }]} pointerEvents="none">
+    <View style={[styles.wrap, box]} pointerEvents="none">
       <Svg width="100%" height="100%" viewBox="0 0 320 120" preserveAspectRatio="xMidYMid meet">
         <Defs>
           <LinearGradient id="journeyRoute" x1="0" y1="0" x2="1" y2="0">

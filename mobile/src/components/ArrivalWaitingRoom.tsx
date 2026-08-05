@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import { StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import { formatClock } from '../utils/benchmarks';
 import { palette, radius, spacing } from '../theme/designSystem';
 
@@ -81,20 +80,31 @@ export default function ArrivalWaitingRoom({
   onGhostModeDetails,
   onEnableNotifications,
 }: Props) {
+  const { width } = useWindowDimensions();
   const seconds = useCountdown(targetTime);
   const mm = String(Math.floor(seconds / 60)).padStart(2, '0');
   const ss = String(seconds % 60).padStart(2, '0');
   const countdown = `${mm}:${ss}`;
+  const isCompact = width < 420;
+  const isTablet = width >= 768;
+  const heroCountdownStyle = isCompact
+    ? styles.heroCountdownCompact
+    : isTablet
+      ? styles.heroCountdownTablet
+      : null;
+  const predictionCards = isCompact ? cards.slice(0, 4) : cards;
 
   return (
     <View style={styles.wrap}>
       {/* Header */}
-      <View style={styles.header}>
-        <View style={styles.headerBrand}>
+      <View style={[styles.header, isCompact && styles.headerCompact]}>
+        <View style={[styles.headerBrand, isCompact && styles.headerBrandCompact]}>
           <Text style={styles.headerIcon}>🚗</Text>
-          <Text style={styles.headerTitle}>{title}</Text>
+          <Text style={styles.headerTitle} numberOfLines={isCompact ? 2 : 1}>
+            {title}
+          </Text>
         </View>
-        <View style={styles.statusPill}>
+        <View style={[styles.statusPill, isCompact && styles.statusPillCompact]}>
           <View style={styles.statusDot} />
           <Text style={styles.statusPillText}>{statusLabel}</Text>
         </View>
@@ -103,18 +113,18 @@ export default function ArrivalWaitingRoom({
       {/* Countdown hero */}
       <View style={styles.heroCard}>
         <Text style={styles.heroKicker}>Journey starts in</Text>
-        <Text style={styles.heroCountdown}>{countdown}</Text>
+        <Text style={[styles.heroCountdown, heroCountdownStyle]}>{countdown}</Text>
         <Text style={styles.heroSub}>Tracking begins automatically</Text>
 
-        <View style={styles.routeRow}>
-          <View style={styles.routeSide}>
+        <View style={[styles.routeRow, isCompact && styles.routeRowCompact]}>
+          <View style={[styles.routeSide, isCompact && styles.routeSideCompact]}>
             <Text style={styles.routePin}>📍</Text>
             <Text style={styles.routeText} numberOfLines={2}>
               {startLabel}
             </Text>
           </View>
-          <Text style={styles.routeArrow}>→</Text>
-          <View style={styles.routeSide}>
+          <Text style={[styles.routeArrow, isCompact && styles.routeArrowCompact]}>→</Text>
+          <View style={[styles.routeSide, isCompact && styles.routeSideCompact]}>
             <Text style={styles.routePin}>📍</Text>
             <Text style={styles.routeText} numberOfLines={2}>
               {destinationLabel}
@@ -122,22 +132,22 @@ export default function ArrivalWaitingRoom({
           </View>
         </View>
 
-        <View style={styles.metaRow}>
-          <View style={styles.metaCell}>
+        <View style={[styles.metaRow, isCompact && styles.metaRowCompact]}>
+          <View style={[styles.metaCell, isCompact && styles.metaCellCompact]}>
             <Text style={styles.metaLabel}>Expected duration</Text>
             <Text style={styles.metaValue}>
               {expectedDurationMinutes ? `${expectedDurationMinutes} min` : '—'}
             </Text>
           </View>
-          <View style={styles.metaDivider} />
-          <View style={styles.metaCell}>
+          {!isCompact ? <View style={styles.metaDivider} /> : null}
+          <View style={[styles.metaCell, isCompact && styles.metaCellCompact]}>
             <Text style={styles.metaLabel}>Mode</Text>
             <Text style={styles.metaValue}>
               {modeIcon} {modeLabel}
             </Text>
           </View>
-          <View style={styles.metaDivider} />
-          <View style={styles.metaCell}>
+          {!isCompact ? <View style={styles.metaDivider} /> : null}
+          <View style={[styles.metaCell, isCompact && styles.metaCellCompact]}>
             <Text style={styles.metaLabel}>Privacy</Text>
             <Text style={[styles.metaValue, styles.metaValueGreen]}>🛡 Location hidden</Text>
           </View>
@@ -156,12 +166,16 @@ export default function ArrivalWaitingRoom({
         </View>
 
         <View style={styles.predictionGrid}>
-          {cards.map((card) => {
+          {predictionCards.map((card) => {
             const { time, ampm } = clockParts(card.date);
             return (
               <View
                 key={card.key}
-                style={[styles.predCard, card.highlight && styles.predCardHighlight]}
+                style={[
+                  styles.predCard,
+                  isCompact && styles.predCardCompact,
+                  card.highlight && styles.predCardHighlight,
+                ]}
               >
                 <View style={styles.predNameRow}>
                   {card.icon ? <Text style={styles.predIcon}>{card.icon}</Text> : null}
@@ -216,29 +230,11 @@ export default function ArrivalWaitingRoom({
         {onGhostModeDetails ? <Text style={styles.ghostChevron}>›</Text> : null}
       </TouchableOpacity>
 
-      {/* You're all set */}
-      <LinearGradient
-        colors={['rgba(34,211,238,0.28)', 'rgba(34,211,238,0.10)']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.setCard}
-      >
-        <View style={{ flex: 1 }}>
-          <Text style={styles.setTitle}>You're all set!</Text>
-          <Text style={styles.setSub}>We'll start tracking in</Text>
-          <View style={styles.setCountdownPill}>
-            <Text style={styles.setCountdown}>{countdown}</Text>
-          </View>
-          <Text style={styles.setFoot}>Sit tight. The journey is about to begin. 🚀</Text>
-        </View>
-        <Text style={styles.setEmoji}>⏳</Text>
-      </LinearGradient>
-
       {/* Notify footer */}
       {onEnableNotifications ? (
-        <View style={styles.notifyRow}>
+        <View style={[styles.notifyRow, isCompact && styles.notifyRowCompact]}>
           <Text style={styles.notifyText}>✨ We'll notify you when tracking begins.</Text>
-          <TouchableOpacity style={styles.notifyBtn} onPress={onEnableNotifications}>
+          <TouchableOpacity style={[styles.notifyBtn, isCompact && styles.notifyBtnCompact]} onPress={onEnableNotifications}>
             <Text style={styles.notifyBtnText}>🔔 Enable Notifications</Text>
           </TouchableOpacity>
         </View>
@@ -252,9 +248,11 @@ const styles = StyleSheet.create({
   wrap: { gap: spacing.lg },
 
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  headerCompact: { alignItems: 'flex-start', gap: spacing.sm },
   headerBrand: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  headerBrandCompact: { flex: 1, paddingRight: spacing.sm },
   headerIcon: { fontSize: 22 },
-  headerTitle: { color: palette.violetLight, fontSize: 18, fontWeight: '900' },
+  headerTitle: { color: palette.violetLight, fontSize: 18, fontWeight: '900', flexShrink: 1 },
   statusPill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -266,6 +264,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: 6,
   },
+  statusPillCompact: { alignSelf: 'flex-start' },
   statusDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: palette.violetLight },
   statusPillText: { color: palette.violetLight, fontSize: 12, fontWeight: '800' },
 
@@ -286,6 +285,8 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     letterSpacing: 1,
   },
+  heroCountdownTablet: { fontSize: 88, lineHeight: 96 },
+  heroCountdownCompact: { fontSize: 56, lineHeight: 62 },
   heroSub: { color: palette.textSecondary, fontSize: 13, marginBottom: spacing.md },
 
   routeRow: {
@@ -299,10 +300,13 @@ const styles = StyleSheet.create({
     backgroundColor: palette.bg,
     padding: spacing.md,
   },
+  routeRowCompact: { alignItems: 'stretch', flexDirection: 'column' },
   routeSide: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  routeSideCompact: { flex: 0 },
   routePin: { fontSize: 14 },
   routeText: { color: palette.textPrimary, fontSize: 13, fontWeight: '700', flex: 1 },
   routeArrow: { color: palette.textSecondary, fontSize: 16, fontWeight: '800' },
+  routeArrowCompact: { alignSelf: 'center', transform: [{ rotate: '90deg' }] },
 
   metaRow: {
     flexDirection: 'row',
@@ -315,7 +319,26 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
     marginTop: spacing.sm,
   },
+  metaRowCompact: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+  },
   metaCell: { flex: 1, alignItems: 'center', gap: 4, paddingHorizontal: 4 },
+  metaCellCompact: {
+    minWidth: '47%',
+    flexBasis: '47%',
+    flexGrow: 0,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: palette.border,
+    backgroundColor: 'rgba(255,255,255,0.02)',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.sm,
+  },
   metaDivider: { width: 1, alignSelf: 'stretch', backgroundColor: palette.border },
   metaLabel: { color: palette.textSecondary, fontSize: 11, fontWeight: '600' },
   metaValue: { color: palette.textPrimary, fontSize: 14, fontWeight: '800', textAlign: 'center' },
@@ -345,6 +368,7 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     gap: 6,
   },
+  predCardCompact: { flexBasis: '100%', minWidth: 0 },
   predCardHighlight: {
     borderColor: 'rgba(34,197,94,0.6)',
     backgroundColor: 'rgba(34,197,94,0.10)',
@@ -398,32 +422,6 @@ const styles = StyleSheet.create({
   ghostCopy: { color: palette.textSecondary, fontSize: 13, lineHeight: 18 },
   ghostChevron: { color: palette.textSecondary, fontSize: 22, fontWeight: '400' },
 
-  setCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    borderRadius: radius.xl,
-    borderWidth: 1,
-    borderColor: 'rgba(34,211,238,0.4)',
-    padding: spacing.xl,
-    overflow: 'hidden',
-  },
-  setTitle: { color: palette.violetLight, fontSize: 22, fontWeight: '900', textAlign: 'center' },
-  setSub: { color: palette.textPrimary, fontSize: 14, textAlign: 'center', marginTop: 4 },
-  setCountdownPill: {
-    alignSelf: 'center',
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: 'rgba(34,211,238,0.5)',
-    backgroundColor: 'rgba(34,211,238,0.18)',
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.sm,
-    marginTop: spacing.sm,
-  },
-  setCountdown: { color: palette.violetLight, fontSize: 40, fontWeight: '900', letterSpacing: 1 },
-  setFoot: { color: palette.textSecondary, fontSize: 12, textAlign: 'center', marginTop: spacing.sm },
-  setEmoji: { fontSize: 56 },
-
   notifyRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -436,6 +434,7 @@ const styles = StyleSheet.create({
     backgroundColor: CARD_BG,
     padding: spacing.md,
   },
+  notifyRowCompact: { alignItems: 'stretch' },
   notifyText: { color: palette.textPrimary, fontSize: 13, fontWeight: '600', flexShrink: 1 },
   notifyBtn: {
     borderRadius: radius.pill,
@@ -445,5 +444,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
   },
+  notifyBtnCompact: { width: '100%', alignItems: 'center' },
   notifyBtnText: { color: palette.violetLight, fontSize: 13, fontWeight: '800' },
 });

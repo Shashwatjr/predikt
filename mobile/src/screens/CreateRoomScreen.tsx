@@ -1717,7 +1717,7 @@ export default function CreateRoomScreen({ navigation, route }: Props) {
                   ) : null}
                 </View>
 
-                <Text style={[styles.predictionInputLabel, { color: colors.textPrimary }]}>Your prediction</Text>
+                <Text style={[styles.predictionInputLabel, { color: colors.textPrimary }]}>Host call</Text>
                 {creatorPrediction ? (
                   <View style={styles.predictionInputBlock}>
                     <TimePickerSegments
@@ -1819,7 +1819,7 @@ export default function CreateRoomScreen({ navigation, route }: Props) {
                       Maps ETA: {mapsEtaDate ? formatClock(mapsEtaDate, false) : 'Pending'}
                     </Text>
                     <Text style={[styles.finalSummaryLine, { color: colors.textSecondary }]}>
-                      Your prediction: {creatorPrediction ? `${formatPredictionDateLabel(creatorPrediction)} · ${formatClock(creatorPrediction, false)}` : 'Add your call'}
+                      Host call: {creatorPrediction ? `${formatPredictionDateLabel(creatorPrediction)} · ${formatClock(creatorPrediction, false)}` : 'Add your call'}
                     </Text>
                   </View>
                   <View style={styles.finalSummaryCta}>
@@ -2211,7 +2211,7 @@ export default function CreateRoomScreen({ navigation, route }: Props) {
               <View style={[styles.generatedBox, { backgroundColor: colors.surfaceHigh }]}>
                 <Text style={[styles.generatedQuestion, { color: colors.textSecondary }]}>Result policy</Text>
                 <Text style={[styles.generatedTitle, { color: colors.textPrimary }]}>
-                  Creator-attest only. No screenshot upload in MVP.
+                  Host-confirmed only. No screenshot upload in MVP.
                 </Text>
                 <Text style={[styles.generatedQuestion, { color: colors.textSecondary }]}>
                   Any predictor can challenge later and send proof through a WhatsApp link.
@@ -2265,7 +2265,7 @@ export default function CreateRoomScreen({ navigation, route }: Props) {
             Maps ETA: {mapsEtaDate ? formatClock(mapsEtaDate, false) : 'Pending'}
           </Text>
           <Text style={[styles.finalSummaryLine, { color: colors.textSecondary }]}>
-            Your prediction: {creatorPrediction ? `${formatPredictionDateLabel(creatorPrediction)} · ${formatClock(creatorPrediction, false)}` : 'Add your call'}
+            Host call: {creatorPrediction ? `${formatPredictionDateLabel(creatorPrediction)} · ${formatClock(creatorPrediction, false)}` : 'Add your call'}
           </Text>
         </View>
         <PrimaryButton
@@ -2282,17 +2282,17 @@ export default function CreateRoomScreen({ navigation, route }: Props) {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: palette.bg },
-  container: { flexGrow: 1, width: '100%', maxWidth: 720, alignSelf: 'center', padding: 20, gap: 16, paddingBottom: 40 },
+  container: { flexGrow: 1, width: '100%', maxWidth: 720, alignSelf: 'center', padding: 20, gap: 18, paddingBottom: 40 },
   containerDesktop: { paddingBottom: 48 },
   containerMobile: { paddingBottom: 172 },
   heroCard: {
-    borderRadius: 28,
+    borderRadius: 30,
     borderWidth: 1,
     borderColor: 'rgba(129,140,248,0.34)',
     backgroundColor: 'rgba(9,12,25,0.98)',
-    paddingHorizontal: 20,
-    paddingVertical: 18,
-    gap: 10,
+    paddingHorizontal: 22,
+    paddingVertical: 20,
+    gap: 12,
     overflow: 'hidden',
   },
   heroOrbLarge: {
@@ -2351,11 +2351,11 @@ const styles = StyleSheet.create({
   heading: { fontSize: 26, fontWeight: '900' },
   sub: { fontSize: 14, lineHeight: 20 },
   infoBanner: {
-    borderRadius: 20,
+    borderRadius: 22,
     borderWidth: 1,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    gap: 6,
+    paddingHorizontal: 18,
+    paddingVertical: 16,
+    gap: 8,
   },
   infoBannerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 16 },
   infoBannerCopyBlock: { flex: 1, gap: 4 },
@@ -2385,7 +2385,7 @@ const styles = StyleSheet.create({
   swapButtonDesktop: { alignSelf: 'flex-start', marginTop: 32 },
   swapButtonMobile: { alignSelf: 'center' },
   swapIcon: { fontSize: 16, fontWeight: '900' },
-  section: { gap: 8 },
+  section: { gap: 10 },
   sectionLabel: { fontSize: 12, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5 },
   categoryGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   modeGrid: { gap: 10 },
@@ -2403,19 +2403,28 @@ const styles = StyleSheet.create({
   modeRow: { flexDirection: 'row', gap: 8 },
   modeChip: { flex: 1, borderRadius: 12, borderWidth: 1, paddingVertical: 11, alignItems: 'center' },
   modeChipText: { fontSize: 13, fontWeight: '800' },
-  card: { borderRadius: 16, padding: 16, borderWidth: 1, gap: 12 },
+  card: {
+    borderRadius: 22,
+    padding: 18,
+    borderWidth: 1,
+    gap: 14,
+    shadowColor: '#020617',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.18,
+    shadowRadius: 24,
+  },
   routeCard: { overflow: 'visible' },
   searchFields: { gap: 8, overflow: 'visible', zIndex: 20, alignItems: 'stretch' },
   routeFieldsDesktop: { flexDirection: 'row' },
   routeFieldsMobile: { flexDirection: 'column' },
   routeFieldColumn: { flex: 1 },
   cardHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-  cardTitle: { fontSize: 17, fontWeight: '900' },
+  cardTitle: { fontSize: 18, fontWeight: '900' },
   linkAction: { fontSize: 13, fontWeight: '800' },
   travelModeBlock: { gap: 10, paddingTop: 4, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.06)' },
   travelModeTitle: { fontSize: 15, fontWeight: '900' },
   previewBlock: { gap: 10, marginTop: 4 },
-  predictionSection: { gap: 12, marginTop: 6, borderRadius: 18, borderWidth: 1, padding: 16 },
+  predictionSection: { gap: 12, marginTop: 6, borderRadius: 22, borderWidth: 1, padding: 18 },
   predictionSectionTitle: { fontSize: 18, fontWeight: '900' },
   predictionSectionHelper: { fontSize: 13, lineHeight: 18 },
   benchmarkStack: { gap: 8 },
@@ -2424,7 +2433,7 @@ const styles = StyleSheet.create({
   benchmarkValue: { fontSize: 15, fontWeight: '800' },
   predictionInputLabel: { fontSize: 13, fontWeight: '800' },
   predictionInputBlock: {
-    borderRadius: 16,
+    borderRadius: 18,
     borderWidth: 1,
     borderColor: 'rgba(139,92,246,0.24)',
     backgroundColor: 'rgba(17,24,39,0.72)',
@@ -2441,7 +2450,7 @@ const styles = StyleSheet.create({
   generatedQuestion: { fontSize: 13, lineHeight: 18 },
   privacyNote: { fontSize: 12, fontWeight: '700' },
   inlinePrivacyNotice: {
-    borderRadius: 14,
+    borderRadius: 16,
     borderWidth: 1,
     paddingHorizontal: 12,
     paddingVertical: 10,
@@ -2450,7 +2459,7 @@ const styles = StyleSheet.create({
   inlinePrivacyTitle: { fontSize: 12, fontWeight: '800' },
   inlinePrivacyCopy: { fontSize: 12, lineHeight: 16 },
   routeEstimateCard: {
-    borderRadius: 16,
+    borderRadius: 20,
     borderWidth: 1,
     paddingHorizontal: 16,
     paddingVertical: 16,
@@ -2485,7 +2494,7 @@ const styles = StyleSheet.create({
   chip: { borderRadius: 999, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 8 },
   chipText: { fontSize: 12, fontWeight: '700' },
   predictionGrid: { gap: 10 },
-  generatedBox: { borderRadius: 12, padding: 12, gap: 4 },
+  generatedBox: { borderRadius: 16, padding: 14, gap: 5 },
   addOptionButton: {
     alignItems: 'center',
     borderRadius: 14,
@@ -2498,7 +2507,7 @@ const styles = StyleSheet.create({
   advancedStack: { gap: 10 },
   fieldHint: { fontSize: 12, lineHeight: 17 },
   finalSummaryCard: {
-    borderRadius: 18,
+    borderRadius: 22,
     borderWidth: 1,
     padding: 18,
     gap: 12,
@@ -2510,19 +2519,24 @@ const styles = StyleSheet.create({
   finalSummaryCta: { width: '100%' },
   mobileStickyFooter: {
     position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    borderTopWidth: 1,
+    left: 10,
+    right: 10,
+    bottom: 10,
+    borderWidth: 1,
+    borderRadius: 24,
     paddingHorizontal: 16,
     paddingTop: 12,
     paddingBottom: 16,
     gap: 10,
+    shadowColor: '#020617',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.24,
+    shadowRadius: 22,
   },
   mobileStickyMeta: { gap: 2 },
   lockFieldWrap: { gap: 8 },
   lockTimeBlock: {
-    borderRadius: 16,
+    borderRadius: 18,
     borderWidth: 1,
     borderColor: palette.border,
     backgroundColor: palette.surface,

@@ -1,8 +1,19 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, Animated, ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  AccessibilityInfo,
+  Animated,
+  Platform,
+  ScrollView,
+  Share,
+  StyleSheet,
+  Text,
+  View,
+  useWindowDimensions,
+} from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
+import ViewShot from 'react-native-view-shot';
 import { RootStackParamList } from '../navigation/types';
 import PrimaryButton from '../components/PrimaryButton';
 import { useTheme } from '../context/ThemeContext';
@@ -31,9 +42,14 @@ type GenericSummaryRow = {
   count: number;
 };
 
+function toArray<T>(value: unknown): T[] {
+  return Array.isArray(value) ? (value as T[]) : [];
+}
+
 export default function ResultScreen({ navigation, route }: Props) {
   const { colors } = useTheme();
   const { user } = useAuth();
+  const { width } = useWindowDimensions();
   const { roomId, result: initialResult } = route.params;
   const [data, setData] = useState<any[]>(initialResult?.rankings ?? []);
   const [winner, setWinner] = useState<any>(initialResult?.winner ?? null);
@@ -45,6 +61,7 @@ export default function ResultScreen({ navigation, route }: Props) {
 
   const [reduceMotion, setReduceMotion] = useState(false);
   const revealPulse = useRef(new Animated.Value(0)).current;
+  const receiptRef = useRef<ViewShot | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -117,7 +134,10 @@ export default function ResultScreen({ navigation, route }: Props) {
     }
   }
 
-  const podiumTop3 = data.slice(0, 3);
+  const safeData = toArray<any>(data);
+  const safeBadges = toArray<RoomBadge>(badges);
+  const safePredictions = toArray<RoomPredictionEntry>(predictions);
+  const podiumTop3 = safeData.slice(0, 3);
   const winningRow = winner ?? podiumTop3[0];
   const closureState = initialResult?.closureType ?? room?.journeyStatus;
   const isNeutralClosure = ['plan_changed', 'cancelled_by_host', 'auto_closed', 'abandoned'].includes(closureState ?? '');
@@ -136,9 +156,12 @@ export default function ResultScreen({ navigation, route }: Props) {
   // attribute from the leaderboard; RIZZ/Gems have no per-room source via the
   // Phase 1 endpoints, so only non-zero Aura is surfaced here.
   const myRow = user?.userId
-    ? data.find((r: any) => (r.userId ?? r.user?.userId) === user.userId)
+    ? safeData.find((r: any) => (r.userId ?? r.user?.userId) === user.userId)
     : undefined;
   const myAuraEarned = myRow?.totalRoomAura ?? myRow?.pointsAwarded ?? 0;
+  const myRank = myRow
+    ? myRow.rankInRoom ?? myRow.overallRank ?? safeData.findIndex((row) => row === myRow) + 1
+    : null;
   const oracleBotLabel = room?.baselineLabel ?? room?.oracleBotPrediction?.label ?? 'Benchmark only';
   const biggestNearMiss = podiumTop3[1]
     ? `${formatWinnerHandle(podiumTop3[1])} missed by ${
@@ -149,7 +172,7 @@ export default function ResultScreen({ navigation, route }: Props) {
     : 'No near miss this time';
   const momentCard = buildMomentCardFromResult(initialResult as ResultPayload | undefined, categoryKey);
   const badgeUnlocked =
-    badges.find((badge) => badge.userId === (winningRow?.userId ?? winningRow?.user?.userId))?.title
+    safeBadges.find((badge) => badge.userId === (winningRow?.userId ?? winningRow?.user?.userId))?.title
     ?? initialResult?.momentCard?.badge
     ?? initialResult?.badges?.[0]?.title
     ?? momentCard.badge;
@@ -172,6 +195,38 @@ export default function ResultScreen({ navigation, route }: Props) {
     await api.post('/events', { eventType: 'moment_card_shared', metadata: { roomId, category: categoryKey } }).catch(() => undefined);
   }
 
+  async function shareReceiptCard() {
+    try {
+      const uri = await receiptRef.current?.capture?.();
+      if (uri && Platform.OS !== 'web') {
+        await Share.share({
+          title: `${room?.roomTitle ?? 'My Prediktion'} receipt`,
+          message: `The Tea is ready from ${room?.roomTitle ?? 'My Prediktion'}.`,
+          url: uri,
+        });
+      } else {
+        await Share.share({
+          title: `${room?.roomTitle ?? 'My Prediktion'} receipt`,
+          message: buildReceiptShareText({
+            roomTitle: room?.roomTitle,
+            winnerHandle,
+            myRank,
+            closestGuess: winningPrediction,
+            farthestLabel: farthestGuessLabel,
+          }),
+        });
+      }
+      await api
+        .post('/events', {
+          eventType: 'result_shared',
+          metadata: { roomId, category: categoryKey, shareType: 'receipt' },
+        })
+        .catch(() => undefined);
+    } catch {
+      await shareMomentCard();
+    }
+  }
+
   const categoryTheme = getCategoryTheme(categoryKey);
   const genericCategoryKey =
     room?.category ?? room?.creationMeta?.category ?? room?.templateKey ?? categoryKey;
@@ -186,15 +241,15 @@ export default function ResultScreen({ navigation, route }: Props) {
       ? formatClock(actualDate, false)
       : actualOutcome;
   const predictionByUserId = new Map(
-    predictions
+    safePredictions
       .filter((entry) => entry.status !== 'revoked')
       .map((entry) => [entry.user?.userId, entry] as const)
       .filter(([userId]) => !!userId),
   );
   const leaderboardSource =
-    data.length > 0
-      ? data
-      : predictions
+    safeData.length > 0
+      ? safeData
+      : safePredictions
           .filter((entry) => entry.status !== 'revoked')
           .map((entry, index) => ({
             userId: entry.user?.userId ?? `prediction-${index}`,
@@ -273,7 +328,7 @@ export default function ResultScreen({ navigation, route }: Props) {
     benchmarks?.host
       ? {
           key: 'host',
-          title: 'Creator call',
+          title: 'Host call',
           value: formatClock(benchmarks.host.date, false),
           difference: formatDifferenceFromActual(benchmarks.host.date, actualDate, null),
           note: 'Host prediction on record',
@@ -321,12 +376,18 @@ export default function ResultScreen({ navigation, route }: Props) {
             label: String(option).replace(/_/g, ' '),
           }))
         : [];
-  const genericPredictions = (predictions.length
-    ? predictions
+  const genericPredictions = (safePredictions.length
+    ? safePredictions
     : ((initialResult?.predictionEntries as RoomPredictionEntry[] | undefined) ?? [])
   ).filter(
     (entry) => entry.status !== 'revoked' && !!entry.selectedOptionKey,
   );
+  const farthestRow = useMemo(
+    () => [...rankingRows].reverse().find((row) => !row.isWinner) ?? rankingRows[rankingRows.length - 1],
+    [rankingRows],
+  );
+  const farthestGuessLabel = farthestRow ? playfulFarthestLabel(farthestRow.rank) : 'Chaos cameo';
+  const isNarrowReceipt = width < 480;
   const genericVoteSummary = genericPredictions.reduce<Record<string, number>>((acc, entry) => {
       const key = String(entry.selectedOptionKey);
       acc[key] = (acc[key] ?? 0) + 1;
@@ -435,7 +496,7 @@ export default function ResultScreen({ navigation, route }: Props) {
             {comparisonRows.length ? (
               <View style={[styles.comparisonCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                 <View style={styles.comparisonHeader}>
-                  <Text style={[styles.comparisonTitle, { color: colors.textPrimary }]}>Compared with Maps, bot and creator</Text>
+                  <Text style={[styles.comparisonTitle, { color: colors.textPrimary }]}>Compared with Maps, bot and host</Text>
                   <Text style={[styles.comparisonMeta, { color: colors.textSecondary }]}>Against the final arrival at {actualTimeLabel}</Text>
                 </View>
                 <View style={styles.comparisonGrid}>
@@ -450,6 +511,64 @@ export default function ResultScreen({ navigation, route }: Props) {
                 </View>
               </View>
             ) : null}
+
+            <ViewShot
+              ref={receiptRef}
+              options={{ format: 'png', quality: 1, result: 'tmpfile' }}
+              style={[styles.receiptShot, { backgroundColor: colors.surface, borderColor: colors.border }]}
+            >
+              <LinearGradient
+                colors={['rgba(139,92,246,0.18)', 'rgba(34,211,238,0.08)', 'rgba(15,21,39,0.96)']}
+                style={styles.receiptCard}
+              >
+                <View style={[styles.receiptTopRow, isNarrowReceipt && styles.receiptTopRowStack]}>
+                  <View style={styles.receiptHeadingBlock}>
+                    <Text style={[styles.receiptKicker, { color: colors.purpleLight }]}>The Tea</Text>
+                    <Text style={[styles.receiptTitle, { color: colors.textPrimary }]}>
+                      {room?.roomTitle ?? 'My Prediktion'}
+                    </Text>
+                    <Text style={[styles.receiptSubline, { color: colors.textSecondary }]}>
+                      Winner: {winnerHandle}
+                    </Text>
+                  </View>
+                  <View style={styles.receiptStamp}>
+                    <Text style={styles.receiptStampEmoji}>🏆</Text>
+                    <Text style={styles.receiptStampText}>Winner locked</Text>
+                  </View>
+                </View>
+
+                <View style={[styles.receiptHero, { borderColor: colors.border }]}>
+                  <Text style={[styles.receiptWinnerEyebrow, { color: colors.textSecondary }]}>Closest guess</Text>
+                  <Text style={[styles.receiptWinnerName, { color: colors.textPrimary }]}>{winnerHandle}</Text>
+                  <Text style={[styles.receiptWinnerValue, { color: colors.purpleLight }]}>{winningPrediction}</Text>
+                  <Text style={[styles.receiptWinnerNote, { color: colors.textSecondary }]}>
+                    {typeof differenceMinutes === 'number' && differenceMinutes === 0
+                      ? 'Perfect call.'
+                      : `${differenceLabel} from the finish.`}
+                  </Text>
+                </View>
+
+                <View style={[styles.receiptMetricGrid, isNarrowReceipt && styles.receiptMetricGridStack]}>
+                  <View style={[styles.receiptMetric, { borderColor: colors.border }]}>
+                    <Text style={[styles.receiptMetricLabel, { color: colors.textSecondary }]}>Your rank</Text>
+                    <Text style={[styles.receiptMetricValue, { color: colors.textPrimary }]}>
+                      {myRank ? `#${myRank}` : 'Played'}
+                    </Text>
+                  </View>
+                  <View style={[styles.receiptMetric, { borderColor: colors.border }]}>
+                    <Text style={[styles.receiptMetricLabel, { color: colors.textSecondary }]}>Actual finish</Text>
+                    <Text style={[styles.receiptMetricValue, { color: colors.textPrimary }]}>{actualTimeLabel}</Text>
+                  </View>
+                  <View style={[styles.receiptMetric, { borderColor: colors.border }]}>
+                    <Text style={[styles.receiptMetricLabel, { color: colors.textSecondary }]}>Farthest guess</Text>
+                    <Text style={[styles.receiptMetricValue, { color: colors.textPrimary }]}>{farthestGuessLabel}</Text>
+                    <Text style={[styles.receiptMetricHint, { color: colors.textSecondary }]}>
+                      {farthestRow?.name ?? 'The chat'} kept it entertaining.
+                    </Text>
+                  </View>
+                </View>
+              </LinearGradient>
+            </ViewShot>
           </>
         )}
 
@@ -545,7 +664,7 @@ export default function ResultScreen({ navigation, route }: Props) {
 
         <View style={styles.ctaStack}>
           {featureFlags.momentCardExport ? (
-            <PrimaryButton label="Share results" onPress={shareMomentCard} gradientColors={['#8B5CF6', '#3B82F6']} icon="✨" />
+            <PrimaryButton label="Share receipt" onPress={shareReceiptCard} gradientColors={['#8B5CF6', '#3B82F6']} icon="✨" />
           ) : null}
           <PrimaryButton label="Back to Home" onPress={() => navigation.navigate('Home')} variant="secondary" icon="🏠" />
         </View>
@@ -613,6 +732,34 @@ function formatDifferenceFromActual(
   return 'Result recorded';
 }
 
+function playfulFarthestLabel(rank?: number | null) {
+  const labels = ['Wildcard energy', 'Plot twist pick', 'Big swing award', 'Chaos cameo'];
+  if (!rank || rank < 1) return labels[0];
+  return labels[(rank - 1) % labels.length];
+}
+
+function buildReceiptShareText({
+  roomTitle,
+  winnerHandle,
+  myRank,
+  closestGuess,
+  farthestLabel,
+}: {
+  roomTitle?: string | null;
+  winnerHandle: string;
+  myRank: number | null;
+  closestGuess: string;
+  farthestLabel: string;
+}) {
+  return [
+    `The Tea from ${roomTitle ?? 'My Prediktion'}`,
+    `Winner: ${winnerHandle}`,
+    `Closest guess: ${closestGuess}`,
+    `Your rank: ${myRank ? `#${myRank}` : 'Played'}`,
+    `Farthest guess: ${farthestLabel}`,
+  ].join('\n');
+}
+
 function formatActualOutcome(result: any) {
   if (!result?.actualOutcome) {
     return 'Result recorded';
@@ -663,8 +810,8 @@ function buildFallbackMomentCard(category: string) {
     case 'open_prediction':
       return {
         badge: 'Wild Cards',
-        subtitle: 'Creator-attest MVP lane',
-        commentary: 'Creator-attested result is ready to share.',
+        subtitle: 'Host-confirmed MVP lane',
+        commentary: 'Host-confirmed result is ready to share.',
       };
     default:
       return {
@@ -714,6 +861,52 @@ const styles = StyleSheet.create({
   comparisonTileValue: { fontSize: 22, fontWeight: '900' },
   comparisonTileDiff: { fontSize: 14, fontWeight: '800' },
   comparisonTileNote: { fontSize: 12, lineHeight: 17 },
+  receiptShot: { borderRadius: 24, borderWidth: 1, overflow: 'hidden' },
+  receiptCard: { padding: 20, gap: 16 },
+  receiptTopRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 },
+  receiptTopRowStack: { flexDirection: 'column' },
+  receiptHeadingBlock: { flex: 1, gap: 4 },
+  receiptKicker: { fontSize: 12, fontWeight: '900', letterSpacing: 1.1, textTransform: 'uppercase' },
+  receiptTitle: { fontSize: 26, lineHeight: 30, fontWeight: '900' },
+  receiptSubline: { fontSize: 13, lineHeight: 18, fontWeight: '600' },
+  receiptStamp: {
+    minWidth: 112,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(251,191,36,0.28)',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    alignItems: 'center',
+    gap: 2,
+    backgroundColor: 'rgba(15,21,39,0.64)',
+  },
+  receiptStampEmoji: { fontSize: 18 },
+  receiptStampText: { color: '#FBBF24', fontSize: 11, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 0.8 },
+  receiptHero: {
+    borderRadius: 20,
+    borderWidth: 1,
+    backgroundColor: 'rgba(15,21,39,0.7)',
+    padding: 18,
+    gap: 6,
+  },
+  receiptWinnerEyebrow: { fontSize: 12, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.8 },
+  receiptWinnerName: { fontSize: 24, lineHeight: 28, fontWeight: '900' },
+  receiptWinnerValue: { fontSize: 34, lineHeight: 38, fontWeight: '900' },
+  receiptWinnerNote: { fontSize: 13, lineHeight: 18, fontWeight: '600' },
+  receiptMetricGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+  receiptMetricGridStack: { flexDirection: 'column' },
+  receiptMetric: {
+    flex: 1,
+    minWidth: 180,
+    borderRadius: 18,
+    borderWidth: 1,
+    backgroundColor: 'rgba(15,21,39,0.58)',
+    padding: 14,
+    gap: 4,
+  },
+  receiptMetricLabel: { fontSize: 12, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.7 },
+  receiptMetricValue: { fontSize: 21, lineHeight: 25, fontWeight: '900' },
+  receiptMetricHint: { fontSize: 12, lineHeight: 17, fontWeight: '600' },
   rankingsCard: { borderRadius: 22, borderWidth: 1, padding: 18, gap: 14 },
   rankingsHeader: { gap: 4 },
   rankingsTitle: { fontSize: 19, fontWeight: '900' },

@@ -20,10 +20,15 @@ export default function JourneyHeader({ aura, userName, onProfile }: Props) {
       <View style={styles.right}>
         <View style={styles.auraChip}>
           <Text style={styles.auraIcon}>✨</Text>
-          <Text style={styles.auraValue}>{aura}</Text>
+          <Text style={styles.auraValue}>{aura} Aura</Text>
         </View>
-        <Pressable onPress={onProfile} accessibilityRole="button" accessibilityLabel="Profile" style={styles.avatar}>
-          <Text style={styles.avatarText}>{(userName || 'P').charAt(0).toUpperCase()}</Text>
+        <Pressable onPress={onProfile} accessibilityRole="button" accessibilityLabel="Profile" style={styles.profileChip}>
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText}>{(userName || 'P').charAt(0).toUpperCase()}</Text>
+          </View>
+          <Text style={styles.profileLabel} numberOfLines={1}>
+            {userName ? userName.split(' ')[0] : 'Profile'}
+          </Text>
         </Pressable>
       </View>
     </View>
@@ -31,7 +36,7 @@ export default function JourneyHeader({ aura, userName, onProfile }: Props) {
 }
 
 const styles = StyleSheet.create({
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   brandRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   right: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   auraChip: {
@@ -42,11 +47,24 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: journeyPalette.borderStrong,
     backgroundColor: 'rgba(139,92,246,0.14)',
-    paddingHorizontal: 11,
-    paddingVertical: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
   },
   auraIcon: { fontSize: 12 },
   auraValue: { color: journeyPalette.textPrimary, fontSize: 12, fontWeight: '800' },
+  profileChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: journeyPalette.border,
+    backgroundColor: 'rgba(17,18,51,0.82)',
+    paddingVertical: 4,
+    paddingLeft: 4,
+    paddingRight: 10,
+    maxWidth: 150,
+  },
   avatar: {
     width: 34,
     height: 34,
@@ -58,4 +76,5 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   avatarText: { color: journeyPalette.textPrimary, fontSize: 14, fontWeight: '800' },
+  profileLabel: { color: journeyPalette.textPrimary, fontSize: 12, fontWeight: '700' },
 });

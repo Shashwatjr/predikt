@@ -1,9 +1,10 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import BrandLogo from './BrandLogo';
+import JourneyNavIcon, { type JourneyNavIconName } from './JourneyNavIcon';
 import { journeyPalette } from '../theme/journeyPalette';
 
-export type JourneySidebarItem = 'Home' | 'StartJourney' | 'MyJourneys';
+export type JourneySidebarItem = 'Home' | 'StartJourney' | 'JoinJourney' | 'MyJourneys';
 
 type Props = {
   active: JourneySidebarItem;
@@ -12,10 +13,11 @@ type Props = {
   onProfile: () => void;
 };
 
-const ITEMS: Array<{ key: JourneySidebarItem; label: string; icon: string }> = [
-  { key: 'Home', label: 'Home', icon: '⌂' },
-  { key: 'StartJourney', label: 'Start a Journey', icon: '+' },
-  { key: 'MyJourneys', label: 'My Journeys', icon: '🧭' },
+const ITEMS: Array<{ key: JourneySidebarItem; label: string; icon: JourneyNavIconName }> = [
+  { key: 'Home', label: 'Home', icon: 'home' },
+  { key: 'StartJourney', label: 'Create a Room', icon: 'plus' },
+  { key: 'JoinJourney', label: 'Join a Room', icon: 'link' },
+  { key: 'MyJourneys', label: 'Your Journeys', icon: 'list' },
 ];
 
 /** Desktop-only left rail. Mobile uses BottomNav instead — same screen, same data. */
@@ -37,12 +39,31 @@ export default function JourneySidebar({ active, onSelect, userName, onProfile }
               accessibilityState={{ selected: isActive }}
               style={[styles.navItem, isActive && styles.navItemActive]}
             >
-              <Text style={[styles.navIcon, isActive && styles.navTextActive]}>{item.icon}</Text>
+              <JourneyNavIcon
+                name={item.icon}
+                color={isActive ? journeyPalette.cyan : journeyPalette.textMuted}
+              />
               <Text style={[styles.navLabel, isActive && styles.navTextActive]}>{item.label}</Text>
             </Pressable>
           );
         })}
       </View>
+
+      <View style={styles.botCard}>
+        <View style={styles.botBadge}>
+          <Text style={styles.botBadgeIcon}>🤖</Text>
+        </View>
+        <Text style={styles.botTitle}>The bot joins too</Text>
+        <Text style={styles.botCopy}>
+          More friends, more fun, better predictions. Every challenge gets a playful benchmark.
+        </Text>
+        <Text style={styles.botSpark}>✦</Text>
+      </View>
+
+      {/* Slack lives here so the nav + bot card stay grouped under the logo and the
+          profile row pins to the bottom — rather than `nav: flex 1` blowing a hole
+          between the nav and the bot card. */}
+      <View style={styles.spacer} />
 
       <Pressable onPress={onProfile} accessibilityRole="button" style={styles.profile}>
         <View style={styles.avatar}>
@@ -61,29 +82,57 @@ export default function JourneySidebar({ active, onSelect, userName, onProfile }
 
 const styles = StyleSheet.create({
   rail: {
-    width: 248,
-    paddingVertical: 28,
-    paddingHorizontal: 18,
+    width: 268,
+    paddingVertical: 34,
+    paddingHorizontal: 20,
     borderRightWidth: 1,
     borderRightColor: journeyPalette.border,
     backgroundColor: journeyPalette.surface,
-    gap: 28,
+    gap: 26,
   },
   brandRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  spacer: { flex: 1, minHeight: 24 },
 
-  nav: { gap: 4, flex: 1 },
+  nav: { gap: 6 },
   navItem: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    paddingVertical: 11,
-    paddingHorizontal: 12,
+    paddingVertical: 13,
+    paddingHorizontal: 14,
     borderRadius: 12,
   },
-  navItemActive: { backgroundColor: 'rgba(139,92,246,0.16)' },
-  navIcon: { color: journeyPalette.textMuted, fontSize: 16, width: 18, textAlign: 'center' },
-  navLabel: { color: journeyPalette.textSecondary, fontSize: 14, fontWeight: '700' },
+  navItemActive: {
+    backgroundColor: journeyPalette.glass,
+    borderWidth: 1,
+    borderColor: journeyPalette.borderSoft,
+    // Offset the border so the active row doesn't shift its neighbours.
+    marginVertical: -1,
+  },
+  navLabel: { color: journeyPalette.textSecondary, fontSize: 15, fontWeight: '600' },
   navTextActive: { color: journeyPalette.purpleLight },
+  botCard: {
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: journeyPalette.border,
+    backgroundColor: 'rgba(17,18,51,0.88)',
+    padding: 20,
+    gap: 14,
+  },
+  botBadge: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(59,130,246,0.16)',
+    borderWidth: 1,
+    borderColor: journeyPalette.borderStrong,
+  },
+  botBadgeIcon: { fontSize: 26 },
+  botTitle: { color: journeyPalette.textPrimary, fontSize: 18, lineHeight: 24, fontWeight: '900' },
+  botCopy: { color: journeyPalette.textSecondary, fontSize: 14, lineHeight: 21, fontWeight: '500' },
+  botSpark: { color: '#FDE68A', fontSize: 18, fontWeight: '900', alignSelf: 'flex-end' },
 
   profile: {
     flexDirection: 'row',

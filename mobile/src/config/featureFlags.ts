@@ -18,6 +18,13 @@ function envFlag(name: string, fallback: boolean): boolean {
   return raw === 'true' || raw === '1';
 }
 
+function envNumber(name: string, fallback: number): number {
+  const raw = process.env[`EXPO_PUBLIC_FEATURE_${name}`];
+  if (raw === undefined) return fallback;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
 /** Category keys shown in the create-room picker for the MVP. */
 export const MVP_CATEGORY_KEYS = ['arrival_time', 'food_eta'] as const;
 export type MvpCategoryKey = (typeof MVP_CATEGORY_KEYS)[number];
@@ -60,7 +67,8 @@ export const featureFlags = {
   // through the same code path as Aura but stay off until those counts are backed
   // by real data rather than a length-of-list approximation.
   homeSecondaryStats: envFlag('HOME_SECONDARY_STATS', false),
-  momentCardExport: envFlag('MOMENT_CARD_EXPORT', false),
+  momentCardExport: envFlag('MOMENT_CARD_EXPORT', true),
+  homeRizzRevealParticipationCount: envNumber('HOME_RIZZ_REVEAL_PARTICIPATION_COUNT', 3),
   // Sponsored side-wing cards (Featured creators / Community hosts / Partner Perk /
   // Moment Card themes). Hidden until there are real partners; config stays intact.
   sponsoredPlacements: envFlag('SPONSORED_PLACEMENTS', false),

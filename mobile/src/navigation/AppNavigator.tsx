@@ -23,8 +23,25 @@ import HelpScreen from '../screens/HelpScreen';
 import { RootStackParamList } from './types';
 import { resolveInviteJoinCode } from '../utils/inviteIntent';
 import { consumePostAuthIntent } from '../utils/postAuthIntent';
+import ScreenCrashBoundary from '../components/ScreenCrashBoundary';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
+
+function SafeLiveRoomScreen(props: React.ComponentProps<typeof LiveRoomScreen>) {
+  return (
+    <ScreenCrashBoundary screenName="Journey" onHome={() => props.navigation.navigate('Home')}>
+      <LiveRoomScreen {...props} />
+    </ScreenCrashBoundary>
+  );
+}
+
+function SafeResultScreen(props: React.ComponentProps<typeof ResultScreen>) {
+  return (
+    <ScreenCrashBoundary screenName="Result" onHome={() => props.navigation.navigate('Home')}>
+      <ResultScreen {...props} />
+    </ScreenCrashBoundary>
+  );
+}
 
 export default function AppNavigator() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -105,8 +122,8 @@ export default function AppNavigator() {
             <Stack.Screen name="RoomCreated" component={RoomCreatedScreen} options={{ title: '' }} />
             <Stack.Screen name="JoinRoom" component={JoinRoomScreen} options={{ title: 'Join Room' }} />
             <Stack.Screen name="Prediction" component={PredictionScreen} options={{ title: 'Your Prediction' }} />
-            <Stack.Screen name="LiveRoom" component={LiveRoomScreen} options={{ title: '' }} />
-            <Stack.Screen name="Result" component={ResultScreen} options={{ title: 'Results' }} />
+            <Stack.Screen name="LiveRoom" component={SafeLiveRoomScreen} options={{ title: '' }} />
+            <Stack.Screen name="Result" component={SafeResultScreen} options={{ title: 'Results' }} />
             <Stack.Screen name="Leaderboard" component={LeaderboardScreen} options={{ title: '' }} />
             <Stack.Screen name="Profile" component={ProfileScreen} options={{ title: 'Profile' }} />
             <Stack.Screen name="Notifications" component={NotificationsScreen} options={{ title: '' }} />

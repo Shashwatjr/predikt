@@ -3,8 +3,16 @@ import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useTheme } from '../context/ThemeContext';
 import ProgressBar from './ProgressBar';
 import { botEtaTeaser, botEtaRead } from '../utils/botVoice';
-import { palette, radius, spacing, typography } from '../theme/designSystem';
-import { journeyPalette } from '../theme/journeyPalette';
+import { palette, radius, spacing } from '../theme/designSystem';
+import { journeyMono, journeyPalette } from '../theme/journeyPalette';
+import {
+  formatJourneyRoute,
+  journeyPillLabel,
+  journeyPillTone,
+  shouldShowStatusSentence,
+  JOURNEY_HOME_PLACE_MAX,
+  type JourneyPillTone,
+} from '../utils/journeyCardStatus';
 
 type ActivePrediction = {
   roomId: string;
@@ -48,23 +56,11 @@ type Props = {
 
 export type ActivePredictionCardVariant = NonNullable<Props['variant']>;
 
-function capWithEllipsis(text: string, max: number) {
-  const value = text.trim();
-  if (value.length <= max) return value;
-  return `${value.slice(0, max - 1).trimEnd()}…`;
-}
-
-function shortenJourneyPlaceLabel(label?: string | null) {
-  const raw = (label ?? '').trim();
-  if (!raw) return '';
-  const [primary] = raw.split(',').map((part) => part.trim()).filter(Boolean);
-  return capWithEllipsis(primary || raw, 24);
-}
-
-function formatJourneyRoute(startLabel?: string | null, destinationLabel?: string | null) {
-  const start = shortenJourneyPlaceLabel(startLabel) || 'Start';
-  const destination = shortenJourneyPlaceLabel(destinationLabel) || 'Destination';
-  return `${start} → ${destination}`;
+function journeyPillColor(tone: JourneyPillTone): string {
+  if (tone === 'live') return journeyPalette.green;
+  if (tone === 'wait') return journeyPalette.orange;
+  if (tone === 'done') return journeyPalette.cyan;
+  return journeyPalette.blueLight;
 }
 
 function friendlyActionLabel(item: ActivePrediction) {
@@ -131,6 +127,8 @@ export default function ActivePredictionCard({
       : null;
   const cardBorderColor = isJourneyHome ? journeyPalette.borderStrong : palette.border;
   const cardBackgroundColor = isJourneyHome ? journeyPalette.surface : palette.surface;
+  const pillTone = journeyPillTone(item.status, item.hasSubmittedPrediction);
+  const pillColor = journeyPillColor(pillTone);
   const badgeBackgroundColor = isJourneyHome
     ? isDangerState
       ? 'rgba(239,68,68,0.16)'
@@ -176,10 +174,17 @@ export default function ActivePredictionCard({
   const friendlyRoute = formatJourneyRoute(
     item.routeSummary?.startLabel,
     item.routeSummary?.destinationLabel,
+    isJourneyHome ? JOURNEY_HOME_PLACE_MAX : undefined,
   );
   const homeStatusText = friendlyStatusText(item);
   const homeActionLabel = friendlyActionLabel(item);
   const participantLabel = friendlyParticipantLabel(item.participantCount);
+  const compactPredictionLabel =
+    item.hasSubmittedPrediction && item.liveProgress.etaTime
+      ? item.liveProgress.etaTime
+      : item.liveProgress.etaVsMyPredictionLabel === 'Prediction submitted'
+        ? 'Prediction locked'
+        : null;
   const primaryTimingLine =
     item.status.toLowerCase() === 'live'
       ? `Map ETA: ${item.liveProgress.timeToDestinationLabel ?? item.liveProgress.etaTime ?? 'Updating'}`
@@ -210,21 +215,44 @@ export default function ActivePredictionCard({
         ]}
       >
         <View style={styles.journeyHomeTopRow}>
-          <Text style={styles.journeyHomeRoute}>{friendlyRoute}</Text>
+          <View style={styles.journeyHomeRouteCluster}>
+            <View style={styles.journeyHomeIconOrb}>
+              <Text style={styles.journeyHomeIconGlyph}>
+                {item.status.toLowerCase() === 'live'
+                  ? '🏙'
+                  : ['result_ready', 'completed', 'reached'].includes(item.status.toLowerCase())
+                    ? '✈️'
+                    : '☕'}
+              </Text>
+            </View>
+            <View style={styles.journeyHomeRouteCopy}>
+              <Text style={styles.journeyHomeRoute} numberOfLines={2}>
+                {friendlyRoute}
+              </Text>
+              {compactPredictionLabel ? (
+                <Text style={styles.journeyHomePredictionChip}>{compactPredictionLabel}</Text>
+              ) : null}
+            </View>
+          </View>
           <View
             style={[
-              styles.badge,
-              badgeBorderStyle,
-              { backgroundColor: badgeBackgroundColor, borderColor: badgeBorderColor },
+              styles.journeyHomePill,
+              {
+                backgroundColor: `${pillColor}1F`,
+                borderColor: `${pillColor}47`,
+              },
             ]}
           >
-            <Text style={[styles.badgeText, { color: badgeTextColor }]}>
-              {item.status.toLowerCase() === 'live' ? 'LIVE' : homeStatusText}
+            <View style={[styles.journeyHomePillDot, { backgroundColor: pillColor }]} />
+            <Text style={[styles.journeyHomePillText, { color: pillColor }]} numberOfLines={1}>
+              {journeyPillLabel(pillTone, item.status, item.hasSubmittedPrediction, item.journeyStatus)}
             </Text>
           </View>
         </View>
 
-        {item.status.toLowerCase() !== 'live' ? (
+        {/* Only when the short pill label doesn't already say it — otherwise the
+            card repeated "Result ready" twice in a row. */}
+        {shouldShowStatusSentence(pillTone) ? (
           <Text style={styles.journeyHomeStatus}>{homeStatusText}</Text>
         ) : null}
 
@@ -263,6 +291,16 @@ export default function ActivePredictionCard({
         >
           <Text style={styles.primaryActionText}>{homeActionLabel}</Text>
         </TouchableOpacity>
+
+        {onDelete ? (
+          <TouchableOpacity
+            style={styles.journeyHomeDeleteAction}
+            onPress={onDelete}
+            accessibilityRole="button"
+          >
+            <Text style={styles.journeyHomeDeleteText}>Delete journey</Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
     );
   }
@@ -393,11 +431,50 @@ const styles = StyleSheet.create({
   journeyBadge: { borderWidth: 1 },
   badgeText: { fontSize: 10, fontWeight: '900', textTransform: 'capitalize' },
   journeyHomeTopRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 },
+  journeyHomeRouteCluster: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 14, minWidth: 0 },
+  journeyHomeRouteCopy: { flex: 1, gap: 6 },
+  journeyHomeIconOrb: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(139,92,246,0.18)',
+    borderWidth: 1,
+    borderColor: journeyPalette.borderStrong,
+  },
+  journeyHomeIconGlyph: { fontSize: 26 },
   journeyHomeRoute: { flex: 1, color: journeyPalette.textPrimary, fontSize: 17, lineHeight: 22, fontWeight: '900' },
+  journeyHomePredictionChip: {
+    alignSelf: 'flex-start',
+    color: journeyPalette.blueLight,
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '800',
+  },
   journeyHomeStatus: { color: journeyPalette.textSecondary, fontSize: 14, lineHeight: 18, fontWeight: '700' },
-  journeyHomeTiming: { color: journeyPalette.textPrimary, fontSize: 15, lineHeight: 20, fontWeight: '800' },
+  // Times are monospaced so digits line up between stacked cards in the grid.
+  journeyHomeTiming: {
+    color: journeyPalette.textPrimary,
+    fontFamily: journeyMono,
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: '600',
+  },
   journeyHomeSecondaryTiming: { color: journeyPalette.textSecondary, fontSize: 14, lineHeight: 18, fontWeight: '600' },
   journeyHomeMeta: { color: journeyPalette.textSecondary, fontSize: 13, lineHeight: 18, fontWeight: '600' },
+  journeyHomePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingVertical: 5,
+    paddingHorizontal: 11,
+    flexShrink: 0,
+  },
+  journeyHomePillDot: { width: 7, height: 7, borderRadius: 3.5 },
+  journeyHomePillText: { fontSize: 11, fontWeight: '800', letterSpacing: 0.2 },
   route: { fontSize: 12, fontWeight: '700' },
   infoRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 10 },
   infoText: { fontSize: 11, flex: 1 },
@@ -418,6 +495,18 @@ const styles = StyleSheet.create({
     marginTop: 2,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  journeyHomeDeleteAction: {
+    alignSelf: 'flex-end',
+    marginTop: 2,
+    paddingHorizontal: 4,
+    paddingVertical: 4,
+  },
+  journeyHomeDeleteText: {
+    color: '#FCA5A5',
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '800',
   },
   primaryActionText: { color: '#fff', fontWeight: '900', fontSize: 12 },
   iconAction: {

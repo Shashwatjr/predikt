@@ -46,20 +46,25 @@ export default function PrimaryButton({
   }
 
   const isDisabled = disabled || loading;
+  const isSecondary = variant === 'secondary';
+  const isGhost = variant === 'ghost';
 
   const content = loading ? (
     <ActivityIndicator color={labelColor ?? '#fff'} size="small" />
   ) : (
-    <Text
-      style={[
-        styles.label,
-        variant === 'primary' && labelColor ? { color: labelColor } : null,
-        variant === 'secondary' && { color: colors.purple },
-        variant === 'ghost' && { color: colors.textSecondary },
-      ]}
-    >
-      {icon ? `${icon}  ${label}` : label}
-    </Text>
+    <View style={styles.contentRow}>
+      {icon ? <Text style={styles.iconText}>{icon}</Text> : null}
+      <Text
+        style={[
+          styles.label,
+          variant === 'primary' && labelColor ? { color: labelColor } : null,
+          isSecondary && { color: colors.purpleLight ?? colors.purple },
+          isGhost && { color: colors.textSecondary },
+        ]}
+      >
+        {label}
+      </Text>
+    </View>
   );
 
   return (
@@ -94,13 +99,22 @@ export default function PrimaryButton({
         )}
 
         {variant === 'secondary' && (
-          <View style={[styles.btn, styles.outlineBtn, { borderColor: colors.purple }]}>
+          <View
+            style={[
+              styles.btn,
+              styles.outlineBtn,
+              {
+                borderColor: colors.purple,
+                backgroundColor: colors.purpleDim,
+              },
+            ]}
+          >
             {content}
           </View>
         )}
 
         {variant === 'ghost' && (
-          <View style={[styles.btn, { backgroundColor: 'transparent' }]}>
+          <View style={[styles.btn, styles.ghostBtn]}>
             {content}
           </View>
         )}
@@ -111,22 +125,24 @@ export default function PrimaryButton({
 
 const styles = StyleSheet.create({
   wrapper: { marginVertical: 5 },
+  contentRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  iconText: { fontSize: 16 },
   btn: {
-    borderRadius: 14,
+    borderRadius: 18,
     paddingVertical: 15,
     paddingHorizontal: 24,
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 52,
+    minHeight: 56,
   },
   outlineBtn: {
-    backgroundColor: 'transparent',
-    borderWidth: 1.5,
+    borderWidth: 1,
   },
+  ghostBtn: { backgroundColor: 'transparent' },
   label: {
     color: '#ffffff',
-    fontWeight: '700',
-    fontSize: 16,
-    letterSpacing: 0.3,
+    fontWeight: '800',
+    fontSize: 15,
+    letterSpacing: 0.2,
   },
 });

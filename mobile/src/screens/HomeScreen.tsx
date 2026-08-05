@@ -16,6 +16,7 @@ import { useDashboardData } from '../hooks/useDashboardData';
 import DashboardOnboardingOverlay from '../components/DashboardOnboardingOverlay';
 import DemoScenarioPicker, { DemoWalkthroughBanner } from '../components/DemoScenarioPicker';
 import { isDemoAccount, type DemoScenario } from '../config/demoScenarios';
+import { featureFlags } from '../config/featureFlags';
 import {
   hasSeenDemoScenarioPicker,
   markDemoScenarioPickerSeen,
@@ -24,12 +25,17 @@ import {
   completeDashboardOnboarding,
   hasCompletedDashboardOnboarding,
 } from '../services/onboardingStorage';
-import { fetchRewardsMe, RewardsMe } from '../services/rewards';
+import {
+  fetchRewardsHistory,
+  fetchRewardsMe,
+  RewardLedgerEntry,
+  RewardsMe,
+} from '../services/rewards';
 import BottomNav, { NavTab } from '../components/BottomNav';
 import JourneyGlow from '../components/JourneyGlow';
 import JourneyHeader from '../components/JourneyHeader';
 import JourneyHeroCard from '../components/JourneyHeroCard';
-import JourneyListSection from '../components/JourneyListSection';
+import JourneyListSection, { journeyGridStyles } from '../components/JourneyListSection';
 import JourneySidebar, { JourneySidebarItem } from '../components/JourneySidebar';
 import { JOURNEY_DESKTOP_BREAKPOINT, journeyPalette } from '../theme/journeyPalette';
 import { hasSeenTodaysTea, markTodaysTeaSeen } from '../services/todaysTeaStorage';
@@ -57,7 +63,19 @@ type Props = {
  * Custom stay gated off in `featureFlags`, as do RIZZ, Gems and streak.
  */
 const HOME_JOURNEY_LIMIT = 3;
-const HOME_SUBHEADING = 'Where will you beat the ETA today?';
+
+function countParticipationMoments(entries: RewardLedgerEntry[]) {
+  return entries.filter((entry) => {
+    if (entry.sourceType === 'admin') return false;
+    return [
+      'GEM_FIRST_PREDICTION',
+      'GEM_FIRST_WIN',
+      'AURA_MILESTONE_SCORE',
+      'AURA_MC_SCORE',
+      'AURA_COMPENSATION',
+    ].includes(entry.reasonCode);
+  }).length;
+}
 
 export default function HomeScreen({ navigation, route }: Props) {
   const { user } = useAuth();
@@ -75,6 +93,7 @@ export default function HomeScreen({ navigation, route }: Props) {
   const [todaysTea, setTodaysTea] = useState<TodaysTea | null>(null);
   const [teaVisible, setTeaVisible] = useState(false);
   const [rewards, setRewards] = useState<RewardsMe | null>(null);
+  const [participationCount, setParticipationCount] = useState(0);
   const teaTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const summary = dashboard?.summary;
@@ -83,12 +102,37 @@ export default function HomeScreen({ navigation, route }: Props) {
   const firstName = userName ? userName.split(' ')[0] : 'there';
   const demoAccount = isDemoAccount(user);
   const showDemoHub = !demoAccount || demoHubExpanded;
+  const isNewHomeExperience =
+    participationCount < featureFlags.homeRizzRevealParticipationCount;
+  const homeSubheading = isNewHomeExperience
+    ? 'Make a quick call, share the room, and build Aura.'
+    : 'Make a quick call, share the room, and build Aura with some Rizz on top.';
+  const heroTiers = isNewHomeExperience
+    ? [
+        { tone: 'friends' as const, strong: 'Aura', label: 'for the closest call' },
+        { tone: 'baseline' as const, label: 'Share the room fast. Keep it playful.' },
+      ]
+    : [
+        { tone: 'friends' as const, strong: 'Aura', label: 'for the closest call' },
+        { tone: 'bot' as const, strong: 'Rizz', label: 'shows up once you start hosting rooms' },
+        { tone: 'baseline' as const, label: 'Gems stay on Profile and Store' },
+      ];
+  const teaSummary = isNewHomeExperience
+    ? summary
+      ? { ...summary, currentStreak: 0 }
+      : summary
+    : summary;
 
   useEffect(() => {
     let active = true;
-    fetchRewardsMe()
-      .then((data) => {
-        if (active) setRewards(data);
+    Promise.all([
+      fetchRewardsMe(),
+      fetchRewardsHistory({ limit: 80 }).catch(() => ({ entries: [], nextCursor: null })),
+    ])
+      .then(([rewardsData, history]) => {
+        if (!active) return;
+        setRewards(rewardsData);
+        setParticipationCount(countParticipationMoments(history.entries ?? []));
       })
       .catch(() => {
         // Rewards are non-critical on Home; fall back to the dashboard summary.
@@ -174,7 +218,7 @@ export default function HomeScreen({ navigation, route }: Props) {
 
       const nextTea = buildTodaysTea({
         userName,
-        summary,
+        summary: teaSummary,
         activePredictions,
         followingLeaderboard: dashboard?.followingLeaderboard ?? [],
       });
@@ -196,7 +240,7 @@ export default function HomeScreen({ navigation, route }: Props) {
     return () => {
       active = false;
     };
-  }, [activePredictions, dashboard?.followingLeaderboard, loading, summary, tourVisible, userId, userName]);
+  }, [activePredictions, dashboard?.followingLeaderboard, loading, teaSummary, tourVisible, userId, userName]);
 
   useEffect(() => {
     return () => {
@@ -284,6 +328,10 @@ export default function HomeScreen({ navigation, route }: Props) {
   function handleBottomNav(tab: NavTab) {
     setActiveTab(tab);
     if (tab === 'Home') return;
+    if (tab === 'Create') {
+      startJourney();
+      return;
+    }
     navigation.navigate('Profile');
   }
 
@@ -291,6 +339,10 @@ export default function HomeScreen({ navigation, route }: Props) {
     setSidebarItem(item);
     if (item === 'StartJourney') {
       startJourney();
+      return;
+    }
+    if (item === 'JoinJourney') {
+      joinWithLink();
       return;
     }
     if (item === 'MyJourneys') {
@@ -438,13 +490,20 @@ export default function HomeScreen({ navigation, route }: Props) {
             showsVerticalScrollIndicator={false}
           >
             <SkeletonBlock width="55%" height={22} />
-            <SkeletonBlock width="100%" height={isDesktop ? 300 : 260} radius={24} />
+            {/* Heights and the grid mirror the loaded layout so nothing jumps when
+                the dashboard swaps in. */}
+            <SkeletonBlock width="100%" height={isDesktop ? 380 : 500} radius={24} />
             <SkeletonBlock width="34%" height={16} />
-            <SkeletonCard lines={2} />
-            <SkeletonCard lines={2} />
+            <View style={journeyGridStyles.list}>
+              {Array.from({ length: isDesktop ? HOME_JOURNEY_LIMIT : 2 }).map((_, index) => (
+                <View key={index} style={journeyGridStyles.item}>
+                  <SkeletonCard lines={2} />
+                </View>
+              ))}
+            </View>
           </ScrollView>
         </View>
-        {!isDesktop ? <BottomNav active="Home" onChange={handleBottomNav} hiddenTabs={['Create']} /> : null}
+        {!isDesktop ? <BottomNav active="Home" onChange={handleBottomNav} /> : null}
       </View>
     );
   }
@@ -465,7 +524,7 @@ export default function HomeScreen({ navigation, route }: Props) {
             <View style={styles.desktopHeaderRow}>
               <View style={styles.desktopHeader}>
                 <Text style={styles.desktopGreeting}>Hey, {firstName} 👋</Text>
-                <Text style={styles.desktopTagline}>{HOME_SUBHEADING}</Text>
+                <Text style={styles.desktopTagline}>{homeSubheading}</Text>
               </View>
               <View style={styles.desktopAuraChip}>
                 <Text style={styles.desktopAuraIcon}>✨</Text>
@@ -473,16 +532,20 @@ export default function HomeScreen({ navigation, route }: Props) {
               </View>
             </View>
 
+            {/* One hero surface, not a gradient wrapper around an inner card — the
+                tagline moved up beside the greeting where it reads as a subtitle. */}
             <JourneyHeroCard
               wide
-              eyebrow="Journey ETA"
+              eyebrow={isNewHomeExperience ? 'Aura first' : 'Ready to host'}
               title="Journey ETA"
               headline="Think you can beat the map?"
-              subtitle="Choose a route, predict your arrival and challenge your friends."
-              ctaLabel="Start a Journey"
+              headlineAccent="Share the room."
+              subtitle="Less thinking, more sending. Start a room, drop it in chat, and let the closest guess take the Aura."
+              ctaLabel="Create a Room"
               onPressCta={startJourney}
               secondaryLabel="Join a Journey"
               onPressSecondary={joinWithLink}
+              tiers={heroTiers}
             />
 
             {demoBanner}
@@ -506,25 +569,28 @@ export default function HomeScreen({ navigation, route }: Props) {
         />
         <View style={styles.mobileIntro}>
           <Text style={styles.mobileGreeting}>Hey, {firstName} 👋</Text>
-          <Text style={styles.mobileSubheading}>{HOME_SUBHEADING}</Text>
+          <Text style={styles.mobileSubheading}>{homeSubheading}</Text>
         </View>
 
         <JourneyHeroCard
-          eyebrow="Journey ETA"
+          eyebrow={isNewHomeExperience ? 'Aura first' : 'Ready to host'}
           title="Journey ETA"
           headline="Think you can beat the map?"
-          subtitle="Choose a route, predict your arrival and challenge your friends."
-          ctaLabel="Start a Journey"
+          headlineAccent="Share the room."
+          subtitle="Start a room in seconds, send it to the chat, and let the closest guess collect the Aura."
+          ctaLabel="Create a Room"
           onPressCta={startJourney}
           secondaryLabel="Join a Journey"
           onPressSecondary={joinWithLink}
+          tiers={heroTiers}
         />
+
 
         {demoBanner}
         {journeyList}
       </ScrollView>
 
-      <BottomNav active={activeTab} onChange={handleBottomNav} hiddenTabs={['Create']} />
+      <BottomNav active={activeTab} onChange={handleBottomNav} />
       {overlays}
     </View>
   );
@@ -553,24 +619,28 @@ const styles = StyleSheet.create({
   // Desktop
   desktopShell: { flex: 1, flexDirection: 'row', alignItems: 'stretch' },
   sidebarSkeleton: {
-    width: 248,
+    // Must track JourneySidebar's rail width or the layout jumps on load.
+    width: 268,
     borderRightWidth: 1,
     borderRightColor: journeyPalette.border,
     backgroundColor: journeyPalette.surface,
   },
+  // The dashboard column fills the space beside the rail rather than sitting in a
+  // narrow 860px strip. The cap only engages on very wide monitors, where an
+  // unbounded column would stretch body copy past a comfortable measure.
   desktopContent: {
     width: '100%',
-    maxWidth: 860,
+    maxWidth: 1440,
     alignSelf: 'center',
-    paddingTop: 26,
-    paddingHorizontal: 40,
-    paddingBottom: 64,
-    gap: 18,
+    paddingTop: 34,
+    paddingHorizontal: 44,
+    paddingBottom: 72,
+    gap: 28,
   },
   desktopHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 16 },
-  desktopHeader: { gap: 6 },
-  desktopGreeting: { color: journeyPalette.textPrimary, fontSize: 28, lineHeight: 34, fontWeight: '900' },
-  desktopTagline: { color: journeyPalette.textSecondary, fontSize: 16, lineHeight: 22, fontWeight: '600' },
+  desktopHeader: { gap: 4, flex: 1 },
+  desktopGreeting: { color: journeyPalette.textPrimary, fontSize: 32, lineHeight: 38, fontWeight: '900' },
+  desktopTagline: { color: journeyPalette.textSecondary, fontSize: 15, lineHeight: 21, fontWeight: '500' },
   desktopAuraChip: {
     flexDirection: 'row',
     alignItems: 'center',
