@@ -4,15 +4,17 @@ import { Prisma, User } from '@prisma/client';
 import { UpdateActivePredictionsOrderDto } from './dto/update-active-predictions-order.dto';
 import { LifecycleService } from '../lifecycle/lifecycle.service';
 import { ClearActivePredictionsDto } from './dto/clear-active-predictions.dto';
+import { RewardReason } from '../rewards/reward.constants';
+import { RewardService } from '../rewards/reward.service';
 
 const DAILY_SPIN_REWARDS = [
-  { rewardType: 'clout', rewardValue: 10, label: '+10 Clout' },
-  { rewardType: 'clout', rewardValue: 25, label: '+25 Clout' },
-  { rewardType: 'clout', rewardValue: 50, label: '+50 Clout' },
+  { rewardType: 'AURA', rewardValue: 10, label: '+10 Aura', reasonCode: RewardReason.AURA_ADMIN_ADJUSTMENT },
+  { rewardType: 'AURA', rewardValue: 25, label: '+25 Aura', reasonCode: RewardReason.AURA_ADMIN_ADJUSTMENT },
+  { rewardType: 'RIZZ', rewardValue: 5, label: '+5 Rizz', reasonCode: RewardReason.RIZZ_ADMIN_ADJUSTMENT },
+  { rewardType: 'GEMS', rewardValue: 10, label: '+10 Gems', reasonCode: RewardReason.GEM_ADMIN_ADJUSTMENT },
+  { rewardType: 'GEMS', rewardValue: 20, label: '+20 Gems', reasonCode: RewardReason.GEM_ADMIN_ADJUSTMENT },
   { rewardType: 'streak_shield', rewardValue: null, label: 'Streak Shield' },
   { rewardType: 'profile_boost', rewardValue: null, label: 'Profile Boost' },
-  { rewardType: 'drop_entry', rewardValue: null, label: 'Drop Entry' },
-  { rewardType: 'mystery_flex', rewardValue: null, label: 'Mystery Flex' },
   { rewardType: 'better_luck_tomorrow', rewardValue: null, label: 'Better Luck Tomorrow' },
 ] as const;
 
@@ -24,6 +26,18 @@ type ActivePredictionRoom = Prisma.PredictionRoomGetPayload<{
   include: {
     creator: { select: { userId: true } };
     journeyRoute: true;
+    results: {
+      orderBy: { overallRank: 'asc' };
+      take: 1;
+      include: {
+        user: {
+          select: {
+            name: true;
+            prediktHandle: true;
+          };
+        };
+      };
+    };
     milestonePredictions: {
       select: {
         userId: true;
@@ -70,6 +84,8 @@ function formatMinutesLabel(totalMinutes: number | null) {
 
 function progressStatusLabel(progress: number, roomStatus: string) {
   if (roomStatus === 'completed') return 'Result ready';
+  // Live rooms at 0% are delayed-start / privacy hold — not "Not started".
+  if (roomStatus === 'live' && progress <= 0) return 'Journey underway';
   if (progress <= 0) return 'Not started';
   if (progress <= 20) return 'Journey underway';
   if (progress <= 40) return 'Making progress';
@@ -79,11 +95,17 @@ function progressStatusLabel(progress: number, roomStatus: string) {
   return 'Arrived';
 }
 
+function publicWinnerName(result: { user: { name: string | null; prediktHandle: string | null } } | undefined) {
+  if (!result) return null;
+  return result.user.prediktHandle ? `@${result.user.prediktHandle.replace(/^@/, '')}` : result.user.name;
+}
+
 @Injectable()
 export class DashboardService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly lifecycleService: LifecycleService,
+    private readonly rewardService: RewardService,
   ) {}
 
   async summary(user: User) {
@@ -97,7 +119,6 @@ export class DashboardService {
       prediktHandle: user.prediktHandle,
       totalAura: user.totalAura,
       weeklyAura: user.weeklyAura,
-      cloutBalance: user.cloutBalance,
       currentStreak: user.currentStreak,
       rankAmongFollowing: currentIndex >= 0 ? currentIndex + 1 : null,
       motivationalLine:
@@ -140,7 +161,7 @@ export class DashboardService {
     if (personAhead) {
       recommendations.push(`Earn ${personAhead.weeklyAura - user.weeklyAura + 1} more Aura to overtake ${personAhead.prediktHandle ? `@${personAhead.prediktHandle}` : personAhead.name}.`);
     }
-    recommendations.push('Join 1 active room to earn participation Clout.');
+    recommendations.push('Join 1 active room to build Aura and earn Gems.');
     recommendations.push('Predict all milestones in a room to boost your score.');
     if (!user.prediktHandle) {
       recommendations.push('Set your PREDIKT handle to appear on leaderboards.');
@@ -198,6 +219,18 @@ export class DashboardService {
       include: {
         creator: { select: { userId: true } },
         journeyRoute: true,
+        results: {
+          orderBy: { overallRank: 'asc' },
+          take: 1,
+          include: {
+            user: {
+              select: {
+                name: true,
+                prediktHandle: true,
+              },
+            },
+          },
+        },
         milestonePredictions: {
           select: {
             userId: true,
@@ -240,6 +273,18 @@ export class DashboardService {
       include: {
         creator: { select: { userId: true } },
         journeyRoute: true,
+        results: {
+          orderBy: { overallRank: 'asc' },
+          take: 1,
+          include: {
+            user: {
+              select: {
+                name: true,
+                prediktHandle: true,
+              },
+            },
+          },
+        },
         milestonePredictions: {
           select: {
             userId: true,
@@ -377,7 +422,7 @@ export class DashboardService {
       description: 'Submit predictions in one active room today.',
       progress: Math.min(user.predictionsMadeCount, 1),
       target: 1,
-      rewardClout: 25,
+      rewardAura: 25,
       status: user.predictionsMadeCount > 0 ? 'in_progress' : 'not_started',
     };
   }
@@ -424,13 +469,21 @@ export class DashboardService {
       },
     });
 
-    if (reward.rewardType === 'clout' && reward.rewardValue) {
-      await this.prisma.user.update({
-        where: { userId: user.userId },
-        data: {
-          cloutBalance: { increment: reward.rewardValue },
-          lifetimeCloutEarned: { increment: reward.rewardValue },
-        },
+    if (
+      reward.rewardType !== 'streak_shield' &&
+      reward.rewardType !== 'profile_boost' &&
+      reward.rewardType !== 'better_luck_tomorrow' &&
+      reward.rewardValue
+    ) {
+      await this.rewardService.grant({
+        userId: user.userId,
+        rewardType: reward.rewardType,
+        reasonCode: reward.reasonCode,
+        amount: reward.rewardValue,
+        sourceType: 'daily_spin',
+        sourceId: claim.spinClaimId,
+        idempotencyKey: `daily_spin:${claim.spinClaimId}`,
+        metadata: { label: reward.label, claimDate: claim.claimDate },
       });
     }
 
@@ -439,22 +492,6 @@ export class DashboardService {
       rewardLabel: reward.label,
       disclaimer: 'Virtual rewards only.',
     };
-  }
-
-  async dropsNearUnlock(user: User) {
-    const drops = await this.prisma.drop.findMany({
-      where: { status: 'active' },
-      orderBy: { cloutCost: 'asc' },
-      take: 5,
-    });
-
-    return drops.map((drop) => ({
-      dropId: drop.dropId,
-      dropName: drop.title,
-      requiredClout: drop.cloutCost,
-      currentClout: user.cloutBalance,
-      progressPercentage: drop.cloutCost === 0 ? 100 : Math.min(100, Math.round((user.cloutBalance / drop.cloutCost) * 100)),
-    }));
   }
 
   async activityFeed(user: User) {
@@ -528,13 +565,13 @@ export class DashboardService {
     const ids = Array.from(new Set([userId, ...followingIds]));
     return this.prisma.user.findMany({
       where: { userId: { in: ids } },
-      orderBy: [{ weeklyAura: 'desc' }, { cloutBalance: 'desc' }],
+      orderBy: [{ weeklyAura: 'desc' }, { winsCount: 'desc' }],
       select: {
         userId: true,
         name: true,
         prediktHandle: true,
         weeklyAura: true,
-        cloutBalance: true,
+        winsCount: true,
       },
     });
   }
@@ -551,6 +588,8 @@ export class DashboardService {
     );
     const liveProgress = this.buildLiveProgress(room, userPredictions);
     const normalizedStatus = room.status === 'completed' ? 'result_ready' : room.status;
+    const winner = room.results?.[0];
+    const completionTime = room.actualEndTime ?? room.arrivalConfirmedAt ?? room.updatedAt;
 
     return {
       roomId: room.roomId,
@@ -583,6 +622,10 @@ export class DashboardService {
             destinationLabel: room.destinationLabel,
             travelMode: 'custom',
           },
+      winnerName: publicWinnerName(winner),
+      completedAt: completionTime?.toISOString?.() ?? null,
+      createdAt: room.createdAt.toISOString(),
+      updatedAt: room.updatedAt.toISOString(),
       liveProgress,
       quickAction: this.buildQuickAction(
         normalizedStatus,
@@ -602,23 +645,34 @@ export class DashboardService {
   ) {
     const latestEvent = room.locationEvents[0];
     const estimatedDurationSeconds = room.journeyRoute?.estimatedDurationSeconds ?? null;
-    const startTime = room.startTime ?? room.plannedStartTime ?? room.createdAt;
+    // Align with live-progress: don't clock progress from createdAt before start,
+    // and zero while the privacy-delayed visible start hasn't arrived.
+    const visibleStartTime = room.visibleMovementStartTime ?? room.startTime;
     const now = Date.now();
-    const elapsedSeconds = Math.max(0, Math.round((now - startTime.getTime()) / 1000));
+    const waitingForDelayedStart = !!visibleStartTime && now < visibleStartTime.getTime();
+    const progressStartTime = room.startTime ?? room.plannedStartTime;
+    const elapsedSeconds =
+      progressStartTime && !waitingForDelayedStart
+        ? Math.max(0, Math.round((now - progressStartTime.getTime()) / 1000))
+        : 0;
     const timedProgress =
-      estimatedDurationSeconds && estimatedDurationSeconds > 0
+      !waitingForDelayedStart && progressStartTime && estimatedDurationSeconds && estimatedDurationSeconds > 0
         ? (elapsedSeconds / estimatedDurationSeconds) * 100
         : 0;
-    const rawProgress = latestEvent?.progressPercentage ?? timedProgress;
+    const rawProgress = waitingForDelayedStart
+      ? 0
+      : latestEvent?.progressPercentage ?? timedProgress;
     const progressPercentApprox =
       room.status === 'completed' ? 100 : roundApproximateProgress(rawProgress);
     const etaMinutes =
       room.status === 'completed'
         ? 0
-        : latestEvent?.etaMinutes ??
-          (estimatedDurationSeconds
-            ? Math.max(0, Math.round((estimatedDurationSeconds - elapsedSeconds) / 60))
-            : null);
+        : waitingForDelayedStart
+          ? null
+          : latestEvent?.etaMinutes ??
+            (estimatedDurationSeconds && progressStartTime
+              ? Math.max(0, Math.round((estimatedDurationSeconds - elapsedSeconds) / 60))
+              : null);
     const etaDate = etaMinutes !== null ? new Date(Date.now() + etaMinutes * 60_000) : null;
     const myPrediction = userPredictions[0]?.predictedReachedTime ?? null;
 
@@ -657,41 +711,48 @@ export class DashboardService {
     isCreator: boolean,
     category: string | null,
   ) {
+    if (
+      ['result_ready', 'completed', 'cancelled'].includes(status) ||
+      ['completed', 'auto_closed', 'abandoned', 'plan_changed', 'cancelled_by_host'].includes(journeyStatus)
+    ) {
+      return { label: 'View Result', targetScreen: 'Result' };
+    }
+
     if (category === 'open_prediction') {
       if (status === 'predictions_open' && !hasPrediction) {
         return { label: 'Predikt', targetScreen: 'Prediction' };
       }
-      if (status === 'predictions_open') {
-        return { label: 'Predikt', targetScreen: 'Prediction' };
+      if (status === 'predictions_open' && hasPrediction) {
+        return { label: 'Go to Room', targetScreen: 'LiveRoom' };
       }
       if (status === 'predictions_locked' || status === 'live') {
-        return { label: 'Open Room', targetScreen: 'LiveRoom' };
+        return { label: 'Go to Room', targetScreen: 'LiveRoom' };
       }
-      return { label: 'View Results', targetScreen: 'Result' };
+      return { label: 'View Result', targetScreen: 'Result' };
     }
 
     if (isCreator && ['scheduled', 'open', 'locked'].includes(journeyStatus)) {
       return { label: 'Start Journey', targetScreen: 'LiveRoom' };
     }
-    if (isCreator && ['live', 'inactive', 'overdue'].includes(journeyStatus)) {
-      return { label: 'Confirm Arrival', targetScreen: 'LiveRoom' };
+    if (isCreator && ['live', 'inactive', 'overdue', 'started'].includes(journeyStatus)) {
+      return { label: 'Finish Journey', targetScreen: 'LiveRoom' };
     }
     if (['auto_closed', 'abandoned', 'plan_changed', 'cancelled_by_host'].includes(journeyStatus)) {
-      return { label: 'View Closed Room', targetScreen: 'Result' };
+      return { label: 'View Result', targetScreen: 'Result' };
     }
     if (status === 'predictions_open' && !hasPrediction) {
       return { label: 'Predict Now', targetScreen: 'Prediction' };
     }
-    if (status === 'predictions_open') {
-      return { label: 'Open Room', targetScreen: 'Prediction' };
+    if (status === 'predictions_open' && hasPrediction) {
+      return { label: 'Go to Room', targetScreen: 'LiveRoom' };
     }
     if (status === 'predictions_locked') {
-      return { label: 'Waiting for Lock', targetScreen: 'LiveRoom' };
+      return { label: 'Go to Room', targetScreen: 'LiveRoom' };
     }
     if (status === 'live') {
-      return { label: 'View Live', targetScreen: 'LiveRoom' };
+      return { label: 'Go to Room', targetScreen: 'LiveRoom' };
     }
-    return { label: 'View Results', targetScreen: 'Result' };
+    return { label: 'View Result', targetScreen: 'Result' };
   }
 
   private buildLifecycleLabel(room: ActivePredictionRoom) {

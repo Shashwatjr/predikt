@@ -72,6 +72,21 @@ function shortenPlaceLabel(label: string | null | undefined): string {
   return firstChunk.length > 26 ? `${firstChunk.slice(0, 23).trimEnd()}…` : firstChunk;
 }
 
+function normalizeRoomStatus(status?: string | null) {
+  if (!status) return '';
+  return status === 'prediction_open' ? 'predictions_open' : status;
+}
+
+function isTerminalJourneyState(status?: string | null, journeyStatus?: string | null) {
+  const normalizedStatus = normalizeRoomStatus(status);
+  return (
+    ['completed', 'cancelled', 'result_ready'].includes(normalizedStatus) ||
+    ['completed', 'arrived_verified', 'auto_closed', 'abandoned', 'plan_changed', 'cancelled_by_host'].includes(
+      String(journeyStatus ?? ''),
+    )
+  );
+}
+
 export default function LiveRoomScreen({ navigation, route }: Props) {
   const { colors } = useTheme();
   const { user } = useAuth();
@@ -418,48 +433,60 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
   }
 
   async function handleConfirmArrival() {
-    setConfirmingArrival(true);
-    try {
-      const permission = await Location.requestForegroundPermissionsAsync();
-      const coords = permission.status === 'granted' ? await Location.getCurrentPositionAsync({}) : null;
-      const res = await api.post(`/rooms/${roomId}/journey/confirm-arrival`, {
-        location: coords
-          ? { lat: coords.coords.latitude, lng: coords.coords.longitude }
-          : undefined,
-      });
-      if (res.data?.requiresConfirmation) {
-        setConfirmingArrival(false);
-        return appAlert(
-          'Almost there?',
-          res.data.prompt,
-          [
-            { text: 'Not yet', style: 'cancel' },
-            {
-              text: "Yes, I've arrived",
-              onPress: async () => {
-                setConfirmingArrival(true);
-                const finalRes = await api.post(`/rooms/${roomId}/journey/confirm-arrival`, {
-                  location: coords
-                    ? { lat: coords.coords.latitude, lng: coords.coords.longitude }
-                    : undefined,
-                  confirmAnyway: true,
-                });
-                navigation.navigate('Result', { roomId, result: finalRes.data });
-                setConfirmingArrival(false);
+    if (confirmingArrival || ending || cancelling) return;
+    const submitFinishJourney = async (confirmAnyway = false) => {
+      setConfirmingArrival(true);
+      try {
+        const permission = await Location.requestForegroundPermissionsAsync();
+        const coords = permission.status === 'granted' ? await Location.getCurrentPositionAsync({}) : null;
+        const res = await api.post(`/rooms/${roomId}/journey/confirm-arrival`, {
+          location: coords
+            ? { lat: coords.coords.latitude, lng: coords.coords.longitude }
+            : undefined,
+          confirmAnyway,
+        });
+        if (res.data?.requiresConfirmation && !confirmAnyway) {
+          setConfirmingArrival(false);
+          return appAlert(
+            'Outside the finish zone',
+            res.data.prompt,
+            [
+              { text: 'Go back', style: 'cancel' },
+              {
+                text: 'Finish Anyway',
+                style: 'destructive',
+                onPress: () => {
+                  void submitFinishJourney(true);
+                },
               },
-            },
-          ],
-        );
+            ],
+          );
+        }
+        navigation.navigate('Result', { roomId, result: res.data });
+      } catch (err: unknown) {
+        appAlert('Finish failed', getApiErrorMessage(err, 'Could not finish this journey.'));
+      } finally {
+        setConfirmingArrival(false);
       }
-      navigation.navigate('Result', { roomId, result: res.data });
-    } catch (err: unknown) {
-      appAlert('Arrival not confirmed', getApiErrorMessage(err, 'Could not confirm arrival.'));
-    } finally {
-      setConfirmingArrival(false);
-    }
+    };
+
+    appAlert(
+      'Finish Journey?',
+      'Confirm arrival and reveal the final result for everyone in the room.',
+      [
+        { text: 'Not yet', style: 'cancel' },
+        {
+          text: 'Finish Journey',
+          onPress: () => {
+            void submitFinishJourney(false);
+          },
+        },
+      ],
+    );
   }
 
   async function handleCancelJourney() {
+    if (cancelling || confirmingArrival || ending) return;
     setCancelling(true);
     try {
       const res = await api.post(`/rooms/${roomId}/journey/cancel`, { reasonCode: 'plan_changed' });
@@ -479,6 +506,7 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
   }
 
   async function handleEndRoom() {
+    if (ending || confirmingArrival || cancelling) return;
     if (room?.answerType === 'multiple_choice') {
       if (!actualOptionKey) {
         return appAlert('Choose outcome', 'Select the actual outcome before declaring results.');
@@ -568,8 +596,8 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
 
   // ---- The three unmistakable phases: predictions OPEN → LOCKED → journey STARTED ----
   const rawStatus = liveState?.status ?? room?.status ?? 'live';
-  const normStatus = rawStatus === 'prediction_open' ? 'predictions_open' : rawStatus;
-  const isTerminal = ['completed', 'cancelled'].includes(normStatus);
+  const normStatus = normalizeRoomStatus(rawStatus);
+  const isTerminal = isTerminalJourneyState(normStatus, liveState?.journeyStatus ?? room?.journeyStatus);
   const journeyStarted =
     normStatus === 'live' ||
     !!liveState?.waitingForDelayedStart ||
@@ -657,9 +685,8 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
   const showArrivalWaitingRoom =
     isArrivalCategory &&
     isCreator &&
-    !!liveState &&
     trackingCountdownActive &&
-    !['completed', 'cancelled'].includes(liveState.status);
+    !isTerminal;
 
   const creatorDesktopJourneyBoard =
     isDesktop && isCreator && !isGenericRoom && category !== 'weather_rain' && phase !== 'ended';
@@ -683,7 +710,9 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
       ? new Date(liveState.visibleMovementStartTime)
       : liveState?.startTime
       ? new Date(liveState.startTime)
-      : new Date(Date.now() + secondsUntilStart * 1000)
+      : room?.startTime
+        ? new Date(room.startTime)
+        : new Date(Date.now() + Math.max(secondsUntilStart, 1) * 1000)
     : null;
   const waitingCards = showArrivalWaitingRoom
     ? [
@@ -729,6 +758,33 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
       ].filter(Boolean)
     : [];
 
+  if (!room && !liveState) {
+    return (
+      <ScrollView
+        contentContainerStyle={[
+          styles.container,
+          { backgroundColor: palette.bg, maxWidth: layout.maxContentWidth, alignSelf: 'center', width: '100%' },
+        ]}
+      >
+        <ArrivalWaitingRoom
+          title="Journey room"
+          statusLabel="Preparing your journey"
+          statusMessage="Preparing your journey..."
+          targetTime={new Date(Date.now() + 60_000)}
+          startLabel="Start"
+          destinationLabel="Destination"
+          expectedDurationMinutes={null}
+          modeLabel="Car"
+          modeIcon="🚗"
+          safetyMessage="Movement is delayed for safety."
+          cards={[]}
+          onHowItWorks={() => navigation.navigate('Help')}
+          onGhostModeDetails={() => navigation.navigate('Help')}
+        />
+      </ScrollView>
+    );
+  }
+
   if (showArrivalWaitingRoom) {
     return (
       <ScrollView
@@ -739,7 +795,7 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
       >
         <ArrivalWaitingRoom
           title={room?.roomTitle ?? 'Arrival room'}
-          statusLabel={getTravelStageFromProgress(20, 'creator')}
+          statusLabel={liveState?.journeyStatus ? String(liveState.journeyStatus).replace(/_/g, ' ') : 'Preparing your journey'}
           targetTime={waitingTargetTime}
           startLabel={room?.startingPointLabel ?? room?.routeSummary?.startLabel ?? 'Start'}
           destinationLabel={room?.destinationLabel ?? room?.routeSummary?.destinationLabel ?? 'Destination'}
@@ -753,6 +809,7 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
           modeIcon="🚗"
           safetyMessage={liveState?.safetyMessage ?? 'Movement is delayed for safety.'}
           cards={waitingCards as any}
+          statusMessage={liveState?.lifecycleMessage ?? 'Preparing your journey...'}
           onHowItWorks={() => navigation.navigate('Help')}
           onGhostModeDetails={() => navigation.navigate('Help')}
           onEnableNotifications={() =>
@@ -996,14 +1053,14 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
 
       {phase === 'ended' ? (
         <View style={styles.terminalBanner}>
-          <Text style={styles.terminalTitle}>{isDraw ? '🏁 Called a draw' : "🏁 It's a wrap!"}</Text>
+          <Text style={styles.terminalTitle}>{isDraw ? 'Result Ready' : 'Result Ready'}</Text>
           <Text style={styles.terminalCopy}>
             {isDraw
               ? 'This room closed neutrally — nobody counted as a loss. Here’s the recap.'
               : 'Predictions are in and the result is ready. See who made the closest guess.'}
           </Text>
           <PrimaryButton
-            label={isDraw ? 'See the recap' : 'See who won'}
+            label="View Result"
             onPress={() => navigation.navigate('Result', { roomId })}
             icon="🏆"
           />
@@ -1269,14 +1326,14 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
                   <View style={{ flex: 1 }}>
                   <Text style={[styles.creatorDesktopTitle, { color: colors.textPrimary }]}>Host tools</Text>
                     <Text style={[styles.creatorDesktopSub, { color: colors.textSecondary }]}>
-                      {staysOpenUntilLabel ?? 'Confirm arrival, cancel fairly, or wrap it up.'}
+                      {staysOpenUntilLabel ?? 'Finish the journey when you arrive, or cancel it fairly if plans change.'}
                     </Text>
                   </View>
                 </View>
                 <View style={styles.creatorDesktopControlsRow}>
                   <View style={styles.creatorDesktopControlAction}>
                     <PrimaryButton
-                      label="Confirm arrival"
+                      label="Finish Journey"
                       onPress={handleConfirmArrival}
                       loading={confirmingArrival}
                       icon="✅"
@@ -1284,20 +1341,11 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
                   </View>
                   <View style={styles.creatorDesktopControlAction}>
                     <PrimaryButton
-                      label="Plan changed"
+                      label="Cancel Journey"
                       onPress={handleCancelJourney}
                       loading={cancelling}
                       variant="secondary"
                       icon="🛑"
-                    />
-                  </View>
-                  <View style={styles.creatorDesktopControlAction}>
-                    <PrimaryButton
-                      label="End room"
-                      onPress={handleEndRoom}
-                      loading={ending}
-                      variant="danger"
-                      icon="🏁"
                     />
                   </View>
                 </View>
@@ -1513,13 +1561,16 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.creatorDesktopTitle, { color: colors.textPrimary }]}>Host tools</Text>
                   <Text style={[styles.creatorDesktopSub, { color: colors.textSecondary }]}>
-                    You're in control. Update or end the journey anytime.
+                    Start the journey now, then finish it when you arrive.
                   </Text>
                 </View>
               </View>
-              <PrimaryButton label="Confirm arrival" onPress={handleConfirmArrival} loading={confirmingArrival} icon="✅" />
-              <PrimaryButton label="Plan changed" onPress={handleCancelJourney} loading={cancelling} variant="secondary" icon="↗" />
-              <PrimaryButton label="End room & see results" onPress={handleEndRoom} loading={ending} variant="danger" icon="🗑" />
+              {!isTerminal ? (
+                <>
+                  <PrimaryButton label="Finish Journey" onPress={handleConfirmArrival} loading={confirmingArrival} icon="✅" />
+                  <PrimaryButton label="Cancel Journey" onPress={handleCancelJourney} loading={cancelling} variant="secondary" icon="↗" />
+                </>
+              ) : null}
             </View>
             </View>
           </View>
@@ -1693,16 +1744,19 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
             {staysOpenUntilLabel ? (
               <Text style={[styles.startDelayCopy, { color: colors.purpleLight }]}>{staysOpenUntilLabel}</Text>
             ) : null}
-            <PrimaryButton label="Confirm arrival" onPress={handleConfirmArrival} loading={confirmingArrival} icon="✅" />
-            <PrimaryButton label="Cancel / Plan Changed" onPress={handleCancelJourney} loading={cancelling} variant="secondary" icon="🛑" />
-            <PrimaryButton label="End Room & See Results" onPress={handleEndRoom} loading={ending} variant="danger" icon="🏁" />
+            {!isTerminal ? (
+              <>
+                <PrimaryButton label="Finish Journey" onPress={handleConfirmArrival} loading={confirmingArrival} icon="✅" />
+                <PrimaryButton label="Cancel Journey" onPress={handleCancelJourney} loading={cancelling} variant="secondary" icon="🛑" />
+              </>
+            ) : null}
           </View>
         </View>
       ) : null}
 
-      {['completed', 'cancelled'].includes(liveState?.status ?? room?.status ?? 'live') ? (
+      {isTerminal ? (
         <PrimaryButton
-          label="View Results"
+          label="View Result"
           onPress={() => navigation.navigate('Result', { roomId })}
           variant="secondary"
           icon="🏆"

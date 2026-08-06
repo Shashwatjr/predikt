@@ -4,7 +4,6 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { LinearGradient } from 'expo-linear-gradient';
 import PrimaryButton from '../components/PrimaryButton';
 import LandingDashboardLayout, { LandingNavKey } from '../components/LandingDashboardLayout';
-import { CATEGORY_THEMES } from '../config/categoryTheme';
 import { RootStackParamList } from '../navigation/types';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
@@ -12,25 +11,6 @@ import { getLandingPalette, LandingPalette } from '../theme/landingPalette';
 import { radius, spacing } from '../theme/designSystem';
 
 type Props = { navigation: NativeStackNavigationProp<RootStackParamList, 'Landing'> };
-
-// Simplified data for the new design
-const howItWorksSteps = [
-  {
-    icon: '✍️',
-    title: 'Create a Room',
-    description: 'Start a lobby for any moment, like your commute or coffee run.',
-  },
-  {
-    icon: '🔗',
-    title: 'Invite Your Friends',
-    description: 'Share a simple code. Guests can join without signing up.',
-  },
-  {
-    icon: '🏆',
-    title: 'Predict & Win',
-    description: 'Closest guess wins Aura points. See the story unfold in The Tea.',
-  },
-];
 
 const socialProofExample = {
   id: '1',
@@ -52,7 +32,6 @@ export default function LandingScreenV2({ navigation }: Props) {
   const p = getLandingPalette(isDark);
   const styles = useMemo(() => makeStyles(p), [p]);
   const [activeNav, setActiveNav] = useState<LandingNavKey>('home');
-  const [showJoinCode, setShowJoinCode] = useState(false);
   const { width } = useWindowDimensions();
   const isDesktop = Platform.OS === 'web' && width >= 1024;
 
@@ -109,29 +88,14 @@ export default function LandingScreenV2({ navigation }: Props) {
               <Text style={styles.ctaPrimaryText}>Create Your First Prediktion</Text>
             </LinearGradient>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.ctaSecondary} onPress={() => setShowJoinCode((current) => !current)}>
-            <Text style={styles.ctaSecondaryText}>Have a code? Join a room</Text>
+          <TouchableOpacity style={styles.ctaSecondary} onPress={() => navigation.navigate('JoinRoom')}>
+            <Text style={styles.ctaSecondaryText}>Join Journey</Text>
           </TouchableOpacity>
         </View>
       </View>
 
-      {/* V2 "How It Works" Section */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>How It Works</Text>
-        <View style={styles.howItWorksContainer}>
-          {howItWorksSteps.map((step, index) => (
-            <View key={index} style={styles.howItWorksCard}>
-              <Text style={styles.howItWorksIcon}>{step.icon}</Text>
-              <Text style={styles.howItWorksTitle}>{step.title}</Text>
-              <Text style={styles.howItWorksDescription}>{step.description}</Text>
-            </View>
-          ))}
-        </View>
-      </View>
-
-      {/* V2 "See it in Action" Section */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>See It in Action</Text>
+        <Text style={styles.sectionTitle}>Recent Journeys</Text>
         <TouchableOpacity
             style={styles.feedCard}
             activeOpacity={0.92}
@@ -160,17 +124,6 @@ export default function LandingScreenV2({ navigation }: Props) {
             </View>
         </TouchableOpacity>
       </View>
-      
-      {/* V2 Final CTA */}
-      <LinearGradient colors={p.gradFinal} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.finalCta}>
-        <Text style={styles.finalTitle}>Ready to Play?</Text>
-        <Text style={styles.finalCopy}>Spin up a squad lobby in 30 seconds. The next moment is yours to predict.</Text>
-        <View style={styles.finalBtnRow}>
-          <TouchableOpacity style={styles.finalBtnSolid} onPress={handleCreateFlow}>
-            <Text style={styles.finalBtnSolidText}>Get Started</Text>
-          </TouchableOpacity>
-        </View>
-      </LinearGradient>
 
       {/* Legal Footer */}
       <View style={styles.legalRow}>

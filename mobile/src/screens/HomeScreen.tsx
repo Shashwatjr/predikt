@@ -64,6 +64,16 @@ type Props = {
  */
 const HOME_JOURNEY_LIMIT = 3;
 
+function journeySortTime(entry: any) {
+  const candidate =
+    entry.completedAt ??
+    entry.updatedAt ??
+    entry.createdAt ??
+    entry.liveProgress?.lastUpdatedAt ??
+    0;
+  return new Date(candidate).getTime();
+}
+
 function countParticipationMoments(entries: RewardLedgerEntry[]) {
   return entries.filter((entry) => {
     if (entry.sourceType === 'admin') return false;
@@ -250,18 +260,19 @@ export default function HomeScreen({ navigation, route }: Props) {
     };
   }, []);
 
-  // Single default list — active journeys first, completed after, preserving the
-  // existing pin/displayOrder within each group (stable sort).
   const journeys = useMemo(() => {
-    const isCompleted = (status?: string) =>
-      ['result_ready', 'completed', 'reached', 'cancelled'].includes(String(status));
-    return [...activePredictions].sort(
-      (a, b) => (isCompleted(a.status) ? 1 : 0) - (isCompleted(b.status) ? 1 : 0),
-    );
+    return [...activePredictions].sort((left, right) => {
+      if (left.pinned !== right.pinned) return left.pinned ? -1 : 1;
+      return journeySortTime(right) - journeySortTime(left);
+    });
   }, [activePredictions]);
 
   const visibleJourneys = useMemo(() => {
     if (showAllJourneys) return journeys;
+    const pinnedJourneys = journeys.filter((entry) => entry.pinned);
+    if (pinnedJourneys.length > 0) {
+      return pinnedJourneys.slice(0, HOME_JOURNEY_LIMIT);
+    }
     return journeys.slice(0, HOME_JOURNEY_LIMIT);
   }, [journeys, showAllJourneys]);
 
@@ -444,7 +455,7 @@ export default function HomeScreen({ navigation, route }: Props) {
 
   const journeyList = showDemoHub ? (
     <JourneyListSection
-      title="Your journeys"
+      title={showAllJourneys ? 'My journeys' : 'Recent journeys'}
       journeys={visibleJourneys}
       cardVariant="journeyHome"
       onOpen={(journey) => openRoom({ roomId: journey.roomId, rawRoom: journey })}

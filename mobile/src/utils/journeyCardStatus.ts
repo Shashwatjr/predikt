@@ -5,7 +5,7 @@
  * directly — the rendering side (colours, styles) stays in ActivePredictionCard.
  */
 
-export const SETTLED_STATUSES = ['result_ready', 'completed', 'reached'];
+export const SETTLED_STATUSES = ['result_ready', 'completed', 'reached', 'cancelled'];
 export const ENDED_JOURNEY_STATUSES = [
   'auto_closed',
   'abandoned',

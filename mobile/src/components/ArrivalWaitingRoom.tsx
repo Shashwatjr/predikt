@@ -26,6 +26,7 @@ type PredictionCard = {
 type Props = {
   title: string;
   statusLabel: string;
+  statusMessage?: string;
   targetTime: Date | null;
   startLabel: string;
   destinationLabel: string;
@@ -68,6 +69,7 @@ function clockParts(date: Date | null): { time: string; ampm: string } {
 export default function ArrivalWaitingRoom({
   title,
   statusLabel,
+  statusMessage,
   targetTime,
   startLabel,
   destinationLabel,
@@ -114,7 +116,7 @@ export default function ArrivalWaitingRoom({
       <View style={styles.heroCard}>
         <Text style={styles.heroKicker}>Journey starts in</Text>
         <Text style={[styles.heroCountdown, heroCountdownStyle]}>{countdown}</Text>
-        <Text style={styles.heroSub}>Tracking begins automatically</Text>
+        <Text style={styles.heroSub}>{statusMessage ?? 'Preparing your journey...'}</Text>
 
         <View style={[styles.routeRow, isCompact && styles.routeRowCompact]}>
           <View style={[styles.routeSide, isCompact && styles.routeSideCompact]}>

@@ -18,6 +18,10 @@ type ActivePrediction = {
   roomId: string;
   title: string;
   status: string;
+  winnerName?: string | null;
+  completedAt?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
   isCreator?: boolean;
   participantCount: number;
   hasSubmittedPrediction: boolean;
@@ -77,6 +81,24 @@ function friendlyActionLabel(item: ActivePrediction) {
     return 'Predict now';
   }
   return 'Open Journey';
+}
+
+function formatJourneyDate(value?: string | null) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toLocaleDateString([], {
+    month: 'short',
+    day: 'numeric',
+    year: date.getFullYear() === new Date().getFullYear() ? undefined : 'numeric',
+  });
+}
+
+function formatJourneyTime(value?: string | null) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 }
 
 function friendlyStatusText(item: ActivePrediction) {
@@ -179,6 +201,13 @@ export default function ActivePredictionCard({
   const homeStatusText = friendlyStatusText(item);
   const homeActionLabel = friendlyActionLabel(item);
   const participantLabel = friendlyParticipantLabel(item.participantCount);
+  const isTerminalJourney =
+    ['result_ready', 'completed', 'reached', 'cancelled'].includes(item.status.toLowerCase()) ||
+    ['auto_closed', 'abandoned', 'plan_changed', 'cancelled_by_host', 'completed'].includes(
+      String(item.journeyStatus ?? '').toLowerCase(),
+    );
+  const completedDateLabel = formatJourneyDate(item.completedAt ?? item.updatedAt ?? item.createdAt);
+  const completedTimeLabel = formatJourneyTime(item.completedAt ?? item.updatedAt);
   const compactPredictionLabel =
     item.hasSubmittedPrediction && item.liveProgress.etaTime
       ? item.liveProgress.etaTime
@@ -264,7 +293,20 @@ export default function ActivePredictionCard({
           <Text style={styles.journeyHomeSecondaryTiming}>{secondaryTimingLine}</Text>
         ) : null}
 
-        {participantLabel ? (
+        {isTerminalJourney ? (
+          <View style={styles.journeyHomeSummary}>
+            {completedDateLabel ? <Text style={styles.journeyHomeMeta}>{completedDateLabel}</Text> : null}
+            {item.winnerName ? (
+              <Text style={styles.journeyHomeMeta}>Winner: {item.winnerName}</Text>
+            ) : null}
+            {completedTimeLabel ? (
+              <Text style={styles.journeyHomeMeta}>Completed: {completedTimeLabel}</Text>
+            ) : null}
+            <Text style={styles.journeyHomeMeta}>
+              {item.participantCount} {item.participantCount === 1 ? 'participant' : 'participants'}
+            </Text>
+          </View>
+        ) : participantLabel ? (
           <Text style={styles.journeyHomeMeta}>{participantLabel}</Text>
         ) : null}
 
@@ -462,6 +504,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   journeyHomeSecondaryTiming: { color: journeyPalette.textSecondary, fontSize: 14, lineHeight: 18, fontWeight: '600' },
+  journeyHomeSummary: { gap: 2 },
   journeyHomeMeta: { color: journeyPalette.textSecondary, fontSize: 13, lineHeight: 18, fontWeight: '600' },
   journeyHomePill: {
     flexDirection: 'row',

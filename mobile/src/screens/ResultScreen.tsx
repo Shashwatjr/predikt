@@ -290,6 +290,7 @@ export default function ResultScreen({ navigation, route }: Props) {
         predictedAt && !Number.isNaN(predictedAt.getTime())
           ? formatClock(predictedAt, false)
           : 'Prediction hidden',
+      actualLabel: actualTimeLabel,
       differenceLabel: isNeutralClosure
         ? 'Fair reset'
         : formatDifferenceFromActual(predictedAt, actualDate, row.differenceFromActualMinutes),
@@ -306,57 +307,41 @@ export default function ResultScreen({ navigation, route }: Props) {
               : null,
     };
   });
-  const comparisonRows = [
+  const benchmarkRows = [
     benchmarks?.maps
       ? {
           key: 'maps',
-          title: benchmarks.maps.label || 'Google Maps',
-          value: formatClock(benchmarks.maps.date, false),
-          difference: formatDifferenceFromActual(benchmarks.maps.date, actualDate, null),
-          note: benchmarks.maps.verified ? 'Verified route ETA' : 'Approximate route estimate',
+          rank: rankingRows.length + 1,
+          name: benchmarks.maps.label || 'Google Maps',
+          initials: 'G',
+          isCurrentUser: false,
+          predictionLabel: formatClock(benchmarks.maps.date, false),
+          actualLabel: actualTimeLabel,
+          differenceLabel: formatDifferenceFromActual(benchmarks.maps.date, actualDate, null),
+          auraLabel: '0 Aura',
+          rizzLabel: benchmarks.maps.verified ? 'Verified route ETA' : 'Route estimate',
+          isWinner: false,
+          medal: null,
         }
       : null,
     benchmarks?.oracle
       ? {
-          key: 'bot',
-          title: benchmarks.oracle.label || 'The bot',
-          value: formatClock(benchmarks.oracle.date, false),
-          difference: formatDifferenceFromActual(benchmarks.oracle.date, actualDate, null),
-          note: 'Bot prediction',
+          key: 'oracle',
+          rank: rankingRows.length + (benchmarks?.maps ? 2 : 1),
+          name: benchmarks.oracle.label || 'Oracle Bot',
+          initials: 'O',
+          isCurrentUser: false,
+          predictionLabel: formatClock(benchmarks.oracle.date, false),
+          actualLabel: actualTimeLabel,
+          differenceLabel: formatDifferenceFromActual(benchmarks.oracle.date, actualDate, null),
+          auraLabel: '0 Aura',
+          rizzLabel: 'Benchmark player',
+          isWinner: false,
+          medal: null,
         }
       : null,
-    benchmarks?.host
-      ? {
-          key: 'host',
-          title: 'Host call',
-          value: formatClock(benchmarks.host.date, false),
-          difference: formatDifferenceFromActual(benchmarks.host.date, actualDate, null),
-          note: 'Host prediction on record',
-        }
-      : null,
-    winningRow
-      ? {
-          key: 'winner',
-          title: 'Winning guess',
-          value:
-            predictionByUserId.get(winningRow.userId ?? winningRow.user?.userId)?.predictedReachedTime
-              ? formatClock(
-                  new Date(
-                    predictionByUserId.get(winningRow.userId ?? winningRow.user?.userId)!.predictedReachedTime!,
-                  ),
-                  false,
-                )
-              : winningPrediction,
-          difference:
-            typeof differenceMinutes === 'number'
-              ? differenceMinutes === 0
-                ? '0 min'
-                : `${differenceMinutes.toFixed(1)} min off`
-              : differenceLabel,
-          note: `by ${winnerHandle}`,
-        }
-      : null,
-  ].filter(Boolean) as Array<{ key: string; title: string; value: string; difference: string; note: string }>;
+  ].filter(Boolean) as typeof rankingRows;
+  const scoreboardRows = [...rankingRows, ...benchmarkRows];
   const currentUserPrediction = user?.userId ? predictionByUserId.get(user.userId) : null;
   const myRizzStatus = currentUserPrediction?.auraEligible === false ? 'Rizz-tier · no Aura' : 'Aura eligible';
   const genericOptions =
@@ -488,29 +473,7 @@ export default function ResultScreen({ navigation, route }: Props) {
                   accent="#A78BFA"
                 />
               </View>
-              <Text style={[styles.resultsBenchmarkNote, { color: colors.textSecondary }]}>
-                Benchmark: {oracleBotLabel}
-              </Text>
             </LinearGradient>
-
-            {comparisonRows.length ? (
-              <View style={[styles.comparisonCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <View style={styles.comparisonHeader}>
-                  <Text style={[styles.comparisonTitle, { color: colors.textPrimary }]}>Compared with Maps, bot and host</Text>
-                  <Text style={[styles.comparisonMeta, { color: colors.textSecondary }]}>Against the final arrival at {actualTimeLabel}</Text>
-                </View>
-                <View style={styles.comparisonGrid}>
-                  {comparisonRows.map((item) => (
-                    <View key={item.key} style={[styles.comparisonTile, { backgroundColor: colors.surfaceHigh, borderColor: colors.border }]}>
-                      <Text style={[styles.comparisonTileTitle, { color: colors.textSecondary }]}>{item.title}</Text>
-                      <Text style={[styles.comparisonTileValue, { color: colors.textPrimary }]}>{item.value}</Text>
-                      <Text style={[styles.comparisonTileDiff, { color: colors.purpleLight }]}>{item.difference}</Text>
-                      <Text style={[styles.comparisonTileNote, { color: colors.textSecondary }]}>{item.note}</Text>
-                    </View>
-                  ))}
-                </View>
-              </View>
-            ) : null}
 
             <ViewShot
               ref={receiptRef}
@@ -594,23 +557,24 @@ export default function ResultScreen({ navigation, route }: Props) {
         {/* Guest's Tea has resolved — offer to keep their Aura before they bounce. */}
         <GuestUpgradePrompt variant="result" />
 
-        {!isGenericRoom && rankingRows.length ? (
+        {!isGenericRoom && scoreboardRows.length ? (
           <View style={[styles.rankingsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <View style={styles.rankingsHeader}>
-              <Text style={[styles.rankingsTitle, { color: colors.textPrimary }]}>All participants</Text>
+              <Text style={[styles.rankingsTitle, { color: colors.textPrimary }]}>Scoreboard</Text>
               <Text style={[styles.rankingsMeta, { color: colors.textSecondary }]}>
-                {rankingRows.length} predictions ranked by closeness to the actual arrival
+                Prediction, actual finish, difference, rank, and Aura in one place.
               </Text>
             </View>
             <View style={[styles.rankingsTableHead, { borderColor: colors.border }]}>
               <Text style={[styles.rankingsHeadCell, styles.rankCol, { color: colors.textSecondary }]}>Rank</Text>
               <Text style={[styles.rankingsHeadCell, styles.playerCol, { color: colors.textSecondary }]}>Participant</Text>
               <Text style={[styles.rankingsHeadCell, styles.predictionCol, { color: colors.textSecondary }]}>Prediction</Text>
-              <Text style={[styles.rankingsHeadCell, styles.diffCol, { color: colors.textSecondary }]}>Score</Text>
-              <Text style={[styles.rankingsHeadCell, styles.rewardCol, { color: colors.textSecondary }]}>Rewards</Text>
+              <Text style={[styles.rankingsHeadCell, styles.actualCol, { color: colors.textSecondary }]}>Actual</Text>
+              <Text style={[styles.rankingsHeadCell, styles.diffCol, { color: colors.textSecondary }]}>Difference</Text>
+              <Text style={[styles.rankingsHeadCell, styles.rewardCol, { color: colors.textSecondary }]}>Aura</Text>
             </View>
             <View style={styles.rankingsBody}>
-              {rankingRows.map((row) => (
+              {scoreboardRows.map((row) => (
                 <View
                   key={row.key}
                   style={[
@@ -642,6 +606,7 @@ export default function ResultScreen({ navigation, route }: Props) {
                     </View>
                   </View>
                   <Text style={[styles.rankingsCell, styles.predictionCol, { color: colors.textPrimary }]}>{row.predictionLabel}</Text>
+                  <Text style={[styles.rankingsCell, styles.actualCol, { color: colors.textPrimary }]}>{row.actualLabel}</Text>
                   <View style={styles.diffCol}>
                     <Text style={[styles.rankingsScore, { color: row.isWinner ? colors.green : colors.textPrimary }]}>
                       {row.differenceLabel}
@@ -665,6 +630,16 @@ export default function ResultScreen({ navigation, route }: Props) {
         <View style={styles.ctaStack}>
           {featureFlags.momentCardExport ? (
             <PrimaryButton label="Share receipt" onPress={shareReceiptCard} gradientColors={['#8B5CF6', '#3B82F6']} icon="✨" />
+          ) : null}
+          {featureFlags.rematch && !isNeutralClosure ? (
+            <PrimaryButton
+              label="Run It Back"
+              onPress={async () => {
+                const response = await api.post(`/rooms/${roomId}/rematch`);
+                navigation.navigate('RoomCreated', { room: response.data });
+              }}
+              icon="🔁"
+            />
           ) : null}
           <PrimaryButton label="Back to Home" onPress={() => navigation.navigate('Home')} variant="secondary" icon="🏠" />
         </View>
@@ -843,24 +818,6 @@ const styles = StyleSheet.create({
   resultStatEyebrow: { fontSize: 11, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 0.9 },
   resultStatValue: { color: '#FFFFFF', fontSize: 16, fontWeight: '900', lineHeight: 22 },
   resultStatNote: { color: 'rgba(255,255,255,0.72)', fontSize: 13, lineHeight: 18 },
-  resultsBenchmarkNote: { fontSize: 13, fontWeight: '700' },
-  comparisonCard: { borderRadius: 22, borderWidth: 1, padding: 18, gap: 14 },
-  comparisonHeader: { gap: 4 },
-  comparisonTitle: { fontSize: 19, fontWeight: '900' },
-  comparisonMeta: { fontSize: 13, lineHeight: 18 },
-  comparisonGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
-  comparisonTile: {
-    flex: 1,
-    minWidth: 170,
-    borderRadius: 18,
-    borderWidth: 1,
-    padding: 14,
-    gap: 5,
-  },
-  comparisonTileTitle: { fontSize: 11, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 0.8 },
-  comparisonTileValue: { fontSize: 22, fontWeight: '900' },
-  comparisonTileDiff: { fontSize: 14, fontWeight: '800' },
-  comparisonTileNote: { fontSize: 12, lineHeight: 17 },
   receiptShot: { borderRadius: 24, borderWidth: 1, overflow: 'hidden' },
   receiptCard: { padding: 20, gap: 16 },
   receiptTopRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 },
@@ -954,6 +911,7 @@ const styles = StyleSheet.create({
   rankCol: { width: 78 },
   playerCol: { flex: 1.25 },
   predictionCol: { width: 120 },
+  actualCol: { width: 96 },
   diffCol: { width: 120 },
   rewardCol: { width: 118 },
   heading: { fontSize: 26, fontWeight: '800' },

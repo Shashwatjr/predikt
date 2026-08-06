@@ -46,10 +46,17 @@ const ROOM_CREATOR_SELECT = {
   avatarKey: true,
   totalAura: true,
   weeklyAura: true,
-  cloutBalance: true,
-  creditBalance: true,
+  rewardAccount: {
+    select: {
+      auraBalance: true,
+      rizzBalance: true,
+      gemBalance: true,
+      lifetimeAura: true,
+      lifetimeRizz: true,
+      lifetimeGems: true,
+    },
+  },
   winsCount: true,
-  userFlexes: { include: { flex: true } },
   creatorProfile: true,
 } as const;
 
@@ -348,6 +355,7 @@ function resolveWebBaseUrl(configuredBaseUrl?: string | null) {
   const trimmed = configuredBaseUrl?.trim();
   const nodeEnv = process.env.NODE_ENV ?? 'development';
   const productionLike = !['development', 'test'].includes(nodeEnv);
+  const canonicalBaseUrl = 'https://myprediktion.com';
 
   if (trimmed) {
     if (productionLike && /localhost|127\.0\.0\.1/i.test(trimmed)) {
@@ -355,13 +363,11 @@ function resolveWebBaseUrl(configuredBaseUrl?: string | null) {
         'WEB_BASE_URL must not point at localhost in production-like environments',
       );
     }
-    return trimmed.replace(/\/+$/, '');
+    return trimmed.replace(/\/+$/, '').replace(/^https:\/\/www\.myprediktion\.com$/i, canonicalBaseUrl);
   }
 
   if (productionLike) {
-    throw new Error(
-      'WEB_BASE_URL (or EXPO_PUBLIC_WEB_BASE_URL) must be set in production-like environments',
-    );
+    return canonicalBaseUrl;
   }
 
   return 'http://localhost:8081';
@@ -637,7 +643,7 @@ export class RoomsService {
             : undefined,
         facebookPostText:
           socialMode !== 'none'
-            ? `Predict right. Build Aura. Earn Clout. Code: ${inviteCode}`
+            ? `Predict right. Build Aura. Earn Gems. Code: ${inviteCode}`
             : undefined,
         qrCodePayload: socialMode !== 'none' ? `PREDIKT:${inviteCode}` : undefined,
         resultShareText:
@@ -688,27 +694,6 @@ export class RoomsService {
         where: { userId: creator.userId },
         data: { roomsCreatedCount: { increment: 1 } },
       });
-      const firstRoomCredit = await tx.creditLedger.findUnique({
-        where: { idempotencyKey: `first_room:${creator.userId}` },
-      });
-      if (!firstRoomCredit) {
-        const updatedUser = await tx.user.update({
-          where: { userId: creator.userId },
-          data: { creditBalance: { increment: 15 } },
-        });
-        await tx.creditLedger.create({
-          data: {
-            userId: creator.userId,
-            eventType: 'first_room',
-            delta: 15,
-            balanceAfter: updatedUser.creditBalance,
-            sourceId: room.roomId,
-            sourceType: 'room',
-            idempotencyKey: `first_room:${creator.userId}`,
-            metadata: { label: 'First room credit bonus' },
-          },
-        });
-      }
     });
 
     await this.auditService.log({
@@ -1197,7 +1182,30 @@ export class RoomsService {
     };
   }
 
-  async remove(roomId: string, requestingUser: User) {
+  /**
+   * True when the user shows up on this room in any way the dashboard counts as
+   * belonging: an active membership or a prediction they made.
+   */
+  private async isRoomParticipant(roomId: string, userId: string) {
+    const membership = await this.prisma.roomMembership.findUnique({
+      where: { roomId_userId: { roomId, userId } },
+      select: { status: true },
+    });
+    if (membership && membership.status !== 'blocked') return true;
+    const prediction = await this.prisma.milestonePrediction.findFirst({
+      where: { roomId, userId },
+      select: { predictionId: true },
+    });
+    return Boolean(prediction);
+  }
+
+  /**
+   * Removes the room from the requesting user's dashboard. This is always a
+   * per-user action — anyone in the room can clear their own view at any time,
+   * and it never touches what the other members see. Cancelling a live journey
+   * for everyone is a separate, explicit creator action (cancelForEveryone).
+   */
+  async remove(roomId: string, requestingUser: User, cancelForEveryone = false) {
     const room = await this.prisma.predictionRoom.findUnique({
       where: { roomId },
       select: {
@@ -1209,8 +1217,16 @@ export class RoomsService {
       },
     });
     if (!room) throw new NotFoundException('Room not found');
-    if (room.creatorUserId !== requestingUser.userId) {
-      throw new ForbiddenException('Only the room creator can delete this room.');
+    const isCreator = room.creatorUserId === requestingUser.userId;
+    if (!isCreator) {
+      if (cancelForEveryone) {
+        throw new ForbiddenException('Only the room creator can cancel this room for everyone.');
+      }
+      // Clearing your own view only requires that you belong to the room.
+      const isMember = await this.isRoomParticipant(roomId, requestingUser.userId);
+      if (!isMember) {
+        throw new ForbiddenException('You are not a member of this room.');
+      }
     }
 
     const now = new Date();
@@ -1234,7 +1250,7 @@ export class RoomsService {
       },
     });
 
-    if (['completed', 'cancelled'].includes(room.status)) {
+    if (!cancelForEveryone || !isCreator || ['completed', 'cancelled'].includes(room.status)) {
       await hideFromDashboard;
       return {
         roomId,
@@ -1289,8 +1305,9 @@ export class RoomsService {
   }
 
   async findByInviteCode(inviteCode: string) {
+    const normalizedInviteCode = inviteCode.trim().toUpperCase();
     const room = await this.prisma.predictionRoom.findUnique({
-      where: { inviteCode },
+      where: { inviteCode: normalizedInviteCode },
       include: {
         creator: { select: ROOM_CREATOR_SELECT },
         milestones: { orderBy: { milestoneOrder: 'asc' } },
@@ -1302,8 +1319,9 @@ export class RoomsService {
   }
 
   async getInvitePreview(inviteCode: string) {
+    const normalizedInviteCode = inviteCode.trim().toUpperCase();
     const room = await this.prisma.predictionRoom.findUnique({
-      where: { inviteCode },
+      where: { inviteCode: normalizedInviteCode },
       include: {
         creator: { select: ROOM_CREATOR_SELECT },
         milestones: { orderBy: { milestoneOrder: 'asc' } },

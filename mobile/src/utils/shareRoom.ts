@@ -1,5 +1,7 @@
 import { Platform } from 'react-native';
 
+const CANONICAL_WEB_BASE_URL = 'https://myprediktion.com';
+
 type SafePreview = {
   roomTitle?: string;
   title?: string;
@@ -24,10 +26,14 @@ type SafePreview = {
 function getWebBaseUrl() {
   const envBase = process.env.EXPO_PUBLIC_WEB_BASE_URL?.trim();
   if (envBase) return envBase.replace(/\/+$/, '');
+  const host = typeof window !== 'undefined' ? window.location?.hostname?.toLowerCase() ?? '' : '';
+  if (host === 'myprediktion.com' || host === 'www.myprediktion.com') {
+    return CANONICAL_WEB_BASE_URL;
+  }
   if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.origin) {
     return window.location.origin.replace(/\/+$/, '');
   }
-  return 'http://localhost:8081';
+  return Platform.OS === 'web' ? CANONICAL_WEB_BASE_URL : 'http://localhost:8081';
 }
 
 export function buildInviteUrl(inviteCode: string, forwardedBy?: string | null) {

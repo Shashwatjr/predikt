@@ -14,8 +14,9 @@ describe('DashboardService active predictions', () => {
   const lifecycleService = {
     evaluateRoomLifecycle: jest.fn().mockResolvedValue(null),
   } as any;
+  const rewardService = {} as any;
 
-  const service = new DashboardService(prisma, lifecycleService);
+  const service = new DashboardService(prisma, lifecycleService, rewardService);
   const user = { userId: 'user-1' } as any;
 
   beforeEach(() => {
@@ -86,7 +87,7 @@ describe('DashboardService active predictions', () => {
       pinned: true,
       displayOrder: 4,
       hasSubmittedPrediction: true,
-      quickAction: { label: 'View Live', targetScreen: 'LiveRoom' },
+      quickAction: { label: 'Go to Room', targetScreen: 'LiveRoom' },
       routeSummary: {
         startLabel: 'Home',
         destinationLabel: 'Office',
@@ -136,7 +137,7 @@ describe('DashboardService active predictions', () => {
 
     expect(card.status).toBe('result_ready');
     expect(card.liveProgress.progressPercentApprox).toBe(100);
-    expect(card.quickAction).toEqual({ label: 'View Results', targetScreen: 'Result' });
+    expect(card.quickAction).toEqual({ label: 'View Result', targetScreen: 'Result' });
   });
 
   it('shows joined rooms before the user submits a prediction', async () => {
