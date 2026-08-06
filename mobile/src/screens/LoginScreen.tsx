@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Alert, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { appAlert } from '../utils/appAlert';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/types';
 import BrandLogo from '../components/BrandLogo';
@@ -41,7 +42,7 @@ export default function LoginScreen({ navigation }: Props) {
 
   async function handleLogin() {
     const normalizedEmail = email.trim().toLowerCase();
-    if (!normalizedEmail || !password) return Alert.alert('Missing fields', 'Please fill in email and password.');
+    if (!normalizedEmail || !password) return appAlert('Missing fields', 'Please fill in email and password.');
 
     setLoading(true);
     try {
@@ -60,7 +61,7 @@ export default function LoginScreen({ navigation }: Props) {
         user: res.data.user,
       });
     } catch (err: unknown) {
-      Alert.alert('Login failed', getApiErrorMessage(err, 'Check your credentials and try again.'));
+      appAlert('Login failed', getApiErrorMessage(err, 'Check your credentials and try again.'));
     } finally {
       setLoading(false);
     }

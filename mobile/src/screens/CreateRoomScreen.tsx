@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  Alert,
   Platform,
   ScrollView,
   StyleSheet,
@@ -879,7 +878,7 @@ export default function CreateRoomScreen({ navigation, route }: Props) {
       if (typeof navigator === 'undefined' || !navigator.geolocation) {
         const message = 'Search your starting point instead.';
         setPreviewError(message);
-        return Alert.alert('Location unavailable', message);
+        return appAlert('Location unavailable', message);
       }
 
       if (
@@ -891,7 +890,7 @@ export default function CreateRoomScreen({ navigation, route }: Props) {
         const message =
           'Browser location needs HTTPS or localhost. Open the app on localhost or a secure URL, then try Use current again.';
         setPreviewError(message);
-        return Alert.alert('Secure context needed', message);
+        return appAlert('Secure context needed', message);
       }
 
       setLocatingStart(true);
@@ -925,7 +924,7 @@ export default function CreateRoomScreen({ navigation, route }: Props) {
             ? 'Location permission was blocked in the browser. Allow location access and try again.'
             : 'Search your starting point instead.';
         setPreviewError(message);
-        return Alert.alert('Location unavailable', message);
+        return appAlert('Location unavailable', message);
       } finally {
         setLocatingStart(false);
       }
@@ -937,7 +936,7 @@ export default function CreateRoomScreen({ navigation, route }: Props) {
       if (permission.status !== 'granted') {
         const message = 'Location permission is needed to use your current location as Start.';
         setPreviewError(message);
-        return Alert.alert('Location permission needed', message);
+        return appAlert('Location permission needed', message);
       }
 
       const current = await Location.getCurrentPositionAsync({
@@ -957,7 +956,7 @@ export default function CreateRoomScreen({ navigation, route }: Props) {
     } catch {
       const message = 'Could not read your current location. You can still search for Start manually.';
       setPreviewError(message);
-      Alert.alert('Location unavailable', message);
+      appAlert('Location unavailable', message);
     } finally {
       setLocatingStart(false);
     }
@@ -969,7 +968,7 @@ export default function CreateRoomScreen({ navigation, route }: Props) {
       const message = 'Choose both Start and Destination first.';
       setPreviewError(message);
       if (showAlert) {
-        Alert.alert('Missing route', message);
+        appAlert('Missing route', message);
       }
       return;
     }
@@ -991,7 +990,7 @@ export default function CreateRoomScreen({ navigation, route }: Props) {
       const message = getApiErrorMessage(err, 'Could not preview this route. Check the labels and try again.');
       setPreviewError(message);
       if (showAlert) {
-        Alert.alert('Preview failed', message);
+        appAlert('Preview failed', message);
       }
     } finally {
       setPreviewLoading(false);
@@ -1051,7 +1050,7 @@ export default function CreateRoomScreen({ navigation, route }: Props) {
     if (!preview) {
       const message = 'Preview the route before creating the room.';
       setCreateError(message);
-      return Alert.alert('Preview first', message);
+      return appAlert('Preview first', message);
     }
 
     const lockTimeInput = predictionClosesAt || preview.suggestedLockTime;
@@ -1059,12 +1058,12 @@ export default function CreateRoomScreen({ navigation, route }: Props) {
     if (Number.isNaN(closeDate.getTime())) {
       const message = 'Use format YYYY-MM-DDTHH:MM.';
       setCreateError(message);
-      return Alert.alert('Invalid date', message);
+      return appAlert('Invalid date', message);
     }
     if (!creatorPrediction) {
       const message = 'Add your prediction before creating the journey.';
       setCreateError(message);
-      return Alert.alert('Prediction needed', message);
+      return appAlert('Prediction needed', message);
     }
 
     setCreateLoading(true);
@@ -1119,7 +1118,7 @@ export default function CreateRoomScreen({ navigation, route }: Props) {
     } catch (err: unknown) {
       const message = getApiErrorMessage(err, 'Could not create the room. Try again in a moment.');
       setCreateError(message);
-      Alert.alert('Create failed', message);
+      appAlert('Create failed', message);
     } finally {
       setCreateLoading(false);
     }
@@ -1154,21 +1153,21 @@ export default function CreateRoomScreen({ navigation, route }: Props) {
     if (!weatherLocationLabel.trim()) {
       const message = 'Add the weather location first.';
       setCreateError(message);
-      return Alert.alert('Location needed', message);
+      return appAlert('Location needed', message);
     }
 
     const closeDate = new Date(predictionClosesAt);
     if (Number.isNaN(closeDate.getTime())) {
       const message = 'Use format YYYY-MM-DDTHH:MM.';
       setCreateError(message);
-      return Alert.alert('Invalid date', message);
+      return appAlert('Invalid date', message);
     }
 
     const forecastChance = Number(forecastChancePercent);
     if (!Number.isFinite(forecastChance) || forecastChance < 0 || forecastChance > 100) {
       const message = 'Forecast chance must be between 0 and 100.';
       setCreateError(message);
-      return Alert.alert('Invalid forecast', message);
+      return appAlert('Invalid forecast', message);
     }
 
     setCreateLoading(true);
@@ -1212,7 +1211,7 @@ export default function CreateRoomScreen({ navigation, route }: Props) {
     } catch (err: unknown) {
       const message = getApiErrorMessage(err, 'Could not create the weather room. Try again in a moment.');
       setCreateError(message);
-      Alert.alert('Create failed', message);
+      appAlert('Create failed', message);
     } finally {
       setCreateLoading(false);
     }
@@ -1225,7 +1224,7 @@ export default function CreateRoomScreen({ navigation, route }: Props) {
     if (Number.isNaN(closeDate.getTime())) {
       const message = 'Use format YYYY-MM-DDTHH:MM.';
       setCreateError(message);
-      return Alert.alert('Invalid date', message);
+      return appAlert('Invalid date', message);
     }
 
     const isFoodEta = selectedCategory === 'food_eta';
@@ -1251,12 +1250,12 @@ export default function CreateRoomScreen({ navigation, route }: Props) {
             ? 'Add the vendor ETA date and time first.'
             : 'Add the vendor ETA date first.';
       setCreateError(message);
-      return Alert.alert('ETA needed', message);
+      return appAlert('ETA needed', message);
     }
     if (isFoodEta && !predictedDate) {
       const message = 'Add your own predicted delivery time too.';
       setCreateError(message);
-      return Alert.alert('Prediction needed', message);
+      return appAlert('Prediction needed', message);
     }
 
     setCreateLoading(true);
@@ -1336,7 +1335,7 @@ export default function CreateRoomScreen({ navigation, route }: Props) {
     } catch (err: unknown) {
       const message = getApiErrorMessage(err, 'Could not create the room. Try again in a moment.');
       setCreateError(message);
-      Alert.alert('Create failed', message);
+      appAlert('Create failed', message);
     } finally {
       setCreateLoading(false);
     }
@@ -1348,7 +1347,7 @@ export default function CreateRoomScreen({ navigation, route }: Props) {
     if (Number.isNaN(closeDate.getTime())) {
       const message = 'Use format YYYY-MM-DDTHH:MM.';
       setCreateError(message);
-      return Alert.alert('Invalid date', message);
+      return appAlert('Invalid date', message);
     }
 
     const title = openPredictionTitle.trim();
@@ -1356,19 +1355,19 @@ export default function CreateRoomScreen({ navigation, route }: Props) {
     if (!title) {
       const message = 'Add a room title first.';
       setCreateError(message);
-      return Alert.alert('Title needed', message);
+      return appAlert('Title needed', message);
     }
     if (!question) {
       const message = 'Add the prediction question first.';
       setCreateError(message);
-      return Alert.alert('Question needed', message);
+      return appAlert('Question needed', message);
     }
 
     const options = openPredictionOptions.map((option) => option.trim()).filter(Boolean);
     if (openPredictionAnswerType === 'multiple_choice' && options.length < 2) {
       const message = 'Add at least two prediction options.';
       setCreateError(message);
-      return Alert.alert('Options needed', message);
+      return appAlert('Options needed', message);
     }
 
     const normalizedAnswerType =
@@ -1415,7 +1414,7 @@ export default function CreateRoomScreen({ navigation, route }: Props) {
     } catch (err: unknown) {
       const message = getApiErrorMessage(err, 'Could not create the open prediction room. Try again in a moment.');
       setCreateError(message);
-      Alert.alert('Create failed', message);
+      appAlert('Create failed', message);
     } finally {
       setCreateLoading(false);
     }

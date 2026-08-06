@@ -144,6 +144,18 @@ export default function PredictionScreen({ navigation, route }: Props) {
     [room, inviteCode, isCreator, user?.userId],
   );
   const confirmScale = useRef(new Animated.Value(1)).current;
+  const submittingRef = useRef(false);
+
+  // Navigating forward leaves this screen mounted in the stack, so a submit guard that
+  // is never released would strand the button on a spinner if the user comes back.
+  // Returning here is also the one moment it is safe to accept a fresh submit again.
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      submittingRef.current = false;
+      setLoading(false);
+    });
+    return unsubscribe;
+  }, [navigation]);
   const foodEtaBenchmarkLabel =
     room?.category === 'food_eta' || room?.templateKey === 'food_eta'
       ? room?.baselineLabel ?? room?.oracleBotPrediction?.label ?? null
@@ -225,6 +237,11 @@ export default function PredictionScreen({ navigation, route }: Props) {
   }
 
   async function handleSubmit() {
+    // `loading` alone cannot gate this: it is React state, so a second tap arriving
+    // during the confirm animation and journey-start round-trip that follow the save
+    // would read a stale value and file a duplicate prediction. The ref closes that
+    // window and is released only on failure or when the screen is returned to.
+    if (submittingRef.current) return;
     if (lockedOut) {
       return appAlert(
         'Predictions closed',
@@ -237,6 +254,7 @@ export default function PredictionScreen({ navigation, route }: Props) {
     } catch (error: any) {
       return appAlert('One more thing', error.message);
     }
+    submittingRef.current = true;
     setLoading(true);
     try {
       const trimmedHotTake = hotTake.trim();
@@ -272,10 +290,13 @@ export default function PredictionScreen({ navigation, route }: Props) {
         }
         navigation.navigate('LiveRoom', { roomId, isCreator: false, justPredicted: true });
       });
+      // Deliberately no `finally`: on success the button stays busy until this screen
+      // is left behind, so the confirm animation and journey-start round-trip cannot be
+      // interrupted by a second tap. Only the failure path hands control back.
     } catch (err: unknown) {
-      appAlert('Could not lock it in', getApiErrorMessage(err, "Your guess wasn't saved — try again."));
-    } finally {
+      submittingRef.current = false;
       setLoading(false);
+      appAlert('Could not lock it in', getApiErrorMessage(err, "Your guess wasn't saved — try again."));
     }
   }
 

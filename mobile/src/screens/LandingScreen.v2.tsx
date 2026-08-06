@@ -94,13 +94,12 @@ export default function LandingScreenV2({ navigation }: Props) {
         </View>
       </View>
 
+      {/* An illustration of what a room looks like, not a room. It used to be titled
+          "Recent Journeys" and was tappable, which sent visitors to a join screen for
+          an invite code that has never existed. */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Recent Journeys</Text>
-        <TouchableOpacity
-            style={styles.feedCard}
-            activeOpacity={0.92}
-            onPress={() => handleJoinLobby(socialProofExample.code)}
-        >
+        <Text style={styles.sectionTitle}>What a journey looks like</Text>
+        <View style={styles.feedCard}>
             <View style={styles.feedCardTop}>
             <View style={styles.feedAuthorRow}>
                 <View style={styles.feedAvatar}>
@@ -112,7 +111,7 @@ export default function LandingScreenV2({ navigation }: Props) {
                 </View>
             </View>
             <View style={[styles.statusBadge, { borderColor: p.berry, backgroundColor: `${p.berry}22` }]}>
-                <Text style={[styles.statusBadgeText, { color: p.berry }]}>LIVE</Text>
+                <Text style={[styles.statusBadgeText, { color: p.berry }]}>EXAMPLE</Text>
             </View>
             </View>
             <Text style={styles.feedQuestion}>{socialProofExample.question}</Text>
@@ -122,7 +121,7 @@ export default function LandingScreenV2({ navigation }: Props) {
                 {socialProofExample.count} players · {socialProofExample.pulse}
             </Text>
             </View>
-        </TouchableOpacity>
+        </View>
       </View>
 
       {/* Legal Footer */}

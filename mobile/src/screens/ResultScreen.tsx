@@ -143,7 +143,7 @@ export default function ResultScreen({ navigation, route }: Props) {
   const isNeutralClosure = ['plan_changed', 'cancelled_by_host', 'auto_closed', 'abandoned'].includes(closureState ?? '');
   const categoryKey = room?.category ?? room?.creationMeta?.category ?? room?.templateKey ?? 'arrival_time';
   const categoryLabel = prettyCategory(categoryKey);
-  const actualOutcome = formatActualOutcome(initialResult);
+  const actualOutcome = formatActualOutcome(initialResult, room);
   const winningPrediction = winningRow?.predictedReachedTime
     ? new Date(winningRow.predictedReachedTime).toLocaleString()
     : 'Closest valid guess';
@@ -232,10 +232,18 @@ export default function ResultScreen({ navigation, route }: Props) {
     room?.category ?? room?.creationMeta?.category ?? room?.templateKey ?? categoryKey;
   const isGenericRoom = genericCategoryKey === 'open_prediction';
   const benchmarks = deriveArrivalBenchmarks(room);
-  const actualDate =
-    initialResult?.actualOutcome && !initialResult?.actualOptionKey
-      ? new Date(initialResult.actualOutcome)
-      : null;
+  // The finish time arrives as a navigation param only when the user lands here
+  // straight from confirming arrival. Reopening a settled room from Home, My Journeys
+  // or an invite link carries no param, so fall back to the room record we already
+  // fetch — otherwise every actual/difference cell degrades to "Result recorded"
+  // even though the value exists.
+  const actualDate = (() => {
+    if (initialResult?.actualOptionKey) return null;
+    const raw = initialResult?.actualOutcome ?? room?.actualEndTime ?? null;
+    if (!raw) return null;
+    const parsed = new Date(raw);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  })();
   const actualTimeLabel =
     actualDate && !Number.isNaN(actualDate.getTime())
       ? formatClock(actualDate, false)
@@ -342,8 +350,6 @@ export default function ResultScreen({ navigation, route }: Props) {
       : null,
   ].filter(Boolean) as typeof rankingRows;
   const scoreboardRows = [...rankingRows, ...benchmarkRows];
-  const currentUserPrediction = user?.userId ? predictionByUserId.get(user.userId) : null;
-  const myRizzStatus = currentUserPrediction?.auraEligible === false ? 'Rizz-tier · no Aura' : 'Aura eligible';
   const genericOptions =
     Array.isArray(room?.scoringRule?.weatherOptions)
       ? room.scoringRule.weatherOptions.map((option: any) => ({
@@ -460,12 +466,9 @@ export default function ResultScreen({ navigation, route }: Props) {
                   note="Winner reward"
                   accent="#38BDF8"
                 />
-                <ResultStatCard
-                  eyebrow="RIZZ"
-                  value={myRizzStatus}
-                  note="Prediction outcomes do not mint RIZZ"
-                  accent="#C084FC"
-                />
+                {/* The RIZZ tile only ever said RIZZ is not awarded here, which is
+                    noise on the one screen that should be about who won and by how
+                    much. Aura is the currency this result actually moves. */}
                 <ResultStatCard
                   eyebrow="Badge"
                   value={badgeUnlocked}
@@ -735,14 +738,16 @@ function buildReceiptShareText({
   ].join('\n');
 }
 
-function formatActualOutcome(result: any) {
-  if (!result?.actualOutcome) {
-    return 'Result recorded';
-  }
-  if (result.actualOptionKey) {
+function formatActualOutcome(result: any, room?: any) {
+  if (result?.actualOptionKey) {
     return String(result.actualOutcome).replace(/_/g, ' ');
   }
-  return new Date(result.actualOutcome).toLocaleString();
+  // `actualEndTime` on the room is the same finish moment, and it survives a reopen —
+  // "Result recorded" is a last resort for a room that genuinely has no outcome yet.
+  const raw = result?.actualOutcome ?? room?.actualEndTime;
+  if (!raw) return 'Result recorded';
+  const parsed = new Date(raw);
+  return Number.isNaN(parsed.getTime()) ? 'Result recorded' : parsed.toLocaleString();
 }
 
 function buildMomentCardFromResult(result: ResultPayload | undefined, category: string) {

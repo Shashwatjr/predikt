@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import { appAlert } from '../utils/appAlert';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/types';
 import BrandLogo from '../components/BrandLogo';
@@ -27,7 +28,7 @@ export default function RegisterScreen({ navigation }: Props) {
     const normalizedName = name.trim();
     const normalizedEmail = email.trim().toLowerCase();
     const normalizedHandle = prediktHandle.trim();
-    if (!normalizedName || !normalizedEmail || !password) return Alert.alert('Missing fields', 'Fill in all fields.');
+    if (!normalizedName || !normalizedEmail || !password) return appAlert('Missing fields', 'Fill in all fields.');
 
     setLoading(true);
     try {
@@ -45,7 +46,7 @@ export default function RegisterScreen({ navigation }: Props) {
         user: res.data.user,
       });
     } catch (err: unknown) {
-      Alert.alert('Registration failed', getApiErrorMessage(err, 'Please try again.'));
+      appAlert('Registration failed', getApiErrorMessage(err, 'Please try again.'));
     } finally {
       setLoading(false);
     }

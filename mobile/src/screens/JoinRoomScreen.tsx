@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Alert, TouchableOpacity, Share, Linking } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Share, Linking } from 'react-native';
+import { appAlert } from '../utils/appAlert';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -38,7 +39,7 @@ export default function JoinRoomScreen({ navigation, route }: Props) {
 
   async function handleFind(nextCode?: string) {
     const inviteCode = (nextCode ?? code).trim().toUpperCase();
-    if (!inviteCode) return Alert.alert('Enter a code', 'Type the 5-character invite code.');
+    if (!inviteCode) return appAlert('Enter a code', 'Type the 5-character invite code.');
     setLoading(true);
     try {
       const res = await api.get(`/rooms/invite/${inviteCode}`);
@@ -64,7 +65,7 @@ export default function JoinRoomScreen({ navigation, route }: Props) {
       setRoom(preview);
       setCode(inviteCode);
     } catch (error: unknown) {
-      Alert.alert('Room unavailable', getApiErrorMessage(error, 'No room with that invite code. Check it and try again.'));
+      appAlert('Room unavailable', getApiErrorMessage(error, 'No room with that invite code. Check it and try again.'));
     } finally {
       setLoading(false);
     }
@@ -155,7 +156,7 @@ export default function JoinRoomScreen({ navigation, route }: Props) {
         const handle = guestHandle.trim();
         if (!handle) {
           setLoading(false);
-          Alert.alert('Add a name', 'Enter a name so friends can see your guess.');
+          appAlert('Add a name', 'Enter a name so friends can see your guess.');
           return;
         }
         const session = await createGuestSession(handle, room.roomId);
@@ -205,7 +206,7 @@ export default function JoinRoomScreen({ navigation, route }: Props) {
       const target = resolveTarget(joinResponse.data?.nextAction);
       navigation.navigate(target.screen, target.params as never);
     } catch (error: unknown) {
-      Alert.alert('Could not lock it in', getApiErrorMessage(error, 'Please try again.'));
+      appAlert('Could not lock it in', getApiErrorMessage(error, 'Please try again.'));
     } finally {
       setLoading(false);
     }
@@ -267,7 +268,7 @@ export default function JoinRoomScreen({ navigation, route }: Props) {
         title: `Join ${sharePayload.shareTitle}`,
       });
     } catch {
-      Alert.alert('Share unavailable', 'Could not open the share sheet right now.');
+      appAlert('Share unavailable', 'Could not open the share sheet right now.');
     }
   }
 
@@ -276,7 +277,7 @@ export default function JoinRoomScreen({ navigation, route }: Props) {
     try {
       await Linking.openURL(sharePayload.whatsappUrl);
     } catch {
-      Alert.alert('WhatsApp unavailable', 'Could not open WhatsApp right now.');
+      appAlert('WhatsApp unavailable', 'Could not open WhatsApp right now.');
     }
   }
 

@@ -1,6 +1,5 @@
 import React, { useMemo, useState } from 'react';
 import {
-  Alert,
   Linking,
   Platform,
   ScrollView,
@@ -10,6 +9,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { appAlert } from '../utils/appAlert';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -98,13 +98,13 @@ export default function RoomCreatedScreen({ navigation, route }: Props) {
         await navigator.clipboard.writeText(value);
         await trackShare('room_shared', label === 'Invite link' ? 'link' : 'copy');
         setLastCopiedLabel(label);
-        Alert.alert(`${label} copied`, 'Your invite is ready to send.');
+        appAlert(`${label} copied`, 'Your invite is ready to send.');
         return;
       }
       await Share.share({ message: value, title: label });
       await trackShare('room_shared', 'native_share');
     } catch {
-      Alert.alert('Copy unavailable', value);
+      appAlert('Copy unavailable', value);
     }
   }
 
@@ -141,7 +141,7 @@ export default function RoomCreatedScreen({ navigation, route }: Props) {
 
   async function openManualWhatsAppInvite() {
     if (!isValidManualPhone(manualPhone)) {
-      Alert.alert('Invalid phone number', 'Use digits only with an optional + prefix.');
+      appAlert('Invalid phone number', 'Use digits only with an optional + prefix.');
       return;
     }
     await trackShare('room_shared', 'phone_manual');

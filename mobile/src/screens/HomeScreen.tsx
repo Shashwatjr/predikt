@@ -236,13 +236,6 @@ export default function HomeScreen({ navigation, route }: Props) {
       setTodaysTea(nextTea);
       setTeaVisible(true);
       await markTodaysTeaSeen(currentUserId);
-
-      const baseDuration = 3200 + Math.min(3, nextTea.body.length % 4) * 700;
-      teaTimerRef.current = setTimeout(() => {
-        if (active) {
-          setTeaVisible(false);
-        }
-      }, baseDuration);
     }
 
     void maybeShowTodaysTea();
@@ -252,13 +245,23 @@ export default function HomeScreen({ navigation, route }: Props) {
     };
   }, [activePredictions, dashboard?.followingLeaderboard, loading, teaSummary, tourVisible, userId, userName]);
 
+  // Auto-hide is owned by the banner's own visibility, not by the effect that decides
+  // whether to show it. That effect re-runs whenever the dashboard refetches, and its
+  // cleanup used to flip an `active` flag the pending timer closed over — so the timer
+  // fired into a dead closure and the banner stayed up for the whole session.
   useEffect(() => {
+    if (!teaVisible || !todaysTea) return;
+
+    const duration = 3200 + Math.min(3, todaysTea.body.length % 4) * 700;
+    teaTimerRef.current = setTimeout(() => setTeaVisible(false), duration);
+
     return () => {
       if (teaTimerRef.current) {
         clearTimeout(teaTimerRef.current);
+        teaTimerRef.current = null;
       }
     };
-  }, []);
+  }, [teaVisible, todaysTea]);
 
   const journeys = useMemo(() => {
     return [...activePredictions].sort((left, right) => {

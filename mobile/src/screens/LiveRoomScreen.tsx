@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Pressable, ScrollView, StyleSheet, Text, View, Alert, Linking, Platform, Share, useWindowDimensions } from 'react-native';
+import { Animated, Pressable, ScrollView, StyleSheet, Text, View, Linking, Platform, Share, useWindowDimensions } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -119,6 +119,15 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
   const sampledCheckpoints = useRef<Set<number>>(new Set());
   const firedMilestones = useRef<Set<number>>(new Set());
   const viewerCountdownInterval = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Poll responses can land out of order (a slow request issued at t=0 returning after
+  // a fast one issued at t=5s). Each fetcher stamps its request and drops any reply
+  // older than the newest one already applied, so a stale "still live" body can never
+  // overwrite the terminal state that arrived after it.
+  const requestSeq = useRef<Record<string, number>>({});
+  const appliedSeq = useRef<Record<string, number>>({});
+  // Once a room is genuinely over it stays over; polling stops rather than re-asking
+  // a settled room forever.
+  const roomIsTerminal = useRef(false);
   const safePredictions = toArray<RoomPredictionEntry>(predictions);
 
   // Pulsing LIVE dot animation
@@ -139,6 +148,16 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
     fetchCheckpointBoards();
     fetchLiveLeaderboard();
     const interval = setInterval(() => {
+      if (roomIsTerminal.current) {
+        // The room has settled — its state cannot change again, so stop asking.
+        clearInterval(interval);
+        return;
+      }
+      // Only live-state is polled for lifecycle: it is the authoritative source for
+      // status/journeyStatus, and every screen-level derivation prefers it over the
+      // room record. `GET /rooms/:id` carries the full route geometry, so re-fetching
+      // it on the 5s tick would cost hundreds of KB per minute for data that does not
+      // change once the room exists.
       fetchLiveState();
       fetchPredictions();
       fetchCheckpointBoards();
@@ -295,19 +314,40 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
     return () => clearInterval(id);
   }, [safePredictions]);
 
+  /** Stamps an in-flight request; returns false once a newer reply has already landed. */
+  function beginRequest(key: string) {
+    const seq = (requestSeq.current[key] ?? 0) + 1;
+    requestSeq.current[key] = seq;
+    return () => {
+      if (seq < (appliedSeq.current[key] ?? 0)) return false;
+      appliedSeq.current[key] = seq;
+      return true;
+    };
+  }
+
   async function fetchRoom() {
+    const isFresh = beginRequest('room');
     try {
       const res = await api.get(`/rooms/${roomId}`);
+      if (!isFresh()) return;
       setRoom(res.data);
+      if (isTerminalJourneyState(res.data?.status, res.data?.journeyStatus)) {
+        roomIsTerminal.current = true;
+      }
     } catch {
       // Live state can still render if room details are temporarily unavailable.
     }
   }
 
   async function fetchLiveState() {
+    const isFresh = beginRequest('liveState');
     try {
       const res = await api.get(`/rooms/${roomId}/live-state`);
+      if (!isFresh()) return;
       setLiveState(res.data);
+      if (isTerminalJourneyState(res.data?.status, res.data?.journeyStatus)) {
+        roomIsTerminal.current = true;
+      }
       if (!res.data.startTime && res.data.defaultStartDelayMinutes) {
         setStartDelayMinutes(res.data.defaultStartDelayMinutes);
       }
@@ -321,8 +361,10 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
   }
 
   async function fetchCheckpointBoards() {
+    const isFresh = beginRequest('checkpoints');
     try {
       const res = await api.get(`/rooms/${roomId}/checkpoint-leaderboards`);
+      if (!isFresh()) return;
       const data = (res.data ?? {}) as Record<string, CheckpointBoard>;
       const boards: Record<number, CheckpointBoard | undefined> = {};
       for (const [key, value] of Object.entries(data)) boards[Number(key)] = value;
@@ -333,8 +375,10 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
   }
 
   async function fetchLiveLeaderboard() {
+    const isFresh = beginRequest('liveLeaderboard');
     try {
       const res = await api.get(`/rooms/${roomId}/live-leaderboard`);
+      if (!isFresh()) return;
       const payload = res.data as Partial<LiveLeaderboardData> | null;
       if (!payload || typeof payload !== 'object') {
         setLiveLeaderboard(null);
@@ -383,8 +427,10 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
   }
 
   async function fetchPredictions() {
+    const isFresh = beginRequest('predictions');
     try {
       const res = await api.get(`/rooms/${roomId}/predictions`);
+      if (!isFresh()) return;
       const rows = (res.data ?? []) as RoomPredictionEntry[];
       setPredictions(rows);
       // Room-wide reveal window: seconds until the latest edit deadline elapses
@@ -426,7 +472,7 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
       });
       fetchLiveState();
     } catch (err: unknown) {
-      Alert.alert('Start failed', getApiErrorMessage(err, 'Could not start this room.'));
+      appAlert('Start failed', getApiErrorMessage(err, 'Could not start this room.'));
     } finally {
       setStarting(false);
     }
@@ -492,7 +538,7 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
       const res = await api.post(`/rooms/${roomId}/journey/cancel`, { reasonCode: 'plan_changed' });
       navigation.navigate('Result', { roomId, result: res.data });
     } catch (err: unknown) {
-      Alert.alert('Cancel failed', getApiErrorMessage(err, 'Could not close this journey fairly.'));
+      appAlert('Cancel failed', getApiErrorMessage(err, 'Could not close this journey fairly.'));
     } finally {
       setCancelling(false);
     }
@@ -813,7 +859,7 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
           onHowItWorks={() => navigation.navigate('Help')}
           onGhostModeDetails={() => navigation.navigate('Help')}
           onEnableNotifications={() =>
-            Alert.alert(
+            appAlert(
               'Notifications',
               "You're all set — we'll surface the reveal here the moment tracking begins.",
             )
@@ -895,7 +941,7 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
     if (!inviteCode) return;
     const copied = await copyToClipboard(inviteCode);
     if (copied) {
-      Alert.alert('Code copied', 'Your invite code is ready to paste.');
+      appAlert('Code copied', 'Your invite code is ready to paste.');
       return;
     }
     await Share.share({ message: inviteCode, title: 'Invite code' });

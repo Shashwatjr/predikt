@@ -40,11 +40,12 @@ type Props = {
   activeLobbies: ActiveLobby[];
 };
 
+// Journey is the whole product right now, so the rail only offers what exists.
+// "Streams" and "Messages" had no destination — they read as features a signed-out
+// visitor could try, and tapping them did nothing.
 const NAV_ITEMS: NavItem[] = [
   { key: 'home', label: 'Home', icon: '⌂' },
-  { key: 'lobbies', label: 'Lobbies', icon: '◎' },
-  { key: 'streams', label: 'Streams', icon: '▶' },
-  { key: 'messages', label: 'Messages', icon: '✉' },
+  { key: 'lobbies', label: 'Join a Journey', icon: '◎' },
 ];
 
 const DESKTOP_BREAKPOINT = 1024;
@@ -156,7 +157,10 @@ export default function LandingDashboardLayout({
       </View>
 
       <View style={styles.rightRail}>
+        {/* A titled panel with nothing in it reads as something that failed to load,
+            so each panel appears only once it has rows to show. */}
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.rightScroll}>
+          {onlineFriends.length ? (
           <PanelCard title="Online Friends" styles={styles}>
             <View style={styles.friendList}>
               {onlineFriends.map((friend) => (
@@ -176,7 +180,9 @@ export default function LandingDashboardLayout({
               ))}
             </View>
           </PanelCard>
+          ) : null}
 
+          {activeLobbies.length ? (
           <PanelCard title="Active Game Lobbies" styles={styles}>
             <View style={styles.lobbyList}>
               {activeLobbies.map((lobby) => (
@@ -213,6 +219,7 @@ export default function LandingDashboardLayout({
               ))}
             </View>
           </PanelCard>
+          ) : null}
         </ScrollView>
       </View>
     </View>

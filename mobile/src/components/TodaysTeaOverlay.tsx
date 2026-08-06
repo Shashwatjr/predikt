@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { Animated, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { motion, palette } from '../theme/designSystem';
 import { TodaysTea } from '../utils/todaysTea';
@@ -35,41 +35,48 @@ export default function TodaysTeaOverlay({ visible, tea, onClose }: Props) {
     ]).start();
   }, [opacity, translateY, visible]);
 
-  if (!tea) return null;
+  if (!tea || !visible) return null;
 
+  // Today's Tea is a passing banner, not a decision the user has to clear. It must
+  // never sit between them and Home's actions, so it is a `box-none` overlay rather
+  // than a Modal — Modal renders a full-viewport pointer-capturing layer on both
+  // react-native-web and native, which swallowed every tap on Home underneath it.
   return (
-    <Modal visible={visible} transparent animationType="none" statusBarTranslucent>
-      <View style={styles.scrim} pointerEvents="box-none">
-        <Animated.View style={[styles.cardWrap, { opacity, transform: [{ translateY }] }]}>
-          <LinearGradient colors={tea.accent} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.card}>
-            <View style={styles.topRow}>
-              <View style={styles.eyebrowRow}>
-                <Text style={styles.icon}>{tea.icon}</Text>
-                <Text style={styles.eyebrow}>TODAY'S TEA</Text>
-              </View>
-              <Pressable accessibilityRole="button" onPress={onClose} style={styles.dismiss}>
-                <Text style={styles.dismissText}>Dismiss</Text>
-              </Pressable>
+    <View style={styles.scrim} pointerEvents="box-none">
+      <Animated.View style={[styles.cardWrap, { opacity, transform: [{ translateY }] }]}>
+        <LinearGradient colors={tea.accent} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.card}>
+          <View style={styles.topRow}>
+            <View style={styles.eyebrowRow}>
+              <Text style={styles.icon}>{tea.icon}</Text>
+              <Text style={styles.eyebrow}>TODAY'S TEA</Text>
             </View>
-            <Text style={styles.label}>{tea.label}</Text>
-            <Text style={styles.headline}>{tea.headline}</Text>
-            <Text style={styles.body}>{tea.body}</Text>
-            <Text style={styles.kicker}>{tea.kicker}</Text>
-          </LinearGradient>
-        </Animated.View>
-      </View>
-    </Modal>
+            <Pressable accessibilityRole="button" onPress={onClose} style={styles.dismiss}>
+              <Text style={styles.dismissText}>Dismiss</Text>
+            </Pressable>
+          </View>
+          <Text style={styles.label}>{tea.label}</Text>
+          <Text style={styles.headline}>{tea.headline}</Text>
+          <Text style={styles.body}>{tea.body}</Text>
+          <Text style={styles.kicker}>{tea.kicker}</Text>
+        </LinearGradient>
+      </Animated.View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   scrim: {
-    flex: 1,
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     justifyContent: 'flex-start',
     alignItems: 'center',
     paddingTop: 64,
     paddingHorizontal: 16,
-    backgroundColor: 'rgba(3,8,22,0.16)',
+    // No dimming tint: the screen behind stays live and tappable, so shading it
+    // would promise a modality that no longer exists.
   },
   cardWrap: {
     width: '100%',
