@@ -155,12 +155,7 @@ export class UsersService {
             name: true,
             prediktHandle: true,
             weeklyAura: true,
-            rewardAccount: {
-              select: {
-                rizzBalance: true,
-                gemBalance: true,
-              },
-            },
+            cloutBalance: true,
           },
         },
       },

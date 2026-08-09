@@ -11,6 +11,7 @@ import { LifecycleModule } from './lifecycle/lifecycle.module';
 import { LiveProgressModule } from './live-progress/live-progress.module';
 import { LeaderboardsModule } from './leaderboards/leaderboards.module';
 import { UsersModule } from './users/users.module';
+import { DropsModule } from './drops/drops.module';
 import { AuditModule } from './audit/audit.module';
 import { CreatorsModule } from './creators/creators.module';
 import { PlansModule } from './plans/plans.module';
@@ -50,6 +51,7 @@ import { RewardsModule } from './rewards/rewards.module';
     LiveProgressModule,
     LeaderboardsModule,
     UsersModule,
+    DropsModule,
     CreatorsModule,
     PlansModule,
     PrivacyModule,

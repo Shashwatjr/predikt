@@ -6,17 +6,14 @@ export const SAFE_PUBLIC_USER_SELECT = {
   avatarKey: true,
   totalAura: true,
   weeklyAura: true,
-  rewardAccount: {
-    select: {
-      auraBalance: true,
-      rizzBalance: true,
-      gemBalance: true,
-      lifetimeAura: true,
-      lifetimeRizz: true,
-      lifetimeGems: true,
+  cloutBalance: true,
+  creditBalance: true,
+  winsCount: true,
+  userFlexes: {
+    include: {
+      flex: true,
     },
   },
-  winsCount: true,
   creatorProfile: {
     select: {
       displayName: true,
@@ -38,16 +35,9 @@ export const SAFE_SELF_USER_SELECT = {
   selectedBackgroundKey: true,
   totalAura: true,
   weeklyAura: true,
-  rewardAccount: {
-    select: {
-      auraBalance: true,
-      rizzBalance: true,
-      gemBalance: true,
-      lifetimeAura: true,
-      lifetimeRizz: true,
-      lifetimeGems: true,
-    },
-  },
+  cloutBalance: true,
+  creditBalance: true,
+  lifetimeCloutEarned: true,
   predictionAccuracyScore: true,
   roomsCreatedCount: true,
   predictionsMadeCount: true,
@@ -75,7 +65,6 @@ export function publicDisplayName(user: any) {
 
 export function safePublicUser(user: any): any {
   if (!user) return null;
-  const rewardAccount = user.rewardAccount ?? null;
   return {
     // Privacy boundary: public and participant payloads keep identity lightweight and
     // intentionally exclude private contact data such as email and phone.
@@ -85,12 +74,10 @@ export function safePublicUser(user: any): any {
     avatarKey: user.avatarKey ?? user.profileImage ?? null,
     totalAura: user.totalAura ?? 0,
     weeklyAura: user.weeklyAura ?? 0,
-    rewards: {
-      aura: rewardAccount?.auraBalance ?? user.totalAura ?? 0,
-      rizz: rewardAccount?.rizzBalance ?? 0,
-      gems: rewardAccount?.gemBalance ?? 0,
-    },
+    cloutBalance: user.cloutBalance ?? 0,
+    creditBalance: user.creditBalance ?? 0,
     winsCount: user.winsCount ?? 0,
+    badges: (user.userFlexes ?? []).map((entry: any) => entry.flex?.flexName).filter(Boolean),
     creator: user.creatorProfile
       ? {
           displayName: user.creatorProfile.displayName ?? publicDisplayName(user),
@@ -104,7 +91,6 @@ export function safePublicUser(user: any): any {
 
 export function safeSelfUser(user: any): any {
   if (!user) return null;
-  const rewardAccount = user.rewardAccount ?? null;
   return {
     userId: user.userId,
     name: user.name,
@@ -115,20 +101,9 @@ export function safeSelfUser(user: any): any {
     selectedBackgroundKey: user.selectedBackgroundKey ?? null,
     totalAura: user.totalAura ?? 0,
     weeklyAura: user.weeklyAura ?? 0,
-    rewards: {
-      aura: {
-        balance: rewardAccount?.auraBalance ?? user.totalAura ?? 0,
-        lifetime: rewardAccount?.lifetimeAura ?? user.totalAura ?? 0,
-      },
-      rizz: {
-        balance: rewardAccount?.rizzBalance ?? 0,
-        lifetime: rewardAccount?.lifetimeRizz ?? 0,
-      },
-      gems: {
-        balance: rewardAccount?.gemBalance ?? 0,
-        lifetime: rewardAccount?.lifetimeGems ?? 0,
-      },
-    },
+    cloutBalance: user.cloutBalance ?? 0,
+    creditBalance: user.creditBalance ?? 0,
+    lifetimeCloutEarned: user.lifetimeCloutEarned ?? 0,
     predictionAccuracyScore: user.predictionAccuracyScore ?? 0,
     roomsCreatedCount: user.roomsCreatedCount ?? 0,
     predictionsMadeCount: user.predictionsMadeCount ?? 0,

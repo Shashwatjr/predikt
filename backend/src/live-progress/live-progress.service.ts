@@ -306,12 +306,8 @@ export class LiveProgressService {
     const visibleStartTime = room.visibleMovementStartTime ?? room.startTime;
     const viewerShouldStillWait = !!visibleStartTime && now < visibleStartTime;
     const timedProgress = this.buildTimedProgress(room, now);
+    const milestoneBanner = this.buildMilestoneBanner(timedProgress.progressPercentage);
     const derivedEtaMinutes = timedProgress.etaMinutes;
-    const displayedProgressPercentage = viewerShouldStillWait
-      ? 0
-      : (delayedEvent?.progressPercentage ?? timedProgress.progressPercentage);
-    // Banner must match what the client shows — not raw timed progress while delay zeros the bar.
-    const milestoneBanner = this.buildMilestoneBanner(displayedProgressPercentage);
 
     // Privacy boundary: viewer-facing live state uses safety-delayed progress and must never expose raw or exact GPS coordinates.
     return {
@@ -341,7 +337,7 @@ export class LiveProgressService {
       displayedProgressTimestamp: delayedEvent?.createdAt?.toISOString() ?? null,
       safetyDelayMinutes: room.safetyDelayMinutes,
       waitingForDelayedStart: viewerShouldStillWait,
-      progressPercentage: displayedProgressPercentage,
+      progressPercentage: viewerShouldStillWait ? 0 : (delayedEvent?.progressPercentage ?? timedProgress.progressPercentage),
       etaMinutes: viewerShouldStillWait ? null : (delayedEvent?.etaMinutes ?? derivedEtaMinutes),
       locationDisplayMode: room.locationDisplayMode,
       currentMilestone: delayedEvent?.currentMilestone ?? null,

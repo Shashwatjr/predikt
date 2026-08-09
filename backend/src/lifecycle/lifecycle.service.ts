@@ -27,6 +27,7 @@ import { RewardReason, GEM_BADGE_AMOUNTS } from '../rewards/reward.constants';
 const TERMINAL_STATUSES = ['completed', 'cancelled'] as const;
 const DEFAULT_START_DELAY_MINUTES = 3;
 const AURA_BY_RANK: Record<number, number> = { 1: 100, 2: 70, 3: 40 };
+const CLOUT_BY_RANK: Record<number, number> = { 1: 30, 2: 20, 3: 10 };
 const CONFIDENCE_MULTIPLIER: Record<string, number> = {
   low: 0.75,
   medium: 1,
@@ -35,6 +36,8 @@ const CONFIDENCE_MULTIPLIER: Record<string, number> = {
 };
 const MULTIPLE_CHOICE_WIN_AURA = 100;
 const MULTIPLE_CHOICE_PARTICIPATION_AURA = 5;
+const MULTIPLE_CHOICE_WIN_CLOUT = 30;
+const MULTIPLE_CHOICE_PARTICIPATION_CLOUT = 5;
 const DEFAULT_EXPECTED_DURATION_SECONDS = 60 * 60;
 const INACTIVITY_THRESHOLD_SECONDS = 20 * 60;
 const START_VISIBILITY_DELAY_MS = 2 * 60 * 1000;
@@ -701,7 +704,7 @@ export class LifecycleService {
         : null;
     const ORACLE_ID = '__oracle__';
 
-    // When Oracle is present, humans who beat it earn the existing beat-AI bonus.
+    // When Oracle is present, humans who beat it earn the existing beat-AI bonus/flex.
     const aiBenchmarkTime = oracleGuess?.arrivalTime ?? milestone.room.aiPredictedTime;
     const aiDifferenceMinutes = aiBenchmarkTime
       ? Math.abs((aiBenchmarkTime.getTime() - actualReachedTime.getTime()) / 60000)
@@ -760,6 +763,7 @@ export class LifecycleService {
           differenceFromActualSeconds: entry.differenceFromActualSeconds,
           rankForMilestone: rank,
           totalAuraAwarded: 0,
+          cloutAwarded: 0,
         });
         continue;
       }
@@ -781,10 +785,11 @@ export class LifecycleService {
           Number(milestone.auraMultiplier) *
           confidenceMultiplier,
       );
+      const cloutAwarded = (CLOUT_BY_RANK[rank] ?? 5) + (tier.name === 'exact_second' ? 10 : 0);
 
       await this.prisma.$transaction(async (tx) => {
         // Result integrity: write score evidence before balances so post-room audit trails
-        // can explain how each user's Aura was derived.
+        // can explain how each user's Aura and Clout were derived.
         await tx.milestonePrediction.update({
           where: { predictionId: prediction.predictionId },
           data: {
@@ -794,6 +799,7 @@ export class LifecycleService {
             baseAura,
             rankBonusAura: dotBonusAura + beatAiBonus,
             totalAuraAwarded,
+            cloutAwarded,
             lockedStatus: true,
           },
         });
@@ -808,6 +814,17 @@ export class LifecycleService {
           },
         });
 
+        await tx.cloutTransaction.create({
+          data: {
+            userId: prediction.userId,
+            roomId,
+            milestoneId,
+            amount: cloutAwarded,
+            transactionType: 'earn',
+            reason: `Clout from milestone ${milestone.milestoneName}`,
+          },
+        });
+
         const existingResult = await tx.roomResult.findUnique({
           where: { roomId_userId: { roomId, userId: prediction.userId } },
         });
@@ -817,6 +834,7 @@ export class LifecycleService {
             where: { roomId_userId: { roomId, userId: prediction.userId } },
             data: {
               totalRoomAura: { increment: totalAuraAwarded },
+              totalRoomClout: { increment: cloutAwarded },
               milestonesWon: rank === 1 ? { increment: 1 } : undefined,
             },
           });
@@ -826,10 +844,22 @@ export class LifecycleService {
               roomId,
               userId: prediction.userId,
               totalRoomAura: totalAuraAwarded,
+              totalRoomClout: cloutAwarded,
               milestonesWon: rank === 1 ? 1 : 0,
             },
           });
         }
+
+        // Clout stays a direct increment (frozen legacy currency). Aura now flows
+        // through RewardService so it is idempotent, ledgered, and mirrored into
+        // RewardAccount — this closes the historic double-grant-on-retry gap.
+        await tx.user.update({
+          where: { userId: prediction.userId },
+          data: {
+            cloutBalance: { increment: cloutAwarded },
+            lifetimeCloutEarned: { increment: cloutAwarded },
+          },
+        });
 
         if (totalAuraAwarded > 0) {
           await this.rewardService.grant({
@@ -844,6 +874,17 @@ export class LifecycleService {
             tx,
           });
         }
+
+        if (tier.flexType) {
+          await this.ensureFlex(tx, prediction.userId, tier.flexType, roomId, milestoneId);
+        }
+        if (rank === 1) {
+          await this.ensureDropAwards(tx, roomId, prediction.userId, 'milestone_winner');
+        }
+        if (beatAiBonus > 0) {
+          await this.ensureFlex(tx, prediction.userId, 'beat_ai', roomId, milestoneId);
+          await this.ensureDropAwards(tx, roomId, prediction.userId, 'beat_ai');
+        }
       });
 
       leaderboard.push({
@@ -855,13 +896,15 @@ export class LifecycleService {
         differenceFromActualMinutes,
         differenceFromActualSeconds: entry.differenceFromActualSeconds,
         scoreTier: tier.name,
+        dotBonus: tier.flexType,
         rankForMilestone: rank,
         totalAuraAwarded,
+        cloutAwarded,
       });
     }
 
     // v2: persist accuracy for Late-tier + creator guesses so results can show and tag
-    // them, but award no Aura and leave them out of the ranked leaderboard.
+    // them, but award no Aura/Clout and leave them out of the ranked leaderboard.
     for (const prediction of ineligiblePredictions) {
       const diffSeconds = Math.abs(
         Math.round((prediction.predictedReachedTime.getTime() - actualReachedTime.getTime()) / 1000),
@@ -873,6 +916,7 @@ export class LifecycleService {
           differenceFromActualMinutes: diffSeconds / 60,
           rankForMilestone: null,
           totalAuraAwarded: 0,
+          cloutAwarded: 0,
           lockedStatus: true,
         },
       });
@@ -899,6 +943,9 @@ export class LifecycleService {
       const totalAuraAwarded = isWinner
         ? MULTIPLE_CHOICE_WIN_AURA
         : MULTIPLE_CHOICE_PARTICIPATION_AURA;
+      const cloutAwarded = isWinner
+        ? MULTIPLE_CHOICE_WIN_CLOUT
+        : MULTIPLE_CHOICE_PARTICIPATION_CLOUT;
 
       await this.prisma.$transaction(async (tx) => {
         await tx.milestonePrediction.update({
@@ -910,6 +957,7 @@ export class LifecycleService {
             baseAura: totalAuraAwarded,
             rankBonusAura: 0,
             totalAuraAwarded,
+            cloutAwarded,
             lockedStatus: true,
           },
         });
@@ -926,17 +974,32 @@ export class LifecycleService {
           },
         });
 
+        await tx.cloutTransaction.create({
+          data: {
+            userId: prediction.userId,
+            roomId,
+            milestoneId,
+            amount: cloutAwarded,
+            transactionType: 'earn',
+            reason: isWinner
+              ? 'Clout from matching the declared outcome'
+              : 'Clout for room participation',
+          },
+        });
+
         await tx.roomResult.upsert({
           where: { roomId_userId: { roomId, userId: prediction.userId } },
           create: {
             roomId,
             userId: prediction.userId,
             totalRoomAura: totalAuraAwarded,
+            totalRoomClout: cloutAwarded,
             milestonesWon: isWinner ? 1 : 0,
             overallRank: rank,
           },
           update: {
             totalRoomAura: { increment: totalAuraAwarded },
+            totalRoomClout: { increment: cloutAwarded },
             milestonesWon: isWinner ? { increment: 1 } : undefined,
             overallRank: rank,
           },
@@ -945,6 +1008,8 @@ export class LifecycleService {
         await tx.user.update({
           where: { userId: prediction.userId },
           data: {
+            cloutBalance: { increment: cloutAwarded },
+            lifetimeCloutEarned: { increment: cloutAwarded },
             winsCount: isWinner ? { increment: 1 } : undefined,
           },
         });
@@ -965,6 +1030,7 @@ export class LifecycleService {
 
         if (isWinner) {
           await this.grantFirstWinGems(prediction.userId, roomId, tx);
+          await this.ensureDropAwards(tx, roomId, prediction.userId, 'milestone_winner');
         }
       });
 
@@ -977,6 +1043,7 @@ export class LifecycleService {
         actualOptionKey,
         rankForMilestone: rank,
         totalAuraAwarded,
+        cloutAwarded,
       });
     }
 
@@ -1007,21 +1074,54 @@ export class LifecycleService {
         where: { roomResultId: result.roomResultId },
         data: { overallRank: rank },
       });
+
+      await this.prisma.cloutTransaction.create({
+        data: {
+          userId: result.userId,
+          roomId,
+          amount: 10,
+          transactionType: 'earn',
+          reason: 'Stayed active until room results',
+        },
+      });
+
+      await this.prisma.user.update({
+        where: { userId: result.userId },
+        data: {
+          cloutBalance: { increment: 10 },
+          lifetimeCloutEarned: { increment: 10 },
+        },
+      });
     }
 
     const winner = results[0];
     if (winner && room?.answerType !== 'multiple_choice') {
       await this.prisma.$transaction(async (tx) => {
+        await tx.cloutTransaction.create({
+          data: {
+            userId: winner.userId,
+            roomId,
+            amount: 150,
+            transactionType: 'earn',
+            reason: 'Overall room winner bonus',
+          },
+        });
         await tx.user.update({
           where: { userId: winner.userId },
           data: {
+            cloutBalance: { increment: 150 },
+            lifetimeCloutEarned: { increment: 150 },
             winsCount: { increment: 1 },
           },
         });
         await this.grantFirstWinGems(winner.userId, roomId, tx);
+        await this.ensureFlex(tx, winner.userId, 'room_champion', roomId);
+        await this.ensureDropAwards(tx, roomId, winner.userId, 'overall_winner');
       });
     }
 
+    await this.awardMilestoneMasterFlex(roomId);
+    await this.awardResultDeclaredCredits(roomId, creatorUserId);
     await this.grantRematchRizz(room, results);
     await this.notificationsService.notifyRoomMembers({
       roomId,
@@ -1159,48 +1259,38 @@ export class LifecycleService {
             user: safePublicUser(winner.user),
             name: winner.user.prediktHandle ? `@${winner.user.prediktHandle}` : winner.user.name,
             totalRoomAura: winner.totalRoomAura,
+            totalRoomClout: winner.totalRoomClout,
             overallRank: 1,
           }
         : null,
-      rankings: (
-        await this.prisma.roomResult.findMany({
-          where: { roomId },
-          include: { user: { select: SAFE_PUBLIC_USER_SELECT } },
-          orderBy: { overallRank: 'asc' },
-        })
-      ).map((entry) => ({
-        roomResultId: entry.roomResultId,
-        roomId: entry.roomId,
-        userId: entry.userId,
-        totalRoomAura: entry.totalRoomAura,
-        milestonesWon: entry.milestonesWon,
-        overallRank: entry.overallRank,
-        createdAt: entry.createdAt,
-        user: safePublicUser(entry.user),
-      })),
+      rankings: await this.prisma.roomResult.findMany({
+        where: { roomId },
+        include: { user: { select: SAFE_PUBLIC_USER_SELECT } },
+        orderBy: { overallRank: 'asc' },
+      }),
     };
   }
 
   private scoreTier(diffSeconds: number) {
     if (diffSeconds === 0) {
-      return { name: 'exact_second', bonusAura: 50 };
+      return { name: 'exact_second', bonusAura: 50, flexType: 'dot_master' };
     }
     if (diffSeconds <= 10) {
-      return { name: 'within_10_sec', bonusAura: 35 };
+      return { name: 'within_10_sec', bonusAura: 35, flexType: 'near_perfect' };
     }
     if (diffSeconds <= 30) {
-      return { name: 'within_30_sec', bonusAura: 25 };
+      return { name: 'within_30_sec', bonusAura: 25, flexType: 'sharp_shot' };
     }
     if (diffSeconds <= 60) {
-      return { name: 'within_1_min', bonusAura: 15 };
+      return { name: 'within_1_min', bonusAura: 15, flexType: 'dot_hunter' };
     }
     if (diffSeconds <= 120) {
-      return { name: 'within_2_min', bonusAura: 10 };
+      return { name: 'within_2_min', bonusAura: 10, flexType: null };
     }
     if (diffSeconds <= 300) {
-      return { name: 'within_5_min', bonusAura: 5 };
+      return { name: 'within_5_min', bonusAura: 5, flexType: null };
     }
-    return { name: 'outside_5_min', bonusAura: 0 };
+    return { name: 'outside_5_min', bonusAura: 0, flexType: null };
   }
 
   private buildMomentCardCopy(category: string) {
@@ -1231,6 +1321,32 @@ export class LifecycleService {
           shareText: 'Route Oracle unlocked. Closest guess wins Aura.',
         };
     }
+  }
+
+  private async awardResultDeclaredCredits(roomId: string, creatorUserId: string) {
+    const idempotencyKey = `result_declared:${roomId}:${creatorUserId}`;
+    const existing = await this.prisma.creditLedger.findUnique({
+      where: { idempotencyKey },
+    });
+    if (existing) return;
+    // Credit integrity: idempotency protects creators from duplicate rewards if result
+    // declaration is retried after a partial failure or client timeout.
+    const updatedUser = await this.prisma.user.update({
+      where: { userId: creatorUserId },
+      data: { creditBalance: { increment: 15 } },
+    });
+    await this.prisma.creditLedger.create({
+      data: {
+        userId: creatorUserId,
+        eventType: 'result_declared',
+        delta: 15,
+        balanceAfter: updatedUser.creditBalance,
+        sourceId: roomId,
+        sourceType: 'room',
+        idempotencyKey,
+        metadata: { label: 'Result declared credit bonus' },
+      },
+    });
   }
 
   /**
@@ -1296,6 +1412,46 @@ export class LifecycleService {
     });
   }
 
+  private async awardMilestoneMasterFlex(roomId: string) {
+    const top = await this.prisma.roomResult.findMany({
+      where: { roomId },
+      orderBy: { milestonesWon: 'desc' },
+      take: 1,
+    });
+    if (!top[0] || top[0].milestonesWon <= 0) return;
+
+    await this.prisma.$transaction(async (tx) => {
+      await this.ensureFlex(tx, top[0].userId, 'milestone_master', roomId);
+    });
+  }
+
+  private async ensureDropAwards(tx: any, roomId: string, userId: string, ruleType: string) {
+    const rules = await tx.roomDropRule.findMany({
+      where: { roomId, ruleType },
+      include: { drop: true },
+    });
+
+    for (const rule of rules) {
+      const existingWinners = await tx.userDrop.count({
+        where: { dropId: rule.dropId, roomId },
+      });
+      if (existingWinners >= rule.maxWinners) continue;
+
+      const alreadyUnlocked = await tx.userDrop.findFirst({
+        where: { userId, dropId: rule.dropId, roomId },
+      });
+      if (alreadyUnlocked) continue;
+
+      await tx.userDrop.create({
+        data: {
+          userId,
+          dropId: rule.dropId,
+          roomId,
+        },
+      });
+    }
+  }
+
   private didWinnerBeatBot(
     winnerPrediction: { differenceFromActualSeconds?: number | null } | null | undefined,
     milestone: { actualReachedTime?: Date | null } | null | undefined,
@@ -1310,6 +1466,33 @@ export class LifecycleService {
       return (winnerPrediction.differenceFromActualSeconds ?? 999) < oracleMinutes * 60;
     }
     return (winnerPrediction.differenceFromActualSeconds ?? 999) <= 120;
+  }
+
+  private async ensureFlex(
+    tx: any,
+    userId: string,
+    flexType: string,
+    roomId?: string,
+    milestoneId?: string,
+  ) {
+    const flex = await tx.flex.upsert({
+      where: { flexName: flexType },
+      update: {},
+      create: {
+        flexName: flexType,
+        flexType,
+        description: `Earned for ${flexType.replace(/_/g, ' ')}`,
+      },
+    });
+
+    const exists = await tx.userFlex.findFirst({
+      where: { userId, flexId: flex.flexId, roomId: roomId ?? null, milestoneId: milestoneId ?? null },
+    });
+    if (!exists) {
+      await tx.userFlex.create({
+        data: { userId, flexId: flex.flexId, roomId, milestoneId },
+      });
+    }
   }
 
   private async getCreatorRoom(roomId: string, user: User) {
@@ -1495,6 +1678,36 @@ export class LifecycleService {
     ).filter((userId) => userId !== room.creatorUserId);
 
     for (const userId of participantIds) {
+      const idempotencyKey = `journey_closure_compensation:${roomId}:${userId}`;
+      const existing = await this.prisma.creditLedger.findUnique({ where: { idempotencyKey } });
+      if (existing) continue;
+      const todayCount = await this.prisma.creditLedger.count({
+        where: {
+          userId,
+          eventType: 'journey_closure_compensation',
+          createdAt: { gte: new Date(new Date().toISOString().slice(0, 10)) },
+        },
+      });
+      if (todayCount >= 3) continue;
+
+      const updatedUser = await this.prisma.user.update({
+        where: { userId },
+        data: {
+          creditBalance: { increment: 2 },
+        },
+      });
+      await this.prisma.creditLedger.create({
+        data: {
+          userId,
+          eventType: 'journey_closure_compensation',
+          delta: 2,
+          balanceAfter: updatedUser.creditBalance,
+          sourceId: roomId,
+          sourceType: 'room',
+          idempotencyKey,
+          metadata: { label: 'Journey closure participation recognition', reason },
+        },
+      });
       // Aura compensation now flows through RewardService (idempotent + ledgered).
       await this.rewardService.grant({
         userId,

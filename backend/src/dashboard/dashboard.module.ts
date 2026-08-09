@@ -3,10 +3,9 @@ import { DashboardController } from './dashboard.controller';
 import { DashboardService } from './dashboard.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { LifecycleModule } from '../lifecycle/lifecycle.module';
-import { RewardsModule } from '../rewards/rewards.module';
 
 @Module({
-  imports: [PrismaModule, LifecycleModule, RewardsModule],
+  imports: [PrismaModule, LifecycleModule],
   controllers: [DashboardController],
   providers: [DashboardService],
 })

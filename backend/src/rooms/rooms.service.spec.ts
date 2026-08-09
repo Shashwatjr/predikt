@@ -250,7 +250,7 @@ describe('RoomsService memberships', () => {
     });
   });
 
-  it('cancels an active room and hides it from the creator dashboard when the creator opts in', async () => {
+  it('cancels an active room and hides it from the creator dashboard when deleted', async () => {
     const update = jest.fn();
     const updateMany = jest.fn();
     const upsert = jest.fn();
@@ -271,7 +271,7 @@ describe('RoomsService memberships', () => {
     } as any;
     const service = new RoomsService(prisma, auditService, notificationsService, { grant: jest.fn().mockResolvedValue({ applied: true }) } as any);
 
-    const removed = await service.remove('room-2', { userId: 'creator-1' } as any, true);
+    const removed = await service.remove('room-2', { userId: 'creator-1' } as any);
 
     expect(prisma.$transaction).toHaveBeenCalled();
     expect(update).toHaveBeenCalledWith(
@@ -297,87 +297,6 @@ describe('RoomsService memberships', () => {
       removedFromDashboard: true,
       cancelledForEveryone: true,
     });
-  });
-
-  it('leaves an active room running when the creator only clears their own view', async () => {
-    const update = jest.fn();
-    const upsert = jest.fn().mockResolvedValue({});
-    const prisma = {
-      predictionRoom: {
-        findUnique: jest.fn().mockResolvedValue({
-          roomId: 'room-2',
-          roomTitle: 'Morning Commute',
-          creatorUserId: 'creator-1',
-          status: 'live',
-          journeyStatus: 'live',
-        }),
-        update,
-      },
-      userRoomPreference: { upsert },
-      $transaction: jest.fn().mockResolvedValue(undefined),
-    } as any;
-    const service = new RoomsService(prisma, auditService, notificationsService, { grant: jest.fn().mockResolvedValue({ applied: true }) } as any);
-
-    const removed = await service.remove('room-2', { userId: 'creator-1' } as any);
-
-    expect(upsert).toHaveBeenCalled();
-    expect(update).not.toHaveBeenCalled();
-    expect(prisma.$transaction).not.toHaveBeenCalled();
-    expect(notificationsService.notifyRoomMembers).not.toHaveBeenCalled();
-    expect(removed).toMatchObject({ removedFromDashboard: true, cancelledForEveryone: false });
-  });
-
-  it('lets a participant clear an active room from their own dashboard', async () => {
-    const update = jest.fn();
-    const upsert = jest.fn().mockResolvedValue({});
-    const prisma = {
-      predictionRoom: {
-        findUnique: jest.fn().mockResolvedValue({
-          roomId: 'room-2',
-          roomTitle: 'Morning Commute',
-          creatorUserId: 'creator-1',
-          status: 'live',
-          journeyStatus: 'live',
-        }),
-        update,
-      },
-      roomMembership: {
-        findUnique: jest.fn().mockResolvedValue({ status: 'joined' }),
-      },
-      userRoomPreference: { upsert },
-      $transaction: jest.fn().mockResolvedValue(undefined),
-    } as any;
-    const service = new RoomsService(prisma, auditService, notificationsService, { grant: jest.fn().mockResolvedValue({ applied: true }) } as any);
-
-    const removed = await service.remove('room-2', { userId: 'guest-9' } as any);
-
-    expect(upsert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { userId_roomId: { userId: 'guest-9', roomId: 'room-2' } },
-      }),
-    );
-    expect(update).not.toHaveBeenCalled();
-    expect(notificationsService.notifyRoomMembers).not.toHaveBeenCalled();
-    expect(removed).toMatchObject({ removedFromDashboard: true, cancelledForEveryone: false });
-  });
-
-  it('rejects a non-creator asking to cancel the room for everyone', async () => {
-    const prisma = {
-      predictionRoom: {
-        findUnique: jest.fn().mockResolvedValue({
-          roomId: 'room-2',
-          roomTitle: 'Morning Commute',
-          creatorUserId: 'creator-1',
-          status: 'live',
-          journeyStatus: 'live',
-        }),
-      },
-    } as any;
-    const service = new RoomsService(prisma, auditService, notificationsService, { grant: jest.fn().mockResolvedValue({ applied: true }) } as any);
-
-    await expect(
-      service.remove('room-2', { userId: 'guest-9' } as any, true),
-    ).rejects.toBeInstanceOf(ForbiddenException);
   });
 
   it('requires membership for private room details', async () => {

@@ -1,11 +1,10 @@
 # PREDIKT Manual Web QA
 
 ## Environment
-- Backend: `http://localhost:3000` (local) or Cloud Run API
-- Expo Web: `http://localhost:8081` (local) or `https://myprediktion.com` / `https://predikt-alpha.vercel.app`
+- Backend: `http://localhost:3000` (local) or Cloud Run alpha API
+- Expo Web: `http://localhost:8081` (local) or `https://predikt-alpha.vercel.app`
 - Login: `test@predikt.ai` / `Password123!` (QA demo; seed with `npm run seed:demo`) or `pilot@predikt.ai` / `PilotMvp2026!` (first-time MVP pilot)
-- Invite base URL: until Hostinger DNS points at Vercel, Cloud Run uses `WEB_BASE_URL=https://predikt-alpha.vercel.app` (brand domain forwarding drops `joinCode`). After DNS fix, switch to `https://myprediktion.com` — see `docs/GOOGLE_MAPS_SETUP.md`
-- Maps: `GET /routes/maps-config` should report `googleConfigured: true` when `GOOGLE_MAPS_API_KEY` is set (see `docs/GOOGLE_MAPS_SETUP.md`)
+- Invite base URL: production-like APIs must set `WEB_BASE_URL` (alpha: `https://predikt-alpha.vercel.app`)
 - Date: July 19, 2026
 
 ## Checklist Results

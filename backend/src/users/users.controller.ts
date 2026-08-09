@@ -79,34 +79,12 @@ export class UsersController {
   @Get('me/stats')
   async stats(@CurrentUser() user: User) {
     const reliability = await this.usersService.reliabilitySummary(user.userId);
-    const rewardAccount = (user as User & {
-      rewardAccount?: {
-        auraBalance?: number;
-        rizzBalance?: number;
-        gemBalance?: number;
-        lifetimeAura?: number;
-        lifetimeRizz?: number;
-        lifetimeGems?: number;
-      } | null;
-    }).rewardAccount;
-
     return {
       totalAura: user.totalAura,
       weeklyAura: user.weeklyAura,
-      rewards: {
-        aura: {
-          balance: rewardAccount?.auraBalance ?? user.totalAura,
-          lifetime: rewardAccount?.lifetimeAura ?? user.totalAura,
-        },
-        rizz: {
-          balance: rewardAccount?.rizzBalance ?? 0,
-          lifetime: rewardAccount?.lifetimeRizz ?? 0,
-        },
-        gems: {
-          balance: rewardAccount?.gemBalance ?? 0,
-          lifetime: rewardAccount?.lifetimeGems ?? 0,
-        },
-      },
+      cloutBalance: user.cloutBalance,
+      creditBalance: user.creditBalance,
+      lifetimeCloutEarned: user.lifetimeCloutEarned,
       winsCount: user.winsCount,
       predictionsMadeCount: user.predictionsMadeCount,
       roomsCreatedCount: user.roomsCreatedCount,

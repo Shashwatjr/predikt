@@ -207,10 +207,22 @@ export class PredictionsService {
 
       const allSubmitted = userCount === requiredMilestoneIds.length;
       if (allSubmitted) {
+        await tx.cloutTransaction.create({
+          data: {
+            userId: user.userId,
+            roomId,
+            amount: 20,
+            transactionType: 'earn',
+            reason: 'Submitted predictions for all milestones',
+          },
+        });
+
         await tx.user.update({
           where: { userId: user.userId },
           data: {
             predictionsMadeCount: { increment: requiredMilestoneIds.length },
+            cloutBalance: { increment: 20 },
+            lifetimeCloutEarned: { increment: 20 },
             currentStreak: { increment: 1 },
             longestStreak: { increment: 1 },
           },
@@ -232,6 +244,30 @@ export class PredictionsService {
           where: { userId: user.userId },
           data: {
             predictionsMadeCount: { increment: predictions.length },
+          },
+        });
+      }
+
+      const firstPredictionCredit = await tx.creditLedger.findUnique({
+        where: { idempotencyKey: `first_prediction:${user.userId}` },
+      });
+      if (!firstPredictionCredit) {
+        // Credit integrity: every balance mutation is mirrored in the ledger so reversals
+        // and audits can reason about user-visible balances deterministically.
+        const updatedUser = await tx.user.update({
+          where: { userId: user.userId },
+          data: { creditBalance: { increment: 10 } },
+        });
+        await tx.creditLedger.create({
+          data: {
+            userId: user.userId,
+            eventType: 'first_prediction',
+            delta: 10,
+            balanceAfter: updatedUser.creditBalance,
+            sourceId: roomId,
+            sourceType: 'room',
+            idempotencyKey: `first_prediction:${user.userId}`,
+            metadata: { label: 'First prediction credit bonus' },
           },
         });
       }
@@ -361,6 +397,7 @@ export class PredictionsService {
       differenceFromActualSeconds: prediction.differenceFromActualSeconds,
       rankForMilestone: prediction.rankForMilestone,
       totalAuraAwarded: prediction.totalAuraAwarded,
+      cloutAwarded: prediction.cloutAwarded,
       user: safePublicUser(prediction.user),
       };
     });

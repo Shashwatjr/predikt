@@ -60,13 +60,28 @@ export class AuthService {
 
     const hash = await bcrypt.hash(dto.password, 10);
 
-    const user = await this.prisma.user.create({
-      data: {
-        name: dto.name.trim(),
-        email,
-        prediktHandle,
-        passwordHash: hash,
-      },
+    const user = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.user.create({
+        data: {
+          name: dto.name.trim(),
+          email,
+          prediktHandle,
+          passwordHash: hash,
+          creditBalance: 30,
+        },
+      });
+      await tx.creditLedger.create({
+        data: {
+          userId: created.userId,
+          eventType: 'signup',
+          delta: 30,
+          balanceAfter: 30,
+          sourceType: 'auth',
+          idempotencyKey: `signup:${created.userId}`,
+          metadata: { label: 'Signup credit bonus' },
+        },
+      });
+      return created;
     });
 
     return this.issueAuthResponse(user);
@@ -193,7 +208,7 @@ export class AuthService {
 
   /**
    * Converts the current guest into a full account, preserving their user row and
-   * all Aura/Rizz/Gems/prediction history. Offered after their first Tea resolves.
+   * all Aura/Clout/prediction history. Offered after their first Tea resolves.
    */
   async upgradeGuest(currentUser: User, dto: GuestUpgradeDto) {
     const user = await this.prisma.user.findUnique({
@@ -217,15 +232,39 @@ export class AuthService {
 
     const hash = await bcrypt.hash(dto.password, 10);
 
-    const upgraded = await this.prisma.user.update({
-      where: { userId: user.userId },
-      data: {
-        email,
-        passwordHash: hash,
-        prediktHandle,
-        name: dto.name?.trim() || user.name,
-        isGuest: false,
-      },
+    const upgraded = await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.user.update({
+        where: { userId: user.userId },
+        data: {
+          email,
+          passwordHash: hash,
+          prediktHandle,
+          name: dto.name?.trim() || user.name,
+          isGuest: false,
+        },
+      });
+      const signupCredit = await tx.creditLedger.findUnique({
+        where: { idempotencyKey: `signup:${user.userId}` },
+      });
+      if (!signupCredit) {
+        const credited = await tx.user.update({
+          where: { userId: user.userId },
+          data: { creditBalance: { increment: 30 } },
+        });
+        await tx.creditLedger.create({
+          data: {
+            userId: user.userId,
+            eventType: 'signup',
+            delta: 30,
+            balanceAfter: credited.creditBalance,
+            sourceType: 'auth',
+            idempotencyKey: `signup:${user.userId}`,
+            metadata: { label: 'Signup credit bonus', source: 'guest_upgrade' },
+          },
+        });
+        return credited;
+      }
+      return updated;
     });
 
     return this.issueAuthResponse(upgraded);
