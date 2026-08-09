@@ -28,8 +28,9 @@ Steps marked **[you]** need your accounts/credentials; everything else is prepar
 2. Environment: **Docker** (a `backend/Dockerfile` already exists). Render auto-detects it.
 3. Add env vars from [`backend/.env.production.example`](../backend/.env.production.example):
    `NODE_ENV=production`, `PORT=3000`, `DATABASE_URL` (Neon), `JWT_SECRET` + `ADMIN_JWT_SECRET`
-   (`openssl rand -hex 48`), `CORS_ORIGINS=https://kriviksha.com,https://www.kriviksha.com`,
-   `WEB_BASE_URL=https://kriviksha.com/predikt`.
+   (`openssl rand -hex 48`), `CORS_ORIGINS=https://myprediktion.com,https://www.myprediktion.com,https://predikt-alpha.vercel.app`,
+   `WEB_BASE_URL=https://myprediktion.com`, and `GOOGLE_MAPS_API_KEY` (server key — see
+   [`docs/GOOGLE_MAPS_SETUP.md`](./GOOGLE_MAPS_SETUP.md)).
 4. Instance type: **Starter (always-on, ~$7/mo)** for demos — the free tier cold-starts ~30–60s,
    which breaks a freshly-tapped link. Free is fine for internal testing.
 5. Deploy. Confirm `https://<service>.onrender.com/health` returns `200`.

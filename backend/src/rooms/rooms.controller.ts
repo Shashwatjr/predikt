@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, Param, UseGuards, Delete } from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, Query, UseGuards, Delete } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { RoomsService } from './rooms.service';
 import { CreateRoomDto } from './dto/create-room.dto';
@@ -53,8 +53,14 @@ export class RoomsController {
   @UseGuards(JwtAuthGuard)
   @Delete(':roomId')
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
-  remove(@Param('roomId') roomId: string, @CurrentUser() user: User) {
-    return this.roomsService.remove(roomId, user);
+  remove(
+    @Param('roomId') roomId: string,
+    @CurrentUser() user: User,
+    // Default is a per-user dismissal. Cancelling the journey for every member
+    // is destructive, creator-only, and must be asked for explicitly.
+    @Query('cancelForEveryone') cancelForEveryone?: string,
+  ) {
+    return this.roomsService.remove(roomId, user, cancelForEveryone === 'true');
   }
 
   @Get('code/:inviteCode')

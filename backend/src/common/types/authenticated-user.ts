@@ -7,9 +7,14 @@ export interface AuthenticatedUser {
   selectedBackgroundKey?: string | null;
   totalAura: number;
   weeklyAura: number;
-  cloutBalance: number;
-  creditBalance: number;
-  lifetimeCloutEarned: number;
+  rewardAccount?: {
+    auraBalance: number;
+    rizzBalance: number;
+    gemBalance: number;
+    lifetimeAura: number;
+    lifetimeRizz: number;
+    lifetimeGems: number;
+  } | null;
   predictionAccuracyScore: number;
   roomsCreatedCount: number;
   predictionsMadeCount: number;

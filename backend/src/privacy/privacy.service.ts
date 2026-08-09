@@ -108,7 +108,7 @@ export class PrivacyService {
         title: 'PREDIKT Terms',
         version: 'mvp-2026-07',
         summary:
-          'PREDIKT is a privacy-safe social prediction app. Aura is reputation, Clout is social influence, and Credits are feature unlocks.',
+          'PREDIKT is a privacy-safe social prediction app. Aura tracks prediction performance, Rizz tracks social momentum, and Gems are in-app rewards.',
       },
       'community-guidelines': {
         title: 'Community Guidelines',
@@ -120,7 +120,7 @@ export class PrivacyService {
         title: 'Safety Policy',
         version: 'mvp-2026-07',
         summary:
-          'PREDIKT is for social predictions only. Credits are in-app feature unlocks and are not transferable or withdrawable.',
+          'PREDIKT is for social predictions only. Gems are in-app rewards and are not transferable or withdrawable.',
       },
     };
     return policies[slug] ?? policies.privacy;

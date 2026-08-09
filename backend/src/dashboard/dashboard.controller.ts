@@ -69,11 +69,6 @@ export class DashboardController {
     return this.dashboardService.claimDailySpin(user);
   }
 
-  @Get('drops-near-unlock')
-  dropsNearUnlock(@CurrentUser() user: User) {
-    return this.dashboardService.dropsNearUnlock(user);
-  }
-
   @Get('activity-feed')
   activityFeed(@CurrentUser() user: User) {
     return this.dashboardService.activityFeed(user);

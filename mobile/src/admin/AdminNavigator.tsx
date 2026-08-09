@@ -16,6 +16,7 @@ import { palette } from '../theme/designSystem';
 
 export default function AdminNavigator() {
   const { admin, logout } = useAdminAuth();
+  const [activeGroup, setActiveGroup] = useState<'sam' | 'ai'>('sam');
   const [active, setActive] = useState<AdminNavItem>('overview');
 
   if (!featureFlags.adminPortalEnabled) {
@@ -25,7 +26,7 @@ export default function AdminNavigator() {
   const renderScreen = () => {
     switch (active) {
       case 'overview':
-        return <AdminDashboardScreen />;
+        return <AdminDashboardScreen scope={activeGroup} />;
       case 'rooms':
         return <AdminRoomsScreen />;
       case 'users':
@@ -41,15 +42,19 @@ export default function AdminNavigator() {
       case 'flags':
         return <AdminFeatureFlagsScreen />;
       default:
-        return <AdminDashboardScreen />;
+        return <AdminDashboardScreen scope={activeGroup} />;
     }
   };
 
   return (
     <View style={styles.shell}>
       <AdminSidebar
+        activeGroup={activeGroup}
         active={active}
-        onNavigate={setActive}
+        onNavigate={(group, item) => {
+          setActiveGroup(group);
+          setActive(item);
+        }}
         adminName={admin?.name ?? 'Admin'}
         onLogout={() => void logout()}
       />

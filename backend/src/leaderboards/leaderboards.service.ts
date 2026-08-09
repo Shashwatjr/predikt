@@ -48,7 +48,6 @@ export class LeaderboardsService {
       prediktHandle: result.user.prediktHandle,
       overallRank: result.overallRank,
       totalRoomAura: result.totalRoomAura,
-      totalRoomClout: result.totalRoomClout,
       milestonesWon: result.milestonesWon,
       auraEarned: result.totalRoomAura,
     }));
