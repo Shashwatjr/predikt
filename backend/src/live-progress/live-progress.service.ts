@@ -8,6 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { LocationUpdateDto } from './dto/location-update.dto';
 import { CheckpointUpdateDto } from './dto/checkpoint-update.dto';
+import { LocationPingDto } from './dto/location-ping.dto';
 import { User } from '@prisma/client';
 import { LifecycleService } from '../lifecycle/lifecycle.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -27,6 +28,8 @@ const MAX_BILLABLE_ETA_CALLS = 5;
 // not a free derived/fallback extrapolation).
 const FREE_SNAPSHOT_SOURCES = new Set(['derived', 'fallback']);
 const ETA_MOVE_NOTIFY_THRESHOLD_MS = 20 * 60 * 1000;
+const PING_REREAD_MIN_INTERVAL_MS = 4 * 60 * 1000;
+const ARRIVAL_GEOFENCE_METERS = 1000;
 
 const num = (value: unknown): number | null =>
   value == null ? null : Number(value);
@@ -157,6 +160,22 @@ export class LiveProgressService {
 
     await this.maybeNotifyEtaMoved(room, checkpointPct, etaSeconds, capturedAt);
 
+    if (remainingMeters != null && remainingMeters <= ARRIVAL_GEOFENCE_METERS) {
+      const arrival = await this.lifecycleService.finalizeArrivalFromLocation(roomId, user, lat, lng);
+      if (arrival.finalized) {
+        return {
+          checkpoint: checkpointPct,
+          etaSeconds: 0,
+          remainingMeters,
+          source,
+          recomputedDurationSeconds,
+          capturedAt: capturedAt.toISOString(),
+          arrived: true,
+          result: arrival.result,
+        };
+      }
+    }
+
     return {
       checkpoint: checkpointPct,
       etaSeconds,
@@ -269,6 +288,140 @@ export class LiveProgressService {
     return event;
   }
 
+  async recordLivePing(roomId: string, dto: LocationPingDto, user: User) {
+    const room = await this.prisma.predictionRoom.findUnique({
+      where: { roomId },
+      include: { journeyRoute: true },
+    });
+    if (!room) throw new NotFoundException('Room not found');
+    if (room.creatorUserId !== user.userId) {
+      throw new ForbiddenException('Only the creator can post location pings');
+    }
+    if (room.status !== 'live') {
+      throw new BadRequestException('Room must be live to post updates');
+    }
+    if (room.startTime && room.startTime.getTime() > Date.now()) {
+      return {
+        waitingToStart: true,
+        secondsUntilStart: Math.ceil((room.startTime.getTime() - Date.now()) / 1000),
+      };
+    }
+
+    const { lat, lng } = dto;
+    const capturedAt = new Date();
+    const destLat = num(room.destinationLat) ?? num(room.journeyRoute?.destinationLat);
+    const destLng = num(room.destinationLng) ?? num(room.journeyRoute?.destinationLng);
+    const remainingMeters =
+      destLat != null && destLng != null
+        ? distanceMetersBetween(
+            { latitude: lat, longitude: lng },
+            { latitude: destLat, longitude: destLng },
+          )
+        : null;
+
+    if (remainingMeters != null && remainingMeters <= ARRIVAL_GEOFENCE_METERS) {
+      const arrival = await this.lifecycleService.finalizeArrivalFromLocation(roomId, user, lat, lng);
+      if (arrival.finalized) {
+        return {
+          arrived: true,
+          remainingMeters,
+          etaMinutes: 0,
+          canConfirmArrival: true,
+          result: arrival.result,
+        };
+      }
+    }
+
+    const lastBillable = await this.prisma.roomMilestoneSnapshot.findFirst({
+      where: { roomId, source: { notIn: Array.from(FREE_SNAPSHOT_SOURCES) } },
+      orderBy: { capturedAt: 'desc' },
+    });
+    const billableCallsSoFar = await this.prisma.roomMilestoneSnapshot.count({
+      where: { roomId, source: { notIn: Array.from(FREE_SNAPSHOT_SOURCES) } },
+    });
+    const rereadDue =
+      !lastBillable || capturedAt.getTime() - lastBillable.capturedAt.getTime() >= PING_REREAD_MIN_INTERVAL_MS;
+
+    let etaSeconds: number | null = null;
+    let source = 'derived';
+    if (rereadDue && destLat != null && destLng != null && billableCallsSoFar < MAX_BILLABLE_ETA_CALLS) {
+      try {
+        const provider = createMapsProvider(this.configService);
+        const preview = await provider.getRoutePreview(
+          { placeId: '', label: 'current', latitude: lat, longitude: lng },
+          { placeId: '', label: 'destination', latitude: destLat, longitude: destLng },
+          room.journeyRoute?.travelMode,
+        );
+        etaSeconds = Math.round(preview.durationSeconds);
+        source = provider.name;
+      } catch {
+        etaSeconds = null;
+      }
+    }
+
+    if (etaSeconds == null) {
+      if (lastBillable?.etaSeconds != null) {
+        const elapsedSince = Math.max(0, capturedAt.getTime() - lastBillable.capturedAt.getTime()) / 1000;
+        etaSeconds = Math.max(60, Math.round(lastBillable.etaSeconds - elapsedSince));
+        source = 'derived';
+      } else {
+        const timed = this.buildTimedProgress(room, capturedAt);
+        etaSeconds = timed.etaMinutes != null ? Math.max(60, timed.etaMinutes * 60) : 60;
+      }
+    }
+
+    const recomputedDurationSeconds =
+      room.startTime != null
+        ? Math.max(60, Math.round((capturedAt.getTime() - room.startTime.getTime()) / 1000) + etaSeconds)
+        : null;
+    const etaMinutes = Math.max(1, Math.ceil(etaSeconds / 60));
+    const startLat = num(room.startingLat) ?? num(room.journeyRoute?.startLat);
+    const startLng = num(room.startingLng) ?? num(room.journeyRoute?.startLng);
+    const totalMeters =
+      startLat != null && startLng != null && destLat != null && destLng != null
+        ? distanceMetersBetween(
+            { latitude: startLat, longitude: startLng },
+            { latitude: destLat, longitude: destLng },
+          )
+        : null;
+    const progressPercentage =
+      remainingMeters != null && totalMeters != null && totalMeters > 0
+        ? Math.min(99, Math.max(1, Math.round(((totalMeters - remainingMeters) / totalMeters) * 100)))
+        : this.buildTimedProgress(room, capturedAt).progressPercentage;
+
+    await this.prisma.$transaction([
+      this.prisma.liveLocationEvent.create({
+        data: {
+          roomId,
+          creatorUserId: user.userId,
+          progressPercentage,
+          etaMinutes,
+          locationDisplayMode: room.locationDisplayMode,
+          createdAt: capturedAt,
+        },
+      }),
+      this.prisma.predictionRoom.update({
+        where: { roomId },
+        data: {
+          lastTravellerUpdateAt: capturedAt,
+          journeyStatus: 'live',
+          ...(recomputedDurationSeconds != null ? { expectedDurationSeconds: recomputedDurationSeconds } : {}),
+          autoCloseAt: new Date(capturedAt.getTime() + 45 * 60 * 1000),
+        },
+      }),
+    ]);
+
+    return {
+      arrived: false,
+      remainingMeters,
+      etaMinutes,
+      etaSeconds,
+      progressPercentage,
+      source,
+      canConfirmArrival: remainingMeters != null && remainingMeters <= ARRIVAL_GEOFENCE_METERS,
+    };
+  }
+
   async getLiveState(roomId: string) {
     await this.lifecycleService.evaluateRoomLifecycle(roomId, { actorType: 'system', actorId: null });
     const room = await this.prisma.predictionRoom.findUnique({
@@ -307,7 +460,25 @@ export class LiveProgressService {
     const viewerShouldStillWait = !!visibleStartTime && now < visibleStartTime;
     const timedProgress = this.buildTimedProgress(room, now);
     const milestoneBanner = this.buildMilestoneBanner(timedProgress.progressPercentage);
-    const derivedEtaMinutes = timedProgress.etaMinutes;
+    const latestSnapshot = await this.prisma.roomMilestoneSnapshot.findFirst({
+      where: { roomId },
+      orderBy: { capturedAt: 'desc' },
+    });
+    const snapshotEtaMinutes =
+      latestSnapshot?.etaSeconds != null
+        ? Math.max(
+            room.status === 'live' ? 1 : 0,
+            Math.ceil(
+              (latestSnapshot.etaSeconds * 1000 - (now.getTime() - latestSnapshot.capturedAt.getTime())) / 60000,
+            ),
+          )
+        : null;
+    const derivedEtaMinutes =
+      viewerShouldStillWait
+        ? null
+        : delayedEvent?.etaMinutes ?? snapshotEtaMinutes ?? timedProgress.etaMinutes;
+    const liveEtaMinutes =
+      room.status === 'live' && derivedEtaMinutes === 0 ? 1 : derivedEtaMinutes;
 
     // Privacy boundary: viewer-facing live state uses safety-delayed progress and must never expose raw or exact GPS coordinates.
     return {
@@ -338,7 +509,7 @@ export class LiveProgressService {
       safetyDelayMinutes: room.safetyDelayMinutes,
       waitingForDelayedStart: viewerShouldStillWait,
       progressPercentage: viewerShouldStillWait ? 0 : (delayedEvent?.progressPercentage ?? timedProgress.progressPercentage),
-      etaMinutes: viewerShouldStillWait ? null : (delayedEvent?.etaMinutes ?? derivedEtaMinutes),
+      etaMinutes: viewerShouldStillWait ? null : liveEtaMinutes,
       locationDisplayMode: room.locationDisplayMode,
       currentMilestone: delayedEvent?.currentMilestone ?? null,
       milestoneBanner,
@@ -398,7 +569,7 @@ export class LiveProgressService {
   }
 
   private buildLifecycleMessage(journeyStatus: string) {
-    if (journeyStatus === 'overdue') return 'Journey is overdue. Confirm arrival or it may auto-close.';
+    if (journeyStatus === 'overdue') return 'Still tracking — ETA updates from the latest Maps read.';
     if (journeyStatus === 'inactive') return 'Waiting for traveller update.';
     if (journeyStatus === 'auto_closed') return 'Arrival was never confirmed — calling this one a draw. No losses counted.';
     if (journeyStatus === 'cancelled_by_host' || journeyStatus === 'plan_changed') {

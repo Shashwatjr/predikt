@@ -193,6 +193,35 @@ describe('LifecycleService journey fairness', () => {
     );
   });
 
+  it('does not auto-close a live room that is still sending location pings', async () => {
+    const update = jest.fn();
+    const prisma = {
+      predictionRoom: {
+        findUnique: jest.fn().mockResolvedValue({
+          roomId: 'room-3b',
+          creatorUserId: 'host-2',
+          status: 'live',
+          journeyStatus: 'live',
+          noStartCutoffAt: null,
+          autoCloseAt: new Date(Date.now() - 60_000),
+          journeyStartedAt: new Date(Date.now() - 3600_000),
+          arrivalConfirmedAt: null,
+          lastTravellerUpdateAt: new Date(),
+          autoClosedAt: null,
+          abandonedAt: null,
+          createdAt: new Date(Date.now() - 2 * 3600_000),
+          milestonePredictions: [],
+        }),
+        update,
+      },
+    } as any;
+
+    const service = new LifecycleService(prisma, auditService, notificationsService, badgeService, { grant: jest.fn().mockResolvedValue({ applied: true }) } as any);
+    await service.evaluateRoomLifecycle('room-3b', { actorType: 'system', actorId: null });
+
+    expect(update).not.toHaveBeenCalled();
+  });
+
   it('applies a mild reliability adjustment when cancelled after lock', async () => {
     const predictionRoom = {
       findUnique: jest.fn().mockResolvedValue({

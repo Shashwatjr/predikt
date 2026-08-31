@@ -33,6 +33,7 @@ describe('LiveProgressService', () => {
           },
         }),
       },
+      roomMilestoneSnapshot: { findFirst: jest.fn().mockResolvedValue(null) },
     } as any;
 
     const service = new LiveProgressService(
@@ -70,6 +71,7 @@ describe('LiveProgressService', () => {
       predictionRoom: { findUnique: jest.fn().mockResolvedValue(room) },
       // No delayed location event -> viewer progress comes from the timed path.
       liveLocationEvent: { findFirst: jest.fn().mockResolvedValue(null) },
+      roomMilestoneSnapshot: { findFirst: jest.fn().mockResolvedValue(null) },
     } as any;
 
     const service = new LiveProgressService(
@@ -103,6 +105,7 @@ describe('LiveProgressService', () => {
     const prisma = {
       predictionRoom: { findUnique: jest.fn().mockResolvedValue(room) },
       liveLocationEvent: { findFirst: jest.fn().mockResolvedValue(null) },
+      roomMilestoneSnapshot: { findFirst: jest.fn().mockResolvedValue(null) },
     } as any;
 
     const service = new LiveProgressService(

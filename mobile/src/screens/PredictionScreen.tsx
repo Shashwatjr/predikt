@@ -25,7 +25,7 @@ import SectionHeader from '../components/SectionHeader';
 import PredictionInputDuration from '../components/PredictionInputDuration';
 import PredictionInputYesNo from '../components/PredictionInputYesNo';
 import RoomPredictionList, { RoomPredictionEntry } from '../components/RoomPredictionList';
-import { buildSharePayload } from '../utils/shareRoom';
+import { buildSharePayload, openWhatsAppWithText } from '../utils/shareRoom';
 import { diffLabel, formatClock, formatDateLabel } from '../utils/benchmarks';
 import { useArrivalPredictionState } from '../hooks/useArrivalPredictionState';
 import { layout, palette, radius, spacing } from '../theme/designSystem';
@@ -351,7 +351,8 @@ export default function PredictionScreen({ navigation, route }: Props) {
   async function handleForwardWhatsApp() {
     if (!sharePayload) return;
     try {
-      await Linking.openURL(sharePayload.whatsappUrl);
+      const opened = await openWhatsAppWithText(sharePayload.whatsappText);
+      if (!opened) appAlert('WhatsApp unavailable', 'Could not open WhatsApp right now.');
     } catch {
       appAlert('WhatsApp unavailable', 'Could not open WhatsApp right now.');
     }

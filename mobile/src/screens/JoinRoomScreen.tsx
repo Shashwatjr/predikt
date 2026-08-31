@@ -18,7 +18,7 @@ import SectionHeader from '../components/SectionHeader';
 import ArrivalPredictionCard from '../components/ArrivalPredictionCard';
 import { useArrivalPredictionState } from '../hooks/useArrivalPredictionState';
 import { formatClock } from '../utils/benchmarks';
-import { buildSharePayload } from '../utils/shareRoom';
+import { buildSharePayload, openWhatsAppWithText } from '../utils/shareRoom';
 import { cardStyle, layout, palette, radius, spacing } from '../theme/designSystem';
 
 type Props = {
@@ -275,7 +275,8 @@ export default function JoinRoomScreen({ navigation, route }: Props) {
   async function handleForwardWhatsApp() {
     if (!sharePayload) return;
     try {
-      await Linking.openURL(sharePayload.whatsappUrl);
+      const opened = await openWhatsAppWithText(sharePayload.whatsappText);
+      if (!opened) appAlert('WhatsApp unavailable', 'Could not open WhatsApp right now.');
     } catch {
       appAlert('WhatsApp unavailable', 'Could not open WhatsApp right now.');
     }

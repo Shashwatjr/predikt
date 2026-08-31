@@ -42,7 +42,7 @@ const DEFAULT_EXPECTED_DURATION_SECONDS = 60 * 60;
 const INACTIVITY_THRESHOLD_SECONDS = 20 * 60;
 const START_VISIBILITY_DELAY_MS = 2 * 60 * 1000;
 const START_VERIFY_DISTANCE_METERS = 2000;
-const ARRIVAL_CONFIRM_DISTANCE_METERS = 2000;
+export const ARRIVAL_CONFIRM_DISTANCE_METERS = 1000;
 const CHECKPOINT_MILESTONES = [50, 80] as const;
 const NO_SHOW_RIZZ_PENALTY = 5;
 const RELIABILITY_POINTS: Record<string, number> = {
@@ -383,16 +383,20 @@ export class LifecycleService {
     const room = await this.getCreatorRoom(roomId, user);
     this.guardTerminal(room.status);
 
-    const actualEndTime = new Date();
-    if (dto.location?.lat != null && dto.location?.lng != null) {
-      await this.recordCheckpoint(roomId, user.userId, 100, dto.location.lat, dto.location.lng, actualEndTime);
-    }
-
     const verification = this.buildArrivalVerification(room, dto.location?.lat, dto.location?.lng);
-    if (verification.shouldPrompt && !dto.confirmAnyway) {
+    if (room.destinationLat != null && room.destinationLng != null && (dto.location?.lat == null || dto.location?.lng == null)) {
       return {
         requiresConfirmation: true,
-        prompt: `Looks like you're not quite at ${room.destinationLabel} yet — mark as arrived anyway?`,
+        canFinish: false,
+        prompt: 'Turn on location to finish. You can only confirm arrival within 1 km of the destination, or cancel the journey.',
+        distanceMeters: null,
+      };
+    }
+    if (verification.shouldBlock) {
+      return {
+        requiresConfirmation: true,
+        canFinish: false,
+        prompt: `Finish is only available within 1 km of ${room.destinationLabel ?? 'your destination'}. Cancel the journey if you need to close the room now.`,
         distanceMeters: verification.distanceMeters,
       };
     }
@@ -406,15 +410,14 @@ export class LifecycleService {
       await this.recordCheckpoint(room.roomId, user.userId, 100, dto.location.lat, dto.location.lng, actualEndTime);
     }
 
-    if (featureFlags.checkpointLeaderboardV2) {
-      const verification = this.buildArrivalVerification(room, dto.location?.lat, dto.location?.lng);
-      if (verification.shouldPrompt && !dto.confirmAnyway) {
-        return {
-          requiresConfirmation: true,
-          prompt: `Looks like you're not quite at ${room.destinationLabel} yet — mark as arrived anyway?`,
-          distanceMeters: verification.distanceMeters,
-        };
-      }
+    const verification = this.buildArrivalVerification(room, dto.location?.lat, dto.location?.lng);
+    if (verification.shouldBlock) {
+      return {
+        requiresConfirmation: true,
+        canFinish: false,
+        prompt: `Finish is only available within 1 km of ${room.destinationLabel ?? 'your destination'}. Cancel the journey if you need to close the room now.`,
+        distanceMeters: verification.distanceMeters,
+      };
     }
 
     await this.prisma.predictionRoom.update({
@@ -493,7 +496,7 @@ export class LifecycleService {
     const expectedLat = room.startingLat ?? room.journeyRoute?.startLat ?? null;
     const expectedLng = room.startingLng ?? room.journeyRoute?.startLng ?? null;
     if (lat == null || lng == null || expectedLat == null || expectedLng == null) {
-      return { shouldBlock: false, distanceMeters: null };
+      return { shouldBlock: false, shouldPrompt: false, distanceMeters: null };
     }
 
     const distance = distanceMeters(lat, lng, expectedLat, expectedLng);
@@ -510,14 +513,40 @@ export class LifecycleService {
       room.destinationLat == null ||
       room.destinationLng == null
     ) {
-      return { shouldPrompt: false, distanceMeters: null };
+      return { shouldBlock: false, shouldPrompt: false, distanceMeters: null };
     }
 
-    const distance = distanceMeters(lat, lng, room.destinationLat, room.destinationLng);
+    const distance = distanceMeters(
+      lat,
+      lng,
+      Number(room.destinationLat),
+      Number(room.destinationLng),
+    );
     return {
+      shouldBlock: distance > ARRIVAL_CONFIRM_DISTANCE_METERS,
       shouldPrompt: distance > ARRIVAL_CONFIRM_DISTANCE_METERS,
       distanceMeters: distance,
     };
+  }
+
+  async finalizeArrivalFromLocation(
+    roomId: string,
+    user: User,
+    lat: number,
+    lng: number,
+  ): Promise<{ finalized: boolean; distanceMeters: number | null; result?: unknown }> {
+    const room = await this.getCreatorRoom(roomId, user);
+    this.guardTerminal(room.status);
+    const verification = this.buildArrivalVerification(room, lat, lng);
+    if (verification.shouldBlock) {
+      return { finalized: false, distanceMeters: verification.distanceMeters };
+    }
+    const result = await this.confirmArrivalWithContext(room, user, {
+      location: { lat, lng },
+      outcomeSource: 'gps_verified',
+      confidenceLevel: 'verified',
+    });
+    return { finalized: true, distanceMeters: verification.distanceMeters, result };
   }
 
   async cancelJourney(roomId: string, user: User, dto: CancelJourneyDto) {
@@ -620,11 +649,15 @@ export class LifecycleService {
       });
     }
 
+    const stillTracking =
+      !!room.lastTravellerUpdateAt && room.lastTravellerUpdateAt >= inactivityCutoff;
+
     if (
       ['started', 'live', 'inactive', 'overdue'].includes(room.journeyStatus) &&
       autoCloseAt &&
       now > autoCloseAt &&
-      !room.arrivalConfirmedAt
+      !room.arrivalConfirmedAt &&
+      !stillTracking
     ) {
       await this.applyNeutralClosure(room, 'auto_closed', 'auto_closed_no_confirmation', 'Journey auto-closed: no verified arrival', actor);
       return this.prisma.predictionRoom.findUnique({ where: { roomId } });

@@ -1,4 +1,4 @@
-import { Platform } from 'react-native';
+import { Linking, Platform } from 'react-native';
 
 const CANONICAL_WEB_BASE_URL = 'https://myprediktion.com';
 
@@ -116,8 +116,26 @@ export function buildSharePayload(room: SafePreview, forwardedBy?: string | null
     copyText: body,
     instagramCaption: body,
     whatsappText: body,
-    whatsappUrl: `https://wa.me/?text=${encodeURIComponent(body)}`,
+    whatsappUrl: `https://api.whatsapp.com/send?text=${encodeURIComponent(body)}`,
   };
+}
+
+export async function openWhatsAppWithText(text: string): Promise<boolean> {
+  const encoded = encodeURIComponent(text);
+  const candidates = [
+    `https://api.whatsapp.com/send?text=${encoded}`,
+    `https://wa.me/?text=${encoded}`,
+    `whatsapp://send?text=${encoded}`,
+  ];
+  for (const url of candidates) {
+    try {
+      await Linking.openURL(url);
+      return true;
+    } catch {
+      // try the next scheme — iPhone Safari is picky about wa.me without a number
+    }
+  }
+  return false;
 }
 
 export function buildManualWhatsAppUrl(phoneNumber: string, text: string) {

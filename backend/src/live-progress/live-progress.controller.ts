@@ -2,6 +2,7 @@ import { Controller, Post, Get, Body, Param, UseGuards } from '@nestjs/common';
 import { LiveProgressService } from './live-progress.service';
 import { LocationUpdateDto } from './dto/location-update.dto';
 import { CheckpointUpdateDto } from './dto/checkpoint-update.dto';
+import { LocationPingDto } from './dto/location-ping.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { User } from '@prisma/client';
@@ -30,6 +31,16 @@ export class LiveProgressController {
     @CurrentUser() user: User,
   ) {
     return this.liveProgressService.recordClientCheckpoint(roomId, dto, user);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('journey/ping')
+  recordPing(
+    @Param('roomId') roomId: string,
+    @Body() dto: LocationPingDto,
+    @CurrentUser() user: User,
+  ) {
+    return this.liveProgressService.recordLivePing(roomId, dto, user);
   }
 
   @Get('live-state')

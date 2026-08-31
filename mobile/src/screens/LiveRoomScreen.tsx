@@ -99,7 +99,10 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
   const [room, setRoom] = useState<any | null>(null);
   const [actualOptionKey, setActualOptionKey] = useState<string | null>(null);
   const [startDelayMinutes, setStartDelayMinutes] = useState(3);
-  const [starting, setStarting] = useState(false);
+  const [creatorTick, setCreatorTick] = useState(0);
+  const [distanceToDestinationMeters, setDistanceToDestinationMeters] = useState<number | null>(null);
+  const pingInFlight = useRef(false);
+  const autoNavigatedToResult = useRef(false);
   const [ending, setEnding] = useState(false);
   const [confirmingArrival, setConfirmingArrival] = useState(false);
   const [cancelling, setCancelling] = useState(false);
@@ -207,6 +210,49 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
       }
     };
   }, [isCreator, liveState?.waitingForDelayedStart, liveState?.visibleMovementStartTime]);
+
+  useEffect(() => {
+    if (!isCreator || !liveState?.startTime) return;
+    const id = setInterval(() => setCreatorTick((tick) => tick + 1), 1000);
+    return () => clearInterval(id);
+  }, [isCreator, liveState?.startTime]);
+
+  useEffect(() => {
+    if (!isCreator || !liveState?.startTime) return;
+
+    const pingLocation = async () => {
+      if (roomIsTerminal.current || pingInFlight.current) return;
+      if (new Date(liveState.startTime as string).getTime() > Date.now()) return;
+      pingInFlight.current = true;
+      try {
+        const permission = await Location.requestForegroundPermissionsAsync();
+        if (permission.status !== 'granted') return;
+        const coords = await Location.getCurrentPositionAsync({});
+        const res = await api.post(`/rooms/${roomId}/journey/ping`, {
+          lat: coords.coords.latitude,
+          lng: coords.coords.longitude,
+        });
+        if (typeof res.data?.remainingMeters === 'number') {
+          setDistanceToDestinationMeters(res.data.remainingMeters);
+        }
+        if (res.data?.arrived && res.data?.result && !autoNavigatedToResult.current) {
+          autoNavigatedToResult.current = true;
+          roomIsTerminal.current = true;
+          navigation.navigate('Result', { roomId, result: res.data.result });
+          return;
+        }
+        void fetchLiveState();
+      } catch {
+        // keep the live room usable if a ping fails
+      } finally {
+        pingInFlight.current = false;
+      }
+    };
+
+    void pingLocation();
+    const id = setInterval(pingLocation, 25_000);
+    return () => clearInterval(id);
+  }, [isCreator, liveState?.startTime, roomId, navigation]);
 
   useEffect(() => {
     if (!isCreator || !liveState?.startTime || !liveState?.expectedDurationSeconds) return;
@@ -480,7 +526,7 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
 
   async function handleConfirmArrival() {
     if (confirmingArrival || ending || cancelling) return;
-    const submitFinishJourney = async (confirmAnyway = false) => {
+    const submitFinishJourney = async () => {
       setConfirmingArrival(true);
       try {
         const permission = await Location.requestForegroundPermissionsAsync();
@@ -489,23 +535,14 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
           location: coords
             ? { lat: coords.coords.latitude, lng: coords.coords.longitude }
             : undefined,
-          confirmAnyway,
         });
-        if (res.data?.requiresConfirmation && !confirmAnyway) {
+        if (res.data?.requiresConfirmation) {
           setConfirmingArrival(false);
           return appAlert(
-            'Outside the finish zone',
-            res.data.prompt,
-            [
-              { text: 'Go back', style: 'cancel' },
-              {
-                text: 'Finish Anyway',
-                style: 'destructive',
-                onPress: () => {
-                  void submitFinishJourney(true);
-                },
-              },
-            ],
+            'Too far to finish',
+            res.data.prompt ??
+              'Finish is only available within 1 km of the destination. Cancel if you need to close the room.',
+            [{ text: 'OK', style: 'cancel' }],
           );
         }
         navigation.navigate('Result', { roomId, result: res.data });
@@ -524,7 +561,7 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
         {
           text: 'Finish Journey',
           onPress: () => {
-            void submitFinishJourney(false);
+            void submitFinishJourney();
           },
         },
       ],
@@ -597,7 +634,7 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
   const secondsUntilStart = !isCreator && viewerCountdownSeconds != null
     ? viewerCountdownSeconds
     : isCreator && liveState?.startTime
-    ? Math.max(0, Math.ceil((new Date(liveState.startTime).getTime() - Date.now()) / 1000))
+    ? Math.max(0, Math.ceil((new Date(liveState.startTime).getTime() - Date.now()) / 1000) + creatorTick * 0)
     : liveState?.secondsUntilStart ?? 0;
   const minutesUntilStart = Math.ceil(secondsUntilStart / 60);
   const trackingCountdownLabel = secondsUntilStart > 0
@@ -728,11 +765,7 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
     isArrivalCategory &&
     trackingCountdownActive &&
     !['completed', 'cancelled'].includes(liveState?.status ?? '');
-  const showArrivalWaitingRoom =
-    isArrivalCategory &&
-    isCreator &&
-    trackingCountdownActive &&
-    !isTerminal;
+  const showArrivalWaitingRoom = false;
 
   const creatorDesktopJourneyBoard =
     isDesktop && isCreator && !isGenericRoom && category !== 'weather_rain' && phase !== 'ended';
@@ -876,6 +909,8 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
       ? formatClock(new Date(room.benchmarks.oracle.arrivalTime), false)
       : room?.oracleBotPrediction?.label ?? 'Pending';
   const guestCount = Math.max(0, safePredictions.filter((entry) => !entry.isCurrentUser && entry.status !== 'revoked').length);
+  const canConfirmArrival =
+    distanceToDestinationMeters != null && distanceToDestinationMeters <= 1000;
   const creatorDesktopLiveJourney = creatorDesktopJourneyBoard && phase === 'started';
   const canStartJourney =
     !!liveState &&
@@ -1377,14 +1412,20 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
                   </View>
                 </View>
                 <View style={styles.creatorDesktopControlsRow}>
-                  <View style={styles.creatorDesktopControlAction}>
-                    <PrimaryButton
-                      label="Finish Journey"
-                      onPress={handleConfirmArrival}
-                      loading={confirmingArrival}
-                      icon="✅"
-                    />
-                  </View>
+                  {canConfirmArrival ? (
+                    <View style={styles.creatorDesktopControlAction}>
+                      <PrimaryButton
+                        label="Finish Journey"
+                        onPress={handleConfirmArrival}
+                        loading={confirmingArrival}
+                        icon="✅"
+                      />
+                    </View>
+                  ) : (
+                    <Text style={[styles.startDelayCopy, { color: colors.textSecondary, flex: 1 }]}>
+                      Finish unlocks within 1 km. Arrival will close the room automatically.
+                    </Text>
+                  )}
                   <View style={styles.creatorDesktopControlAction}>
                     <PrimaryButton
                       label="Cancel Journey"
@@ -1613,7 +1654,13 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
               </View>
               {!isTerminal ? (
                 <>
-                  <PrimaryButton label="Finish Journey" onPress={handleConfirmArrival} loading={confirmingArrival} icon="✅" />
+                  {canConfirmArrival ? (
+                    <PrimaryButton label="Finish Journey" onPress={handleConfirmArrival} loading={confirmingArrival} icon="✅" />
+                  ) : (
+                    <Text style={[styles.startDelayCopy, { color: colors.textSecondary }]}>
+                      Finish unlocks within 1 km of the destination. The room will close automatically when you arrive.
+                    </Text>
+                  )}
                   <PrimaryButton label="Cancel Journey" onPress={handleCancelJourney} loading={cancelling} variant="secondary" icon="↗" />
                 </>
               ) : null}
@@ -1792,7 +1839,13 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
             ) : null}
             {!isTerminal ? (
               <>
-                <PrimaryButton label="Finish Journey" onPress={handleConfirmArrival} loading={confirmingArrival} icon="✅" />
+                {canConfirmArrival ? (
+                  <PrimaryButton label="Finish Journey" onPress={handleConfirmArrival} loading={confirmingArrival} icon="✅" />
+                ) : (
+                  <Text style={[styles.startDelayCopy, { color: colors.textSecondary }]}>
+                    Finish unlocks within 1 km of the destination. Tracking stays live until you arrive, even if the original ETA passes.
+                  </Text>
+                )}
                 <PrimaryButton label="Cancel Journey" onPress={handleCancelJourney} loading={cancelling} variant="secondary" icon="🛑" />
               </>
             ) : null}

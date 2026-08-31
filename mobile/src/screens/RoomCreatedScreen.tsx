@@ -22,6 +22,7 @@ import {
   buildManualWhatsAppUrl,
   buildSharePayload,
   isValidManualPhone,
+  openWhatsAppWithText,
   shareViaWebShareApi,
 } from '../utils/shareRoom';
 import { journeyPalette } from '../theme/journeyPalette';
@@ -131,7 +132,10 @@ export default function RoomCreatedScreen({ navigation, route }: Props) {
 
   async function openWhatsAppShare() {
     await trackShare('room_shared', 'whatsapp');
-    await Linking.openURL(sharePayload.whatsappUrl);
+    const opened = await openWhatsAppWithText(sharePayload.whatsappText);
+    if (opened) return;
+    await copyText('Invite link', sharePayload.inviteUrl);
+    appAlert('WhatsApp did not open', 'The invite link was copied — paste it into WhatsApp.');
   }
 
   async function copyInstagramCaption() {
