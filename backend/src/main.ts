@@ -8,7 +8,7 @@ async function bootstrap() {
   const config = app.get(ConfigService);
   configureApp(app, config);
 
-  const port = config.get<string>('PORT') ?? '3000';
+  const port = process.env.PORT ?? config.get<string>('PORT') ?? '3000';
   await app.listen(port);
   console.log(`PREDIKT API running on port ${port}`);
 }
