@@ -494,6 +494,10 @@ export class DashboardService {
     };
   }
 
+  async dropsNearUnlock(_user: User) {
+    return [];
+  }
+
   async activityFeed(user: User) {
     const followingIds = await this.getFollowingIds(user.userId);
     const events = await this.prisma.activityEvent.findMany({
