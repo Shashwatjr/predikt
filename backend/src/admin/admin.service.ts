@@ -9,6 +9,7 @@ import { JwtService } from '@nestjs/jwt';
 import { Prisma } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { AuditService } from '../audit/audit.service';
+import { blocksLiveSessions, revokeLiveUserSessions } from '../auth/account-access';
 import { PrismaService } from '../prisma/prisma.service';
 import { safeAdminAuditItem } from './utils/safe-admin-projections';
 import {
@@ -223,6 +224,9 @@ export class AdminService {
       afterValue: safeAdminUserDetail(after as unknown as Record<string, unknown> | null),
       reason: body.reason,
     });
+    if (blocksLiveSessions(after.status)) {
+      await revokeLiveUserSessions(this.prisma, userId);
+    }
     return safeAdminUserDetail(after as unknown as Record<string, unknown> | null);
   }
 
@@ -243,6 +247,9 @@ export class AdminService {
       afterValue: safeAdminUserDetail(after as unknown as Record<string, unknown> | null),
       reason: body.reason,
     });
+    if (blocksLiveSessions(after.status)) {
+      await revokeLiveUserSessions(this.prisma, userId);
+    }
     return safeAdminUserDetail(after as unknown as Record<string, unknown> | null);
   }
 

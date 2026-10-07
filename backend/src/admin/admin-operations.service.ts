@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
+import { blocksLiveSessions, revokeLiveUserSessions } from '../auth/account-access';
 import { PrismaService } from '../prisma/prisma.service';
 import { AdminAuthenticatedUser } from '../common/types/admin-authenticated-user';
 import {
@@ -269,6 +270,10 @@ export class AdminOperationsService {
       afterValue: { status: after.status },
       reason,
     });
+
+    if (blocksLiveSessions(after.status)) {
+      await revokeLiveUserSessions(this.prisma, userId);
+    }
 
     return safeAdminUserListItem(after as unknown as Record<string, unknown>);
   }

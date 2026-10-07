@@ -23,6 +23,7 @@ import { LogoutDto } from './dto/logout.dto';
 import { GuestDto } from './dto/guest.dto';
 import { GuestUpgradeDto } from './dto/guest-upgrade.dto';
 import { featureFlags } from '../config/feature-flags';
+import { assertActiveAccount } from './account-access';
 
 interface RefreshTokenPayload {
   sub: string;
@@ -98,6 +99,7 @@ export class AuthService {
 
     const valid = await bcrypt.compare(dto.password, user.passwordHash);
     if (!valid) throw new UnauthorizedException('Invalid credentials');
+    assertActiveAccount(user.status, 'Invalid credentials');
 
     return this.issueAuthResponse(user);
   }
@@ -121,6 +123,7 @@ export class AuthService {
     if (!valid) {
       throw new UnauthorizedException('Invalid or expired refresh token');
     }
+    assertActiveAccount(session.user.status, 'Invalid or expired refresh token');
 
     await this.prisma.userSession.update({
       where: { userSessionId: session.userSessionId },
