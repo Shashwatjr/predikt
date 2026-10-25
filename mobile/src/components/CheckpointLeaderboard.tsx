@@ -29,6 +29,12 @@ interface Props {
 
 const MEDALS = ['🥇', '🥈', '🥉'];
 
+function safeClock(dateStr: string | null | undefined): string {
+  if (!dateStr) return '—';
+  const d = new Date(dateStr);
+  return isNaN(d.getTime()) ? '—' : formatClock(d, false);
+}
+
 function offBy(diffSeconds: number): string {
   if (diffSeconds < 60) return `${diffSeconds}s off`;
   const mins = Math.round(diffSeconds / 60);
@@ -39,7 +45,7 @@ export default function CheckpointLeaderboard({ board }: Props) {
   const { colors } = useTheme();
   if (!board || !board.available || !board.standings.length) return null;
 
-  const projected = formatClock(new Date(board.projectedArrivalAt), false);
+  const projected = safeClock(board.projectedArrivalAt);
   const paceNote =
     board.basis === 'eta_reread'
       ? 'based on a live ETA re-read'
@@ -82,7 +88,7 @@ export default function CheckpointLeaderboard({ board }: Props) {
                 {isCurrent ? <Text style={{ color: colors.purple }}> (you)</Text> : null}
               </Text>
               <Text style={[styles.guess, { color: colors.textSecondary }]}>
-                Guessed {formatClock(new Date(s.predictedReachedTime), false)}
+                Guessed {safeClock(s.predictedReachedTime)}
               </Text>
             </View>
             <Text style={[styles.diff, { color: index === 0 ? colors.green : colors.textMuted }]}>

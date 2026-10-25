@@ -362,7 +362,7 @@ const styles = StyleSheet.create({
   predCard: {
     flexGrow: 1,
     flexBasis: '46%',
-    minWidth: 140,
+    minWidth: 0,
     borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: palette.border,
