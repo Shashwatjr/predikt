@@ -1,8 +1,14 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
+import {
+  parseInviteTarget,
+  selectInviteForLoad,
+  type InviteSelection,
+} from '../navigation/inviteRouting';
 
 const PENDING_JOIN_CODE_KEY = 'predikt.pendingJoinCode.v1';
 const PENDING_FORWARDED_BY_KEY = 'predikt.pendingForwardedBy.v1';
+const WEB_INVITE_KEY = 'predikt.webInvite.v1';
 
 export async function savePendingJoinCode(joinCode: string) {
   const normalized = joinCode.trim().toUpperCase();
@@ -24,27 +30,60 @@ export async function savePendingForwardedBy(userId: string) {
   await AsyncStorage.setItem(PENDING_FORWARDED_BY_KEY, normalized);
 }
 
+function readStoredWebInvite(): InviteSelection | null {
+  if (typeof sessionStorage === 'undefined') return null;
+  try {
+    const raw = sessionStorage.getItem(WEB_INVITE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { joinCode?: string; forwardedBy?: string | null };
+    if (!parsed.joinCode) return null;
+    return { joinCode: parsed.joinCode, forwardedBy: parsed.forwardedBy ?? null };
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredWebInvite(selection: InviteSelection) {
+  if (typeof sessionStorage === 'undefined' || !selection.joinCode) return;
+  sessionStorage.setItem(
+    WEB_INVITE_KEY,
+    JSON.stringify({ joinCode: selection.joinCode, forwardedBy: selection.forwardedBy }),
+  );
+}
+
+function currentNavigationType() {
+  if (typeof performance === 'undefined' || typeof performance.getEntriesByType !== 'function') {
+    return 'navigate';
+  }
+  const entry = performance.getEntriesByType('navigation')[0] as { type?: string } | undefined;
+  return entry?.type ?? 'navigate';
+}
+
+function currentWebInvite(): InviteSelection {
+  const params = new URLSearchParams(window.location.search);
+  const queryCode = params.get('joinCode')?.trim().toUpperCase() || null;
+  const parsed = parseInviteTarget(window.location.href);
+  return selectInviteForLoad(
+    {
+      joinCode: queryCode && !parsed.joinCode ? null : parsed.joinCode,
+      forwardedBy: parsed.forwardedBy,
+    },
+    readStoredWebInvite(),
+    currentNavigationType(),
+  );
+}
+
 /**
  * Resolves the `forwardedBy` userId from a forwarded invite link so the join call
- * can record the forward-share chain. On web reads `?forwardedBy=` from the URL and
- * strips it; otherwise consumes a value saved during a login round-trip. Returns
- * null when the invite was not forwarded (e.g. straight from the creator).
+ * can record the forward-share chain. The query stays in the URL so a refresh
+ * still has it. A login round-trip can also restore the AsyncStorage copy.
  */
 export async function resolveForwardedBy(): Promise<string | null> {
   if (Platform.OS === 'web' && typeof window !== 'undefined') {
     try {
-      const params = new URLSearchParams(window.location.search);
-      const forwardedBy = params.get('forwardedBy')?.trim();
-      if (forwardedBy) {
-        params.delete('forwardedBy');
-        const query = params.toString();
-        window.history.replaceState(
-          {},
-          '',
-          window.location.pathname + (query ? `?${query}` : '') + window.location.hash,
-        );
-        return forwardedBy;
-      }
+      const selected = currentWebInvite();
+      if (selected.joinCode) writeStoredWebInvite(selected);
+      if (selected.forwardedBy) return selected.forwardedBy;
     } catch {
       // Fall through to pending storage.
     }
@@ -58,24 +97,17 @@ export async function resolveForwardedBy(): Promise<string | null> {
 
 /**
  * Resolves the invite code that should open the join/predict flow. On web, reads
- * `?joinCode=` from the URL (a WhatsApp-tapped link) and strips it afterwards so
- * it fires exactly once; otherwise falls back to a pending code saved during an
- * account login round-trip.
+ * `?joinCode=` from the URL (a WhatsApp-tapped link) or `/join/:code`. The query
+ * is left in place so refresh keeps it. A reload with an empty URL restores the
+ * last code from this tab. Account login still uses the pending AsyncStorage copy.
  */
 export async function resolveInviteJoinCode(): Promise<string | null> {
   if (Platform.OS === 'web' && typeof window !== 'undefined') {
     try {
-      const params = new URLSearchParams(window.location.search);
-      const code = params.get('joinCode')?.trim().toUpperCase();
-      if (code) {
-        params.delete('joinCode');
-        const query = params.toString();
-        window.history.replaceState(
-          {},
-          '',
-          window.location.pathname + (query ? `?${query}` : '') + window.location.hash,
-        );
-        return code;
+      const selected = currentWebInvite();
+      if (selected.joinCode) {
+        writeStoredWebInvite(selected);
+        return selected.joinCode;
       }
     } catch {
       // Fall through to pending storage.

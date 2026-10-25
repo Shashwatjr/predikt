@@ -1,4 +1,5 @@
 import { Linking, Platform } from 'react-native';
+import { buildInviteShareCard, normalizeWebBaseUrl } from '../share/shareCard';
 
 const CANONICAL_WEB_BASE_URL = 'https://myprediktion.com';
 
@@ -25,7 +26,7 @@ type SafePreview = {
 
 function getWebBaseUrl() {
   const envBase = process.env.EXPO_PUBLIC_WEB_BASE_URL?.trim();
-  if (envBase) return envBase.replace(/\/+$/, '');
+  if (envBase) return normalizeWebBaseUrl(envBase);
   const host = typeof window !== 'undefined' ? window.location?.hostname?.toLowerCase() ?? '' : '';
   if (host === 'myprediktion.com' || host === 'www.myprediktion.com') {
     return CANONICAL_WEB_BASE_URL;
@@ -71,19 +72,6 @@ export async function shareViaWebShareApi(payload: {
   return false;
 }
 
-function safeChallengeLine(room: SafePreview) {
-  const category = room.category ?? room.templateKey;
-  if (category === 'weather_rain') return 'Beat the Forecast with me.';
-  if (category === 'food_eta') return 'Beat the ETA with me.';
-  if (category === 'open_prediction') return 'Join my Wild Cards room and make your call.';
-  if (category === 'whos_late') return 'Friendly group arrival challenge.';
-  if (category === 'gym_habit') return 'Positive habit challenge.';
-  if (room.routeSummary) {
-    return 'Predict this journey outcome with me.';
-  }
-  return room.question || 'Predict what happens next with me.';
-}
-
 function formatLockTime(room: SafePreview) {
   const value = room.lockTime || room.predictionCloseTime;
   if (!value) return null;
@@ -93,25 +81,19 @@ function formatLockTime(room: SafePreview) {
 }
 
 export function buildSharePayload(room: SafePreview, forwardedBy?: string | null) {
-  const category = room.category ?? room.templateKey;
   const inviteCode = room.inviteCode ?? '';
-  const title = room.roomTitle ?? room.title ?? 'My Prediktion room';
-  const inviteUrl = buildInviteUrl(inviteCode, forwardedBy);
   const lockTime = formatLockTime(room);
-  const body = [
-    `Join my room on My Prediktion: ${title}`,
-    safeChallengeLine(room),
-    category === 'open_prediction' ? 'Best call earns Gems. Late heat is pure Rizz.' : 'Closest guess wins Aura.',
-    `Room code: ${inviteCode}`,
-    lockTime ? `Lock time: ${lockTime}` : null,
-    `Open: ${inviteUrl}`,
-  ]
-    .filter(Boolean)
-    .join('\n');
+  const card = buildInviteShareCard({
+    inviteCode,
+    webBaseUrl: getWebBaseUrl(),
+    forwardedBy,
+    lockLabel: lockTime,
+  });
+  const body = card.text;
 
   return {
-    inviteUrl,
-    shareTitle: title,
+    inviteUrl: card.url,
+    shareTitle: card.title,
     shareText: body,
     copyText: body,
     instagramCaption: body,

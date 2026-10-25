@@ -19,6 +19,7 @@ import ArrivalPredictionCard from '../components/ArrivalPredictionCard';
 import { useArrivalPredictionState } from '../hooks/useArrivalPredictionState';
 import { formatClock } from '../utils/benchmarks';
 import { buildSharePayload, openWhatsAppWithText } from '../utils/shareRoom';
+import { describeInviteEntry, readHttpStatus, type InviteEntry } from '../navigation/inviteRouting';
 import { cardStyle, layout, palette, radius, spacing } from '../theme/designSystem';
 
 type Props = {
@@ -34,6 +35,7 @@ export default function JoinRoomScreen({ navigation, route }: Props) {
   const [loading, setLoading] = useState(false);
   const [guestHandle, setGuestHandle] = useState('');
   const [forwardedBy, setForwardedBy] = useState<string | null>(null);
+  const [entry, setEntry] = useState<InviteEntry | null>(null);
   // Arrival-call state for the merged "Predict now" path (see showMergedPredict).
   const { benchmarks, predicted, setPredicted, hotTake, setHotTake } = useArrivalPredictionState(room);
 
@@ -44,6 +46,13 @@ export default function JoinRoomScreen({ navigation, route }: Props) {
     try {
       const res = await api.get(`/rooms/invite/${inviteCode}`);
       let preview = res.data;
+      const nextEntry = describeInviteEntry({ preview, httpStatus: res.status });
+      setEntry(nextEntry);
+      setCode(inviteCode);
+      if (!nextEntry.allowJoin) {
+        setRoom(preview);
+        return;
+      }
       // Invite preview is public and user-agnostic — enrich with viewerHasPredicted when authed.
       if (isAuthenticated && preview?.roomId) {
         try {
@@ -63,9 +72,20 @@ export default function JoinRoomScreen({ navigation, route }: Props) {
         }
       }
       setRoom(preview);
-      setCode(inviteCode);
     } catch (error: unknown) {
-      appAlert('Room unavailable', getApiErrorMessage(error, 'No room with that invite code. Check it and try again.'));
+      const httpStatus = readHttpStatus(error);
+      const failed = describeInviteEntry({
+        preview: null,
+        httpStatus: httpStatus === 404 || httpStatus === 400 ? httpStatus : undefined,
+      });
+      setRoom(null);
+      if (httpStatus === 404 || httpStatus === 400) {
+        setEntry(failed);
+        appAlert(failed.title, failed.body);
+      } else {
+        setEntry(null);
+        appAlert('Room unavailable', getApiErrorMessage(error, failed.body));
+      }
     } finally {
       setLoading(false);
     }
@@ -223,6 +243,7 @@ export default function JoinRoomScreen({ navigation, route }: Props) {
     completed: 'See the Tea',
   };
   const isJoinable = alreadyPredicted || canPredictNow || !!(normalizedStatus && ctaLabel[normalizedStatus]);
+  const joinAllowed = !entry || entry.allowJoin;
 
   const categoryTheme = getCategoryTheme(room?.category ?? room?.templateKey);
   const isGenericRoom = (room?.category ?? room?.templateKey) === 'open_prediction';
@@ -308,7 +329,7 @@ export default function JoinRoomScreen({ navigation, route }: Props) {
                   : "You're invited to predict"}
             </Text>
             <Text style={styles.heroTitle}>{roomTitle}</Text>
-            {room.question ? <Text style={styles.heroQuestion}>{room.question}</Text> : null}
+            {joinAllowed && room.question ? <Text style={styles.heroQuestion}>{room.question}</Text> : null}
             <View style={styles.socialProofPill}>
               <Text style={styles.socialProofText}>👥 {socialProof}</Text>
             </View>
@@ -317,7 +338,7 @@ export default function JoinRoomScreen({ navigation, route }: Props) {
 
           {/* Standalone benchmark card for watch/non-predict states. When predicting
               inline (showMergedPredict), ArrivalPredictionCard renders its own. */}
-          {benchmarks?.ordered.length && !showMergedPredict ? (
+          {joinAllowed && benchmarks?.ordered.length && !showMergedPredict ? (
             <View style={styles.benchCard}>
               {benchmarks.ordered.map((b) => (
                 <View key={b.key} style={styles.benchRow}>
@@ -348,7 +369,7 @@ export default function JoinRoomScreen({ navigation, route }: Props) {
             </View>
           ) : null}
 
-          {isJoinable && !isAuthenticated ? (
+          {joinAllowed && isJoinable && !isAuthenticated ? (
             <View style={[cardStyle('elevated'), { gap: spacing.sm }]}>
               <TextInputField
                 label="Your name"
@@ -367,7 +388,7 @@ export default function JoinRoomScreen({ navigation, route }: Props) {
 
           {/* Merged "Predict now": benchmark + time picker + hot take, so the guest
               locks in from this one screen instead of a second Prediction step. */}
-          {showMergedPredict ? (
+          {joinAllowed && showMergedPredict ? (
             <ArrivalPredictionCard
               room={room}
               predicted={predicted}
@@ -378,7 +399,11 @@ export default function JoinRoomScreen({ navigation, route }: Props) {
             />
           ) : null}
 
-          {isJoinable ? (
+          {!joinAllowed && entry ? (
+            <Text style={[styles.statusMsg, { color: colors.textPrimary }]}>
+              {entry.title}. {entry.body}
+            </Text>
+          ) : isJoinable ? (
             alreadyPredicted ? (
               <PrimaryButton
                 label="Go to room"
@@ -444,6 +469,11 @@ export default function JoinRoomScreen({ navigation, route }: Props) {
             <View style={{ height: 6 }} />
             <PrimaryButton label="Find Room" onPress={() => handleFind()} loading={loading} icon="🔍" />
           </View>
+          {entry && !room ? (
+            <Text style={[styles.statusMsg, { color: colors.textPrimary }]}>
+              {entry.title}. {entry.body}
+            </Text>
+          ) : null}
           <Text style={styles.finderNote}>
             {isGenericRoom
               ? 'No account needed to join Wild Cards. The host attests the result, and challengers can request proof through WhatsApp.'
