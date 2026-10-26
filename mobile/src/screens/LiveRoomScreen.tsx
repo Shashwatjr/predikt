@@ -110,6 +110,7 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
   const [predictions, setPredictions] = useState<RoomPredictionEntry[]>([]);
   const [checkpointBoards, setCheckpointBoards] = useState<Record<number, CheckpointBoard | undefined>>({});
   const [liveLeaderboard, setLiveLeaderboard] = useState<LiveLeaderboardData | null>(null);
+  const [starting, setStarting] = useState(false);
   const [locking, setLocking] = useState(false);
   const [unlockInSeconds, setUnlockInSeconds] = useState<number | null>(null);
   const [myPredictionDate, setMyPredictionDate] = useState<Date | null>(null);

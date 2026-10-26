@@ -1093,43 +1093,51 @@ export class LifecycleService {
       include: { user: true },
       orderBy: [{ totalRoomAura: 'desc' }, { milestonesWon: 'desc' }],
     });
-
-    let previousAura: number | null = null;
-    let previousRank = 0;
-    for (const [index, result] of results.entries()) {
-      const rank =
-        previousAura !== null && result.totalRoomAura === previousAura
-          ? previousRank
-          : index + 1;
-      previousAura = result.totalRoomAura;
-      previousRank = rank;
-      await this.prisma.roomResult.update({
-        where: { roomResultId: result.roomResultId },
-        data: { overallRank: rank },
-      });
-
-      await this.prisma.cloutTransaction.create({
-        data: {
-          userId: result.userId,
-          roomId,
-          amount: 10,
-          transactionType: 'earn',
-          reason: 'Stayed active until room results',
-        },
-      });
-
-      await this.prisma.user.update({
-        where: { userId: result.userId },
-        data: {
-          cloutBalance: { increment: 10 },
-          lifetimeCloutEarned: { increment: 10 },
-        },
-      });
-    }
-
     const winner = results[0];
-    if (winner && room?.answerType !== 'multiple_choice') {
-      await this.prisma.$transaction(async (tx) => {
+
+    // Result finalization can be retried after a client timeout. Serialize the
+    // ranking/clout write and claim it with an existing unique ledger key so a
+    // concurrent retry cannot issue the participation reward twice.
+    await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT 1 FROM (SELECT pg_advisory_xact_lock(hashtextextended(${roomId}, 0))) AS result`;
+      const idempotencyKey = `result_finalization:${roomId}`;
+      const existing = await tx.creditLedger.findUnique({ where: { idempotencyKey } });
+      if (existing) return false;
+
+      let previousAura: number | null = null;
+      let previousRank = 0;
+      for (const [index, result] of results.entries()) {
+        const rank =
+          previousAura !== null && result.totalRoomAura === previousAura
+            ? previousRank
+            : index + 1;
+        previousAura = result.totalRoomAura;
+        previousRank = rank;
+        await tx.roomResult.update({
+          where: { roomResultId: result.roomResultId },
+          data: { overallRank: rank },
+        });
+
+        await tx.cloutTransaction.create({
+          data: {
+            userId: result.userId,
+            roomId,
+            amount: 10,
+            transactionType: 'earn',
+            reason: 'Stayed active until room results',
+          },
+        });
+
+        await tx.user.update({
+          where: { userId: result.userId },
+          data: {
+            cloutBalance: { increment: 10 },
+            lifetimeCloutEarned: { increment: 10 },
+          },
+        });
+      }
+
+      if (winner && room?.answerType !== 'multiple_choice') {
         await tx.cloutTransaction.create({
           data: {
             userId: winner.userId,
@@ -1147,6 +1155,25 @@ export class LifecycleService {
             winsCount: { increment: 1 },
           },
         });
+      }
+
+      await tx.creditLedger.create({
+        data: {
+          userId: creatorUserId,
+          eventType: 'result_finalization',
+          delta: 0,
+          balanceAfter: 0,
+          sourceId: roomId,
+          sourceType: 'room',
+          idempotencyKey,
+          metadata: { label: 'Result finalization claim' },
+        },
+      });
+      return true;
+    });
+
+    if (winner && room?.answerType !== 'multiple_choice') {
+      await this.prisma.$transaction(async (tx) => {
         await this.grantFirstWinGems(winner.userId, roomId, tx);
         await this.ensureFlex(tx, winner.userId, 'room_champion', roomId);
         await this.ensureDropAwards(tx, roomId, winner.userId, 'overall_winner');

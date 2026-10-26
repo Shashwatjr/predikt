@@ -32,10 +32,38 @@ backend: npm run build -> PASS
 mobile: npm run typecheck -> FAIL (inherited LiveRoomScreen.tsx: setStarting/starting undefined at lines 509, 523, 1595, 1750)
 mobile: npm ci --ignore-scripts -> BLOCKED (registry tarballs repeatedly reported corrupted/missing; tsc was nevertheless present for the typecheck)
 
+After restoring the intended `starting` in-flight state in `LiveRoomScreen.tsx`:
+
+```text
+mobile: npm run typecheck -> PASS
+mobile: npm test -- --test-name-pattern='invite|journey-room-render' -> PASS (69 passed, 0 failed)
+mobile: npm ci --ignore-scripts --cache /tmp/predikt-mobile-cache-20261026 \
+  --fetch-retries=1 --fetch-timeout=30000 -> PASS (562 packages; lockfile unchanged)
+npm config get registry -> https://registry.npmjs.org/
+initial install evidence -> expo-modules-core@57.0.3 missing/corrupt in cache; fresh cache fetched it successfully
+EXPO_PUBLIC_API_BASE_URL=http://127.0.0.1:3300 npx expo export --platform web -> PASS (web bundle emitted)
+```
+
 POSTGRES_USER=predikt_test POSTGRES_PASSWORD=predikt_test_password POSTGRES_DB=predikt_test \
   docker compose up -d postgres -> PASS (local container, host port 55433)
 DATABASE_URL=postgresql://predikt_test:***@127.0.0.1:55433/predikt_test?schema=public \
   npx prisma migrate deploy -> FAIL/BLOCKED (P3018: first migration alters missing relation activity_events)
+
+```text
+npx prisma migrate diff --from-empty --to-schema-datamodel prisma/schema.prisma --script \
+  > /tmp/predikt-schema-derived-20261026.sql -> PASS (1,365 lines; CREATE TABLE activity_events present)
+docker exec ... psql < /tmp/predikt-schema-derived-20261026.sql -> PASS (47 public tables; activity_events present)
+Schema-derived label: runtime database created from checked-in schema SQL, not migration history or production parity.
+
+Static reproduction before fix -> 2 clout rows, user clout 20 for one result.
+Concurrent + retried finalizeRoom after fix -> 1 clout row [10], user clout 10, one result_finalization claim.
+Injected downstream failure then retry -> first call failed; clout/claim remained atomic; retry did not duplicate clout.
+Aura in this exact-result-finalization path -> unchanged; milestone Aura remains governed by existing reward idempotency.
+
+Local Nest via ts-node on port 3300 + schema-derived DB -> PASS /health.
+HTTP create -> invite preview -> guest -> join (forwardedBy) -> milestone prediction -> start -> end/results -> PASS.
+Invite preview location fields -> hidden (null); no production URL used.
+```
 ```
 ```
 
