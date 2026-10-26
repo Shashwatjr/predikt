@@ -94,7 +94,9 @@ export default function JoinRoomScreen({ navigation, route }: Props) {
   useEffect(() => {
     // Resolve the forwarder (if this invite was forwarded) so join can record the chain.
     resolveForwardedBy().then((value) => value && setForwardedBy(value));
-  }, []);
+    const routeForwarder = route.params?.forwardedBy?.trim();
+    if (routeForwarder) setForwardedBy(routeForwarder);
+  }, [route.params?.forwardedBy]);
 
   useEffect(() => {
     const routeCode = route.params?.joinCode?.trim().toUpperCase();

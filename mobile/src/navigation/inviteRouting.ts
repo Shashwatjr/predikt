@@ -210,6 +210,9 @@ export function inviteStateFromPath(path: string) {
   const parsed = parseInviteTarget(path);
   if (!parsed.joinCode) return null;
   return {
-    routes: [{ name: 'JoinRoom' as const, params: { joinCode: parsed.joinCode } }],
+    routes: [{
+      name: 'JoinRoom' as const,
+      params: { joinCode: parsed.joinCode, forwardedBy: parsed.forwardedBy ?? undefined },
+    }],
   };
 }

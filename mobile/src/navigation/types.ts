@@ -10,7 +10,7 @@ export type RootStackParamList = {
       }
     | undefined;
   RoomCreated: { room: any };
-  JoinRoom: { joinCode?: string } | undefined;
+  JoinRoom: { joinCode?: string; forwardedBy?: string } | undefined;
   Prediction: {
     roomId: string;
     room: any;

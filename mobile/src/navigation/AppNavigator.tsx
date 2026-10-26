@@ -22,6 +22,7 @@ import LegalScreen from '../screens/LegalScreen';
 import HelpScreen from '../screens/HelpScreen';
 import { RootStackParamList } from './types';
 import { resolveInviteJoinCode } from '../utils/inviteIntent';
+import { inviteStateFromPath } from './inviteRouting';
 import { consumePostAuthIntent } from '../utils/postAuthIntent';
 import ScreenCrashBoundary from '../components/ScreenCrashBoundary';
 
@@ -94,7 +95,14 @@ export default function AppNavigator() {
   }
 
   return (
-    <NavigationContainer ref={navigationRef} onReady={runInitialRouting}>
+    <NavigationContainer
+      ref={navigationRef}
+      onReady={runInitialRouting}
+      linking={{
+        prefixes: ['https://myprediktion.com', 'https://www.myprediktion.com', 'http://localhost:8081'],
+        getStateFromPath: (path) => (inviteStateFromPath(path) as any) ?? undefined,
+      }}
+    >
       <Stack.Navigator
         key={isAuthenticated ? 'authenticated' : 'unauthenticated'}
         initialRouteName={isAuthenticated ? 'Home' : 'Landing'}

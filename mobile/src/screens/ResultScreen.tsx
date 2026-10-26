@@ -147,7 +147,7 @@ export default function ResultScreen({ navigation, route }: Props) {
   const winningPrediction = winningRow?.predictedReachedTime
     ? new Date(winningRow.predictedReachedTime).toLocaleString()
     : 'Closest valid guess';
-  const winnerHandle = formatWinnerHandle(winningRow);
+  const winnerHandle = isNeutralClosure ? null : formatWinnerHandle(winningRow);
   const differenceMinutes = winningRow?.differenceFromActualMinutes;
   const differenceLabel = typeof differenceMinutes === 'number' ? `${differenceMinutes.toFixed(1)} min` : 'Closest';
   const auraEarned = winningRow?.totalRoomAura ?? winningRow?.pointsAwarded ?? 0;
@@ -164,7 +164,7 @@ export default function ResultScreen({ navigation, route }: Props) {
     : null;
   const oracleBotLabel = room?.baselineLabel ?? room?.oracleBotPrediction?.label ?? 'Benchmark only';
   const biggestNearMiss = podiumTop3[1]
-    ? `${formatWinnerHandle(podiumTop3[1])} missed by ${
+    ? `${formatWinnerHandle(podiumTop3[1]) ?? 'A challenger'} missed by ${
         typeof podiumTop3[1]?.differenceFromActualMinutes === 'number'
           ? `${podiumTop3[1].differenceFromActualMinutes.toFixed(1)} min`
           : 'a little'
@@ -182,7 +182,7 @@ export default function ResultScreen({ navigation, route }: Props) {
       title: `☕ The Tea • ${room?.roomTitle ?? 'My Prediktion'}`,
       subtitle: 'Closest guess wins Aura',
       category: categoryLabel,
-      winner: winnerHandle,
+      winner: winnerHandle ?? undefined,
       predictionLabel: winningPrediction,
       actualLabel: actualOutcome,
       differenceLabel,
@@ -209,7 +209,7 @@ export default function ResultScreen({ navigation, route }: Props) {
           title: `${room?.roomTitle ?? 'My Prediktion'} receipt`,
           message: buildReceiptShareText({
             roomTitle: room?.roomTitle,
-            winnerHandle,
+            winnerHandle: winnerHandle ?? 'Pending',
             myRank,
             closestGuess: winningPrediction,
             farthestLabel: farthestGuessLabel,
@@ -444,7 +444,7 @@ export default function ResultScreen({ navigation, route }: Props) {
               <View style={styles.resultsStatGrid}>
                 <ResultStatCard
                   eyebrow="Winner"
-                  value={winnerHandle}
+                  value={winnerHandle ?? 'Pending'}
                   note={isNeutralClosure ? 'Fair reset in effect' : 'Closest valid guess'}
                   accent="#FBBF24"
                 />
@@ -688,9 +688,11 @@ function prettyCategory(category: string) {
   }
 }
 
-function formatWinnerHandle(row: any) {
+function formatWinnerHandle(row: any): string | null {
+  if (!row) return null;
   const handle = row?.user?.prediktHandle ?? row?.prediktHandle;
-  const name = row?.name ?? row?.user?.name ?? 'closest-guess';
+  const name = row?.name ?? row?.user?.name;
+  if (!handle && !name) return null;
   return handle ? `@${String(handle).replace(/^@/, '')}` : `@${String(name).toLowerCase().replace(/\s+/g, '')}`;
 }
 
@@ -966,7 +968,7 @@ const styles = StyleSheet.create({
   xpBadgeText: { color: '#fff', fontWeight: '900', fontSize: 18 },
   floatXp: { position: 'absolute', fontWeight: '900', fontSize: 22, alignSelf: 'center', top: 0 },
   podium: { flexDirection: 'row', justifyContent: 'center', gap: 8, alignItems: 'flex-end' },
-  podiumCol: { alignItems: 'center', width: 96 },
+  podiumCol: { alignItems: 'center', flex: 1, maxWidth: 96 },
   podiumEmoji: { fontSize: 28, marginBottom: 4 },
   podiumBar: { width: '100%', borderRadius: 10, alignItems: 'center', justifyContent: 'center', padding: 6 },
   podiumName: { color: '#fff', fontWeight: '700', fontSize: 11, textAlign: 'center' },
