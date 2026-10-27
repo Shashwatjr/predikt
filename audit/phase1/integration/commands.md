@@ -100,3 +100,8 @@ node audit/phase1/integration/verify-local-scored.cjs
 ```
 
 OG unit test imports the renderer; prior HTTP curl targets a standalone fixture server. Actual hosted preview request path remains NOT RUN.
+
+
+## Follow-up at 5369746
+
+See `reconciliation/checks-and-status.md` for affected commands/results and `reconciliation/preview-artifact.json` for the concrete local preview archive/hash. Existing passing journey/finalization checks were reused. The deletion expectation is resolved; six additional real-DB external-effect safety checks pass, while a seventh test reproduces the unresolved terminal-retry blocker. Migration rehearsal used a scratch candidate prerequisite migration plus six unchanged original files; no historical file, manual history insert or resolve was used. Hosted/device acceptance remains NOT RUN.

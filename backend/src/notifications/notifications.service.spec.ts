@@ -9,6 +9,8 @@ describe('NotificationsService', () => {
         count: jest.fn().mockResolvedValue(1),
       },
     } as any;
+    prisma.$queryRaw = jest.fn();
+    prisma.$transaction = jest.fn((fn: any) => fn(prisma));
     const service = new NotificationsService(prisma);
 
     const created = await service.create({
@@ -39,6 +41,8 @@ describe('NotificationsService', () => {
         updateMany: jest.fn().mockResolvedValue({ count: 2 }),
       },
     } as any;
+    prisma.$queryRaw = jest.fn();
+    prisma.$transaction = jest.fn((fn: any) => fn(prisma));
     const service = new NotificationsService(prisma);
 
     await expect(service.markRead('n1', { userId: 'user-1' } as any)).resolves.toMatchObject({

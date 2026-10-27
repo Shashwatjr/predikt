@@ -1,0 +1,7 @@
+{
+  "creator_credit_partial_failure_then_retry": "FAIL: balance must roll back when ledger fails\n\n15 !== 0\n",
+  "creator_credit_eight_contenders": "FAIL: all retries must complete without a unique-key error",
+  "flex_eight_contenders_and_retry": "FAIL: Expected values to be strictly equal:\n\n8 !== 1\n",
+  "drop_cap_two_users_eight_contenders": "FAIL: shared cap must hold across different beneficiaries\n\n8 !== 1\n",
+  "badge_eight_contenders_then_post_award_failure_retry": "FAIL: \nInvalid `this.prisma.userBadge.create()` invocation in\n/Users/krivikshaaitech/predikt-phase1-integration/backend/src/badges/badge.service.ts:93:49\n\n  90   return existing;\n  91 }\n  92 \n→ 93 const created = await this.prisma.userBadge.create(\nUnique constraint failed on the fields: (`user_id`,`room_id`,`badge_key`)"
+}

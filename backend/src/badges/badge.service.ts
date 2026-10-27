@@ -79,29 +79,36 @@ export class BadgeService {
     }
 
     const roomId = input.roomId ?? null;
-    const existing = await this.prisma.userBadge.findFirst({
-      where: {
-        userId: input.userId,
-        badgeKey: definition.badgeKey,
-        roomId,
-      },
-    });
-    if (existing) {
-      return existing;
-    }
+    const lockKey = JSON.stringify(['badge_award', input.userId, definition.badgeKey, roomId]);
+    const result = await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT 1 FROM (SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))) AS result`;
+      const existing = await tx.userBadge.findFirst({
+        where: {
+          userId: input.userId,
+          badgeKey: definition.badgeKey,
+          roomId,
+        },
+      });
+      if (existing) {
+        return { badge: existing, created: false };
+      }
 
-    const created = await this.prisma.userBadge.create({
-      data: {
-        userId: input.userId,
-        badgeKey: definition.badgeKey,
-        roomId,
-        category: input.category ?? null,
-        title: definition.title,
-        description: definition.description,
-        icon: definition.icon,
-        metadata: input.metadata as any,
-      },
+      const created = await tx.userBadge.create({
+        data: {
+          userId: input.userId,
+          badgeKey: definition.badgeKey,
+          roomId,
+          category: input.category ?? null,
+          title: definition.title,
+          description: definition.description,
+          icon: definition.icon,
+          metadata: input.metadata as any,
+        },
+      });
+
+      return { badge: created, created: true };
     });
+    if (!result.created) return result.badge;
 
     await this.auditService.log({
       actorType: 'system',
@@ -115,7 +122,7 @@ export class BadgeService {
       },
     });
 
-    return created;
+    return result.badge;
   }
 
   async getRoomBadges(roomId: string) {

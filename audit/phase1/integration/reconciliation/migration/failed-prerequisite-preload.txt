@@ -1,0 +1,8 @@
+Prisma schema loaded from prisma/schema.prisma
+Datasource "db": PostgreSQL database "predikt_reconcile_test_1793061970", schema "public" at "127.0.0.1:55444"
+
+6 migrations found in prisma/migrations
+
+Error: P3005
+
+The database schema is not empty. Read more about how to baseline an existing production database: https://pris.ly/d/migrate-baseline

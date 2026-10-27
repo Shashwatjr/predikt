@@ -6,6 +6,8 @@ import { AuditService } from '../audit/audit.service';
 describe('BadgeService', () => {
   let service: BadgeService;
   let prisma: {
+    $transaction: jest.Mock;
+    $queryRaw: jest.Mock;
     userBadge: {
       findFirst: jest.Mock;
       create: jest.Mock;
@@ -15,6 +17,8 @@ describe('BadgeService', () => {
 
   beforeEach(async () => {
     prisma = {
+      $transaction: jest.fn((fn) => fn(prisma)),
+      $queryRaw: jest.fn(),
       userBadge: {
         findFirst: jest.fn(),
         create: jest.fn(),

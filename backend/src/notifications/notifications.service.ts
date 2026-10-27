@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { User } from '@prisma/client';
+import { Prisma, User } from '@prisma/client';
 
 type NotificationSeverity = 'info' | 'success' | 'warning' | 'action_required';
 
@@ -112,34 +112,42 @@ export class NotificationsService {
       ...(input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : {}),
     };
 
-    if (input.idempotencyKey) {
-      const existing = await this.prisma.userNotification.findFirst({
-        where: {
+    const createOrFind = async (tx: Prisma.TransactionClient) => {
+      if (input.idempotencyKey) {
+        const existing = await tx.userNotification.findFirst({
+          where: {
+            userId: input.userId,
+            type: input.type,
+            roomId: input.roomId ?? undefined,
+            metadata: {
+              path: ['idempotencyKey'],
+              equals: input.idempotencyKey,
+            } as never,
+          },
+        });
+        if (existing) return existing;
+      }
+
+      return tx.userNotification.create({
+        data: {
           userId: input.userId,
+          roomId: input.roomId ?? null,
           type: input.type,
-          roomId: input.roomId ?? undefined,
-          metadata: {
-            path: ['idempotencyKey'],
-            equals: input.idempotencyKey,
-          } as never,
+          title: input.title,
+          body: input.body,
+          status: 'unread',
+          severity: input.severity ?? 'info',
+          actionLabel: input.actionLabel ?? null,
+          actionTarget: input.actionTarget ?? null,
+          metadata,
         },
       });
-      if (existing) return existing;
-    }
-
-    return this.prisma.userNotification.create({
-      data: {
-        userId: input.userId,
-        roomId: input.roomId ?? null,
-        type: input.type,
-        title: input.title,
-        body: input.body,
-        status: 'unread',
-        severity: input.severity ?? 'info',
-        actionLabel: input.actionLabel ?? null,
-        actionTarget: input.actionTarget ?? null,
-        metadata,
-      },
+    };
+    if (!input.idempotencyKey) return createOrFind(this.prisma);
+    const lockKey = JSON.stringify(['notification', input.userId, input.type, input.roomId ?? null, input.idempotencyKey]);
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT 1 FROM (SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))) AS result`;
+      return createOrFind(tx);
     });
   }
 

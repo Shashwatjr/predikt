@@ -389,3 +389,10 @@ Every mutation writes `CreditLedger` with `eventType`, `delta`, `balanceAfter`, 
 - `GET /admin/ai-systems`
 - `POST /admin/ai-systems`
 - `PATCH /admin/ai-systems/:aiSystemId`
+
+
+### Dashboard removal versus shared cancellation
+
+`DELETE /rooms/:roomId` (JWT): clear only the authenticated participant's dashboard preference. Creators and participants may remove their own entry; outsiders are rejected. This does not delete room data, predictions, rewards or another participant's view, and does not cancel a live room. This is distinct from account erasure/privacy-request processing.
+
+`POST /rooms/:roomId/journey/cancel` (JWT, creator only): explicitly cancel the shared journey through lifecycle validation, reason and reliability/neutral-closure handling. The internal `RoomsService.remove(..., true)` cancellation branch is not exposed by DELETE; clients cannot opt into shared cancellation by supplying a DELETE body or query string.

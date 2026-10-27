@@ -1,0 +1,16 @@
+{
+  "baseCommit": "5369746",
+  "database": "predikt_ui, loopback 55444",
+  "runtime": "ts-node, real Prisma/Postgres transactions",
+  "sourceSha256": {
+    "backend/scripts/verify-finalization-external.ts": "4576e747a296db63aef1563913d8c9ad432cec92c1de827487d908ceed182481",
+    "backend/src/lifecycle/lifecycle.service.ts": "f93c52dd4a0f30455ea57994008c3bf5275e8035834023c01f561494ab9e2a2c",
+    "backend/src/badges/badge.service.ts": "3976cb9abd175e67d90222e455b349e81de6f4b2ff5fd93bf29ca959b0c01554",
+    "backend/src/notifications/notifications.service.ts": "1d40269bff5f9f73f79b2fd549386a549ffa742997dffa9077e1767327698d77"
+  },
+  "passingSafetyScenarios": 6,
+  "reproducedUnresolvedDefects": [
+    "terminal end retry after post-completion failure"
+  ],
+  "scope": "internal service effects; no full HTTP recovery claim"
+}

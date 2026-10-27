@@ -1,0 +1,15 @@
+{
+  "database": "predikt_reconcile_test_1793061995",
+  "strategy": "isolated candidate prerequisite migration then six unmodified migrations",
+  "deploy": "PASS",
+  "migrationChecksums": {
+    "20260713000000_admin_portal_beta": "db8dc0328a1a45025493bcb8edb5c5b70a14db760d07cc98ad61dd9a01e11d3d",
+    "20260714000000_room_checkpoints": "307112d2031d9c24129696c2f886e59cfcd93afe41ef31420d049712aa554773",
+    "20260719000000_add_oracle_result_column": "3a86b1ba3660e3438276a825fb7e73df201769fa51e06c77316b9a3cf2f587ab",
+    "20260719000001_add_milestone_prediction_checkpoint_fields": "1200d0b300764216b4933a67bda924f1763ef82b8d8230dfd5428565aabc7fa4",
+    "20260725000000_room_checkpoint_eta_columns": "d04773d4352347b19a0e5f2e5f9b21d404fba96b70ac9a49537641143e5e5cc7",
+    "20260725130000_travel_eta_overhaul": "6a642c13a6011977ce4a3595fad104ac0960423fb7244d0625bac1dd3a7e6f90"
+  },
+  "prerequisiteSha256": "f38c4740c88c18819d207f2a103ead4f358e6742ae5982a05497735ed9226005",
+  "schemaDiff": "-- This is an empty migration."
+}

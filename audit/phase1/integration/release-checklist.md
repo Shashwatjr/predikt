@@ -28,3 +28,13 @@ Production/device/messaging checks, live preview-host smoke, DNS rollback, and m
 - FAIL: inherited default-delete/cancel test contract in `rooms.service.spec.ts` (1 of 27 affected backend tests); no backend change made to mask it.
 - OG hosted path remains unverified: renderer tests and standalone fixture-server curl are not actual preview-host acceptance.
 - `2c3ad02` baseline/history-marking scripts excluded. Migration repair is still separate and blocked pending verified reconciliation.
+
+
+## Follow-up at 5369746 (2026-10-27)
+
+Latest status is in `reconciliation/checks-and-status.md`; earlier failures above remain historical evidence.
+
+- RESOLVED: inherited deletion-contract mismatch. Tests now distinguish per-user removal from explicit shared cancellation and assert no shared-state writes on default removal.
+- PASS locally: new external-effect rollback/contention tests and fixes; seven-step isolated candidate fresh migration replay with empty schema diff; actual packaged preview handler and compiled-browser same-origin API smoke.
+- BLOCKED: terminal retry after post-completion failure, milestone scoring/reach recovery/contention and broader real-DB reward engine load/cap/account contention; existing DB migration reconciliation/data-transfer/rollback proof.
+- NOT RUN: preview Docker image build and actual hosted HTTPS/edge/OG/API/CORS acceptance; real-device/native location and OS/messaging share tests. Sources/config/package/checklists are prepared; no deployment is authorized or claimed.

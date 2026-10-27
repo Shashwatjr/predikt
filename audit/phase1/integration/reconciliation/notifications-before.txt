@@ -1,0 +1,10 @@
+{
+  "creator_credit_partial_failure_then_retry": "PASS",
+  "creator_credit_eight_contenders": "PASS",
+  "flex_eight_contenders_and_retry": "PASS",
+  "drop_cap_two_users_eight_contenders": "PASS",
+  "badge_eight_contenders_then_post_award_failure_retry": "PASS",
+  "notification_eight_contenders_and_partial_fanout_retry": "FAIL: Expected values to be strictly equal:\n\n8 !== 1\n",
+  "terminal_retry_release_blocker": "REPRODUCED: end marks completed before external failure; normal retry is rejected. Requires durable recovery/outbox design.",
+  "terminal_retry_gap_reproduced_not_fixed": "PASS"
+}

@@ -250,7 +250,7 @@ describe('RoomsService memberships', () => {
     });
   });
 
-  it('cancels an active room and hides it from the creator dashboard when deleted', async () => {
+  it('cancels an active room only on explicit creator cancellation', async () => {
     const update = jest.fn();
     const updateMany = jest.fn();
     const upsert = jest.fn();
@@ -271,7 +271,7 @@ describe('RoomsService memberships', () => {
     } as any;
     const service = new RoomsService(prisma, auditService, notificationsService, { grant: jest.fn().mockResolvedValue({ applied: true }) } as any);
 
-    const removed = await service.remove('room-2', { userId: 'creator-1' } as any);
+    const removed = await service.remove('room-2', { userId: 'creator-1' } as any, true);
 
     expect(prisma.$transaction).toHaveBeenCalled();
     expect(update).toHaveBeenCalledWith(
@@ -297,6 +297,44 @@ describe('RoomsService memberships', () => {
       removedFromDashboard: true,
       cancelledForEveryone: true,
     });
+  });
+
+  it.each(['creator-1', 'member-1'])('removes only %s dashboard view without changing the live room', async (userId) => {
+    const prisma = {
+      predictionRoom: {
+        findUnique: jest.fn().mockResolvedValue({ roomId: 'room-live', creatorUserId: 'creator-1', status: 'live' }),
+        update: jest.fn(),
+      },
+      roomMembership: { findUnique: jest.fn().mockResolvedValue({ status: 'joined' }) },
+      roomMilestone: { updateMany: jest.fn() },
+      userRoomPreference: { upsert: jest.fn().mockResolvedValue({}) },
+      $transaction: jest.fn(),
+    } as any;
+    const service = new RoomsService(prisma, auditService, notificationsService, {} as any);
+    await expect(service.remove('room-live', { userId } as any)).resolves.toEqual({
+      roomId: 'room-live', roomStatus: 'live', removedFromDashboard: true, cancelledForEveryone: false,
+    });
+    expect(prisma.userRoomPreference.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      where: { userId_roomId: { userId, roomId: 'room-live' } },
+      create: expect.objectContaining({ userId, roomId: 'room-live', hiddenFromDashboard: true }),
+      update: { pinned: false, hiddenFromDashboard: true },
+    }));
+    expect(prisma.predictionRoom.update).not.toHaveBeenCalled();
+    expect(prisma.roomMilestone.updateMany).not.toHaveBeenCalled();
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(notificationsService.notifyRoomMembers).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])('rejects outsider removal/cancellation (%s) before any writes', async (cancel) => {
+    const prisma = {
+      predictionRoom: { findUnique: jest.fn().mockResolvedValue({ roomId: 'r', creatorUserId: 'owner', status: 'live' }) },
+      roomMembership: { findUnique: jest.fn().mockResolvedValue(null) },
+      milestonePrediction: { findFirst: jest.fn().mockResolvedValue(null) },
+      userRoomPreference: { upsert: jest.fn() },
+    } as any;
+    const service = new RoomsService(prisma, auditService, notificationsService, {} as any);
+    await expect(service.remove('r', { userId: 'outsider' } as any, cancel)).rejects.toBeInstanceOf(ForbiddenException);
+    expect(prisma.userRoomPreference.upsert).not.toHaveBeenCalled();
   });
 
   it('requires membership for private room details', async () => {

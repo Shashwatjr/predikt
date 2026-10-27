@@ -1,0 +1,9 @@
+{
+  "package": "/tmp/predikt-preview-package-final",
+  "archive": "/tmp/predikt-phase1-preview-local.tar.gz",
+  "sha256": "862c52b1140359db67df7ee6fcbb0056c968a9768e884037ef82e6937eaed1eb",
+  "buildOrigin": "http://127.0.0.1:8221",
+  "localOnly": true,
+  "dockerImageBuild": "NOT RUN",
+  "hostedAcceptance": "NOT RUN"
+}

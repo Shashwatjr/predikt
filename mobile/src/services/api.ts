@@ -14,6 +14,8 @@ const DEFAULT_API_BASE_URL =
 
 export const API_BASE_URL = resolveApiBaseUrl(process.env.EXPO_PUBLIC_API_BASE_URL, {
   platform: Platform.OS,
+  origin: typeof window !== 'undefined' ? window.location.origin : null,
+  previewWebOrigin: process.env.EXPO_PUBLIC_PREVIEW_WEB_ORIGIN,
   hostname: typeof window !== 'undefined' ? window.location.hostname : null,
   fallback: DEFAULT_API_BASE_URL,
 });

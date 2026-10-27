@@ -1385,27 +1385,30 @@ export class LifecycleService {
 
   private async awardResultDeclaredCredits(roomId: string, creatorUserId: string) {
     const idempotencyKey = `result_declared:${roomId}:${creatorUserId}`;
-    const existing = await this.prisma.creditLedger.findUnique({
-      where: { idempotencyKey },
-    });
-    if (existing) return;
-    // Credit integrity: idempotency protects creators from duplicate rewards if result
-    // declaration is retried after a partial failure or client timeout.
-    const updatedUser = await this.prisma.user.update({
-      where: { userId: creatorUserId },
-      data: { creditBalance: { increment: 15 } },
-    });
-    await this.prisma.creditLedger.create({
-      data: {
-        userId: creatorUserId,
-        eventType: 'result_declared',
-        delta: 15,
-        balanceAfter: updatedUser.creditBalance,
-        sourceId: roomId,
-        sourceType: 'room',
-        idempotencyKey,
-        metadata: { label: 'Result declared credit bonus' },
-      },
+    await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT 1 FROM (SELECT pg_advisory_xact_lock(hashtextextended(${idempotencyKey}, 0))) AS result`;
+      const existing = await tx.creditLedger.findUnique({
+        where: { idempotencyKey },
+      });
+      if (existing) return;
+      // Credit integrity: idempotency protects creators from duplicate rewards if result
+      // declaration is retried after a partial failure or client timeout.
+      const updatedUser = await tx.user.update({
+        where: { userId: creatorUserId },
+        data: { creditBalance: { increment: 15 } },
+      });
+      await tx.creditLedger.create({
+        data: {
+          userId: creatorUserId,
+          eventType: 'result_declared',
+          delta: 15,
+          balanceAfter: updatedUser.creditBalance,
+          sourceId: roomId,
+          sourceType: 'room',
+          idempotencyKey,
+          metadata: { label: 'Result declared credit bonus' },
+        },
+      });
     });
   }
 
@@ -1489,9 +1492,13 @@ export class LifecycleService {
     const rules = await tx.roomDropRule.findMany({
       where: { roomId, ruleType },
       include: { drop: true },
+      orderBy: { dropId: 'asc' },
     });
 
     for (const rule of rules) {
+      // Cap is shared by all beneficiaries/rule types for this room and drop.
+      const lockKey = `drop_award:${roomId}:${rule.dropId}`;
+      await tx.$queryRaw`SELECT 1 FROM (SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))) AS result`;
       const existingWinners = await tx.userDrop.count({
         where: { dropId: rule.dropId, roomId },
       });
@@ -1535,6 +1542,8 @@ export class LifecycleService {
     roomId?: string,
     milestoneId?: string,
   ) {
+    const lockKey = JSON.stringify(['flex_award', userId, flexType, roomId ?? null, milestoneId ?? null]);
+    await tx.$queryRaw`SELECT 1 FROM (SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))) AS result`;
     const flex = await tx.flex.upsert({
       where: { flexName: flexType },
       update: {},

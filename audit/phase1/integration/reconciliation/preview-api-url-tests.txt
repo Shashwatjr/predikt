@@ -1,0 +1,15 @@
+✔ local web uses an explicit API override and otherwise stays on localhost:3000 (0.44975ms)
+✔ hosted web keeps the production API (0.036958ms)
+✔ explicit preview build uses same-origin API and fails closed on origin mismatch (0.211459ms)
+(node:11941) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/krivikshaaitech/predikt-phase1-integration/mobile/src/services/apiBaseUrl.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/krivikshaaitech/predikt-phase1-integration/mobile/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 105.132083

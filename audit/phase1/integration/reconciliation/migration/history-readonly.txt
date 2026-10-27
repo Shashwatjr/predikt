@@ -1,0 +1,10 @@
+                      migration_name                       | finished | not_rolled_back | applied_steps_count
+-----------------------------------------------------------+----------+-----------------+---------------------
+ 20260712000000_inferred_prerequisites                     | t        | t               |                   1
+ 20260713000000_admin_portal_beta                          | t        | t               |                   1
+ 20260714000000_room_checkpoints                           | t        | t               |                   1
+ 20260719000000_add_oracle_result_column                   | t        | t               |                   1
+ 20260719000001_add_milestone_prediction_checkpoint_fields | t        | t               |                   1
+ 20260725000000_room_checkpoint_eta_columns                | t        | t               |                   1
+ 20260725130000_travel_eta_overhaul                        | t        | t               |                   1
+(7 rows)

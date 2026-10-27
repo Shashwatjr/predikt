@@ -1,0 +1,16 @@
+{
+  "api": [
+    {
+      "path": "/api/auth/login",
+      "status": 201
+    },
+    {
+      "path": "/api/rooms/22661dd9-5424-4439-b47b-d737b391e7e0",
+      "status": 200
+    }
+  ],
+  "blocked": [],
+  "errors": [],
+  "result": "PASS: actual package CLI + compiled browser API pin + local Nest auth/read",
+  "hostedAcceptance": "NOT RUN"
+}
