@@ -1,0 +1,40 @@
+Prisma schema loaded from prisma/schema.prisma
+Datasource "db": PostgreSQL database "predikt_baseline_existing_1793070323", schema "public" at "127.0.0.1:55444"
+
+Migration 20260712000000_inferred_prerequisites marked as applied.
+
+
+Prisma schema loaded from prisma/schema.prisma
+Datasource "db": PostgreSQL database "predikt_baseline_existing_1793070323", schema "public" at "127.0.0.1:55444"
+
+Migration 20260713000000_admin_portal_beta marked as applied.
+
+
+Prisma schema loaded from prisma/schema.prisma
+Datasource "db": PostgreSQL database "predikt_baseline_existing_1793070323", schema "public" at "127.0.0.1:55444"
+
+Migration 20260714000000_room_checkpoints marked as applied.
+
+
+Prisma schema loaded from prisma/schema.prisma
+Datasource "db": PostgreSQL database "predikt_baseline_existing_1793070323", schema "public" at "127.0.0.1:55444"
+
+Migration 20260719000000_add_oracle_result_column marked as applied.
+
+
+Prisma schema loaded from prisma/schema.prisma
+Datasource "db": PostgreSQL database "predikt_baseline_existing_1793070323", schema "public" at "127.0.0.1:55444"
+
+Migration 20260719000001_add_milestone_prediction_checkpoint_fields marked as applied.
+
+
+Prisma schema loaded from prisma/schema.prisma
+Datasource "db": PostgreSQL database "predikt_baseline_existing_1793070323", schema "public" at "127.0.0.1:55444"
+
+Migration 20260725000000_room_checkpoint_eta_columns marked as applied.
+
+
+Prisma schema loaded from prisma/schema.prisma
+Datasource "db": PostgreSQL database "predikt_baseline_existing_1793070323", schema "public" at "127.0.0.1:55444"
+
+Migration 20260725130000_travel_eta_overhaul marked as applied.

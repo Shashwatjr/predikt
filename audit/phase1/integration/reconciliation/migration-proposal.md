@@ -37,6 +37,10 @@ Required gates still open: inventory/reconciliation, candidate history approval,
 
 Prisma's [baselining guidance](https://www.prisma.io/docs/orm/prisma-migrate/workflows/baselining) distinguishes existing-data onboarding from fresh replay; its [migration-history guidance](https://www.prisma.io/docs/orm/v7/prisma-migrate/understanding-prisma-migrate/migration-histories) explains file/history consistency. Those general principles support keeping the originals intact. Actual command behavior here is proven using the repository's 5.22.0 CLI, not inferred from newer CLI instructions.
 
+## Local baseline — 2026-10-27
+
+The local deploy blocker is closed by `migration/baseline-procedure.md`. Fresh `migrate deploy` executed the unchanged candidate SQL plus the six original files. The existing-schema clone was marked with `migrate resolve --applied` only after per-migration catalog checks, then deploy and redeploy changed no balances. Hosted cutover is still NOT RUN.
+
 ## Upgrade rehearsal — 2026-10-27
 
 `rehearse-upgrade.py` used new loopback databases only. It did not edit migration files, write `predikt_ui`, or insert `_prisma_migrations` rows. `migrate deploy` on both populated databases returned P3005 and was left refused.

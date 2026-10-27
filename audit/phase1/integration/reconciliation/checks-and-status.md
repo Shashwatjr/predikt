@@ -52,6 +52,6 @@ The migration preload P3005 is retained as rejected evidence; the successful pro
 ## Exact remaining release gates
 
 1. Lifecycle recovery: local creator retry for completed-but-partial scoring and `result_ready` fanout is covered in `recovery-20261027.md`. Broader production-like reward-engine load remains NOT RUN.
-2. Local upgrade rehearsal passed on a copy of the existing schema and on a pre-delta fixture (`migration/upgrade-rehearsal.json`). No history was stamped. Hosted inventory, adoption, and cutover remain NOT RUN. The six-file chain still cannot initialize an empty database by itself.
-3. Preview Docker image build NOT RUN this pass: registry metadata for `node:24-alpine` timed out. Dockerfile and package script remain in the repo. Hosted HTTPS/OG/API acceptance remains NOT RUN.
+2. Local baseline: fresh deploy executed all 7 migrations; the existing-schema clone was catalog-checked, resolved with Prisma, then deploy and redeploy were no-ops with balances unchanged (`migration/baseline-procedure.md`). Hosted cutover remains NOT RUN.
+3. Local preview image build PASS for `http://127.0.0.1:8221` only (`preview-deploy-plan.md`). The earlier registry timeout was infrastructure, not an app failure. No deploy. Hosted HTTPS/OG/deep-route/API/CORS and device checks remain NOT RUN.
 4. Real Android/iPhone/native permissions/location, background/network recovery, OS share-sheet/clipboard and WhatsApp/iMessage delivery/deep links. Responsive Chromium, simulated geolocation and an instrumented share adapter do not satisfy these gates.
