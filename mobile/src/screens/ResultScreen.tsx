@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AccessibilityInfo,
   Animated,
-  Platform,
   ScrollView,
   Share,
   StyleSheet,
@@ -20,7 +19,9 @@ import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 import WebSideWingLayout from '../components/WebSideWingLayout';
-import { shareMoment } from '../utils/shareMoment';
+import { appAlert } from '../utils/appAlert';
+import { currentShareWebBaseUrl } from '../utils/shareRoom';
+import { buildResultShareCard } from '../share/shareCard';
 import { ResultPayload, RoomBadge } from '../types/engagement';
 import RewardChips from '../components/RewardChips';
 import SectionHeader from '../components/SectionHeader';
@@ -134,23 +135,37 @@ export default function ResultScreen({ navigation, route }: Props) {
     }
   }
 
-  const safeData = toArray<any>(data);
-  const safeBadges = toArray<RoomBadge>(badges);
   const safePredictions = toArray<RoomPredictionEntry>(predictions);
-  const podiumTop3 = safeData.slice(0, 3);
-  const winningRow = winner ?? podiumTop3[0];
+  // Only the scored leaderboard decides winners and rewards. Revealed persisted
+  // predictions supply guess/error details omitted by the leaderboard endpoint.
+  const safeData = toArray<any>(data).map((row) => {
+    const prediction = safePredictions.find((entry) =>
+      entry.status !== 'revoked' && entry.user?.userId === (row.userId ?? row.user?.userId));
+    return {
+      ...row,
+      predictedReachedTime: row.predictedReachedTime ?? prediction?.predictedReachedTime,
+      differenceFromActualMinutes: row.differenceFromActualMinutes ?? prediction?.differenceFromActualMinutes,
+    };
+  });
+  const safeBadges = toArray<RoomBadge>(badges);
+  const hasScoredRows = safeData.length > 0;
+  const podiumTop3 = hasScoredRows ? safeData.slice(0, 3) : [];
+  const winningRow = hasScoredRows ? (safeData.find((row) => row.userId === winner?.userId) ?? podiumTop3[0]) : null;
   const closureState = initialResult?.closureType ?? room?.journeyStatus;
   const isNeutralClosure = ['plan_changed', 'cancelled_by_host', 'auto_closed', 'abandoned'].includes(closureState ?? '');
   const categoryKey = room?.category ?? room?.creationMeta?.category ?? room?.templateKey ?? 'arrival_time';
-  const categoryLabel = prettyCategory(categoryKey);
   const actualOutcome = formatActualOutcome(initialResult, room);
   const winningPrediction = winningRow?.predictedReachedTime
     ? new Date(winningRow.predictedReachedTime).toLocaleString()
-    : 'Closest valid guess';
-  const winnerHandle = isNeutralClosure ? null : formatWinnerHandle(winningRow);
+    : 'Pending';
+  const winnerHandle = !hasScoredRows || isNeutralClosure ? null : formatWinnerHandle(winningRow);
   const differenceMinutes = winningRow?.differenceFromActualMinutes;
-  const differenceLabel = typeof differenceMinutes === 'number' ? `${differenceMinutes.toFixed(1)} min` : 'Closest';
-  const auraEarned = winningRow?.totalRoomAura ?? winningRow?.pointsAwarded ?? 0;
+  const differenceLabel = !hasScoredRows
+    ? 'Pending'
+    : typeof differenceMinutes === 'number'
+      ? `${differenceMinutes.toFixed(1)} min`
+      : 'Pending';
+  const auraEarned = hasScoredRows ? (winningRow?.totalRoomAura ?? winningRow?.pointsAwarded ?? 0) : null;
   const dotBonus = winningRow?.dotBonus ?? winningRow?.rankBonusAura;
   // The viewer's own reward for this room. Aura is the per-room value we can
   // attribute from the leaderboard; RIZZ/Gems have no per-room source via the
@@ -162,7 +177,6 @@ export default function ResultScreen({ navigation, route }: Props) {
   const myRank = myRow
     ? myRow.rankInRoom ?? myRow.overallRank ?? safeData.findIndex((row) => row === myRow) + 1
     : null;
-  const oracleBotLabel = room?.baselineLabel ?? room?.oracleBotPrediction?.label ?? 'Benchmark only';
   const biggestNearMiss = podiumTop3[1]
     ? `${formatWinnerHandle(podiumTop3[1]) ?? 'A challenger'} missed by ${
         typeof podiumTop3[1]?.differenceFromActualMinutes === 'number'
@@ -177,53 +191,27 @@ export default function ResultScreen({ navigation, route }: Props) {
     ?? initialResult?.badges?.[0]?.title
     ?? momentCard.badge;
 
-  async function shareMomentCard() {
-    await shareMoment({
-      title: `☕ The Tea • ${room?.roomTitle ?? 'My Prediktion'}`,
-      subtitle: 'Closest guess wins Aura',
-      category: categoryLabel,
-      winner: winnerHandle ?? undefined,
-      predictionLabel: winningPrediction,
-      actualLabel: actualOutcome,
-      differenceLabel,
-      oracleLabel: oracleBotLabel,
-      badge: badgeUnlocked,
-      commentary: momentCard.commentary,
-      cta: 'Join the next My Prediktion',
-      linkLabel: 'Run it back?',
-    });
-    await api.post('/events', { eventType: 'moment_card_shared', metadata: { roomId, category: categoryKey } }).catch(() => undefined);
-  }
-
   async function shareReceiptCard() {
+    const inviteCode = room?.inviteCode;
+    if (!inviteCode) {
+      appAlert('Share unavailable', 'This result does not have an invite code yet.');
+      return;
+    }
+    const card = buildResultShareCard({
+      inviteCode,
+      webBaseUrl: currentShareWebBaseUrl(),
+      outcome: hasScoredRows && !isNeutralClosure ? winnerHandle : null,
+    });
     try {
-      const uri = await receiptRef.current?.capture?.();
-      if (uri && Platform.OS !== 'web') {
-        await Share.share({
-          title: `${room?.roomTitle ?? 'My Prediktion'} receipt`,
-          message: `The Tea is ready from ${room?.roomTitle ?? 'My Prediktion'}.`,
-          url: uri,
-        });
-      } else {
-        await Share.share({
-          title: `${room?.roomTitle ?? 'My Prediktion'} receipt`,
-          message: buildReceiptShareText({
-            roomTitle: room?.roomTitle,
-            winnerHandle: winnerHandle ?? 'Pending',
-            myRank,
-            closestGuess: winningPrediction,
-            farthestLabel: farthestGuessLabel,
-          }),
-        });
-      }
+      await Share.share({ title: card.title, message: card.text });
       await api
         .post('/events', {
           eventType: 'result_shared',
-          metadata: { roomId, category: categoryKey, shareType: 'receipt' },
+          metadata: { roomId, category: categoryKey, shareType: 'result' },
         })
         .catch(() => undefined);
     } catch {
-      await shareMomentCard();
+      appAlert('Share unavailable', 'The share sheet did not open.');
     }
   }
 
@@ -254,28 +242,7 @@ export default function ResultScreen({ navigation, route }: Props) {
       .map((entry) => [entry.user?.userId, entry] as const)
       .filter(([userId]) => !!userId),
   );
-  const leaderboardSource =
-    safeData.length > 0
-      ? safeData
-      : safePredictions
-          .filter((entry) => entry.status !== 'revoked')
-          .map((entry, index) => ({
-            userId: entry.user?.userId ?? `prediction-${index}`,
-            user: entry.user ?? null,
-            name:
-              entry.user?.prediktHandle
-                ? `@${entry.user.prediktHandle.replace(/^@/, '')}`
-                : entry.user?.name ?? (entry.isCurrentUser ? 'You' : 'Guest'),
-            prediktHandle: entry.user?.prediktHandle ?? null,
-            predictedReachedTime: entry.predictedReachedTime ?? null,
-            differenceFromActualMinutes: null,
-            totalRoomAura: 0,
-            pointsAwarded: 0,
-            rankInRoom: index + 1,
-            overallRank: index + 1,
-            isCurrentUser: !!entry.isCurrentUser,
-            auraEligible: entry.auraEligible,
-          }));
+  const leaderboardSource = hasScoredRows ? safeData : [];
   const rankingRows = leaderboardSource.map((row: any, index: number) => {
     const userId = row.userId ?? row.user?.userId;
     const prediction = userId ? predictionByUserId.get(userId) : null;
@@ -302,7 +269,7 @@ export default function ResultScreen({ navigation, route }: Props) {
       differenceLabel: isNeutralClosure
         ? 'Fair reset'
         : formatDifferenceFromActual(predictedAt, actualDate, row.differenceFromActualMinutes),
-      auraLabel: `${row.totalRoomAura ?? row.pointsAwarded ?? 0} Aura`,
+      auraLabel: isNeutralClosure ? '—' : `${row.totalRoomAura ?? row.pointsAwarded ?? 0} Aura`,
       rizzLabel: (prediction?.auraEligible ?? row.auraEligible) === false ? 'Rizz-tier' : 'Aura eligible',
       isWinner: !isNeutralClosure && (row.rankInRoom ?? row.overallRank ?? index + 1) === 1,
       medal:
@@ -326,7 +293,7 @@ export default function ResultScreen({ navigation, route }: Props) {
           predictionLabel: formatClock(benchmarks.maps.date, false),
           actualLabel: actualTimeLabel,
           differenceLabel: formatDifferenceFromActual(benchmarks.maps.date, actualDate, null),
-          auraLabel: '0 Aura',
+          auraLabel: '—',
           rizzLabel: benchmarks.maps.verified ? 'Verified route ETA' : 'Route estimate',
           isWinner: false,
           medal: null,
@@ -342,7 +309,7 @@ export default function ResultScreen({ navigation, route }: Props) {
           predictionLabel: formatClock(benchmarks.oracle.date, false),
           actualLabel: actualTimeLabel,
           differenceLabel: formatDifferenceFromActual(benchmarks.oracle.date, actualDate, null),
-          auraLabel: '0 Aura',
+          auraLabel: '—',
           rizzLabel: 'Benchmark player',
           isWinner: false,
           medal: null,
@@ -462,7 +429,7 @@ export default function ResultScreen({ navigation, route }: Props) {
                 />
                 <ResultStatCard
                   eyebrow="Aura"
-                  value={`+${auraEarned}`}
+                  value={auraEarned == null ? 'Pending' : `+${auraEarned}`}
                   note="Winner reward"
                   accent="#38BDF8"
                 />
@@ -494,12 +461,12 @@ export default function ResultScreen({ navigation, route }: Props) {
                       {room?.roomTitle ?? 'My Prediktion'}
                     </Text>
                     <Text style={[styles.receiptSubline, { color: colors.textSecondary }]}>
-                      Winner: {winnerHandle}
+                      Winner: {winnerHandle ?? 'Pending'}
                     </Text>
                   </View>
                   <View style={styles.receiptStamp}>
                     <Text style={styles.receiptStampEmoji}>🏆</Text>
-                    <Text style={styles.receiptStampText}>Winner locked</Text>
+                    <Text style={styles.receiptStampText}>{hasScoredRows && !isNeutralClosure ? 'Winner locked' : 'Result pending'}</Text>
                   </View>
                 </View>
 
@@ -568,6 +535,8 @@ export default function ResultScreen({ navigation, route }: Props) {
                 Prediction, actual finish, difference, rank, and Aura in one place.
               </Text>
             </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={width < 720} contentContainerStyle={width < 720 ? styles.rankingsScrollNarrow : undefined}>
+            <View>
             <View style={[styles.rankingsTableHead, { borderColor: colors.border }]}>
               <Text style={[styles.rankingsHeadCell, styles.rankCol, { color: colors.textSecondary }]}>Rank</Text>
               <Text style={[styles.rankingsHeadCell, styles.playerCol, { color: colors.textSecondary }]}>Participant</Text>
@@ -627,6 +596,8 @@ export default function ResultScreen({ navigation, route }: Props) {
                 </View>
               ))}
             </View>
+            </View>
+            </ScrollView>
           </View>
         ) : null}
 
@@ -639,7 +610,7 @@ export default function ResultScreen({ navigation, route }: Props) {
               label="Run It Back"
               onPress={async () => {
                 const response = await api.post(`/rooms/${roomId}/rematch`);
-                navigation.navigate('RoomCreated', { room: response.data });
+                navigation.navigate('RoomCreated', { roomId: response.data.roomId });
               }}
               icon="🔁"
             />
@@ -671,23 +642,6 @@ function ResultStatCard({
   );
 }
 
-function prettyCategory(category: string) {
-  switch (category) {
-    case 'weather_rain':
-      return 'Weather / Rain';
-    case 'food_eta':
-      return 'Food ETA';
-    case 'whos_late':
-      return "Who's Late";
-    case 'gym_habit':
-      return 'Gym / Habit';
-    case 'open_prediction':
-      return 'Wild Cards';
-    default:
-      return 'Arrival Time';
-  }
-}
-
 function formatWinnerHandle(row: any): string | null {
   if (!row) return null;
   const handle = row?.user?.prediktHandle ?? row?.prediktHandle;
@@ -716,28 +670,6 @@ function playfulFarthestLabel(rank?: number | null) {
   const labels = ['Wildcard energy', 'Plot twist pick', 'Big swing award', 'Chaos cameo'];
   if (!rank || rank < 1) return labels[0];
   return labels[(rank - 1) % labels.length];
-}
-
-function buildReceiptShareText({
-  roomTitle,
-  winnerHandle,
-  myRank,
-  closestGuess,
-  farthestLabel,
-}: {
-  roomTitle?: string | null;
-  winnerHandle: string;
-  myRank: number | null;
-  closestGuess: string;
-  farthestLabel: string;
-}) {
-  return [
-    `The Tea from ${roomTitle ?? 'My Prediktion'}`,
-    `Winner: ${winnerHandle}`,
-    `Closest guess: ${closestGuess}`,
-    `Your rank: ${myRank ? `#${myRank}` : 'Played'}`,
-    `Farthest guess: ${farthestLabel}`,
-  ].join('\n');
 }
 
 function formatActualOutcome(result: any, room?: any) {
@@ -875,6 +807,7 @@ const styles = StyleSheet.create({
   rankingsHeader: { gap: 4 },
   rankingsTitle: { fontSize: 19, fontWeight: '900' },
   rankingsMeta: { fontSize: 13, lineHeight: 18 },
+  rankingsScrollNarrow: { minWidth: 680 },
   rankingsTableHead: {
     flexDirection: 'row',
     alignItems: 'center',

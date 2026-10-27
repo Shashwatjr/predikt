@@ -285,7 +285,7 @@ export default function PredictionScreen({ navigation, route }: Props) {
           return;
         }
         if (returnToRoomCreated && !isEditing) {
-          navigation.navigate('RoomCreated', { room });
+          navigation.navigate('RoomCreated', { roomId: room.roomId });
           return;
         }
         navigation.navigate('LiveRoom', { roomId, isCreator: false, justPredicted: true });

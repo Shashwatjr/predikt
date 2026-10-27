@@ -1,0 +1,40 @@
+[
+  {
+    "width": 320,
+    "createdUrl": "http://127.0.0.1:8211/RoomCreated?roomId=22661dd9-5424-4439-b47b-d737b391e7e0",
+    "responses": [
+      {
+        "status": 200,
+        "path": "/rooms/22661dd9-5424-4439-b47b-d737b391e7e0"
+      },
+      {
+        "status": 200,
+        "path": "/rooms/22661dd9-5424-4439-b47b-d737b391e7e0"
+      },
+      {
+        "status": 200,
+        "path": "/rooms/22661dd9-5424-4439-b47b-d737b391e7e0"
+      }
+    ],
+    "liveUrl": "http://127.0.0.1:8211/LiveRoom?roomId=22661dd9-5424-4439-b47b-d737b391e7e0&isCreator=true"
+  },
+  {
+    "width": 1440,
+    "createdUrl": "http://127.0.0.1:8211/RoomCreated?roomId=22661dd9-5424-4439-b47b-d737b391e7e0",
+    "responses": [
+      {
+        "status": 200,
+        "path": "/rooms/22661dd9-5424-4439-b47b-d737b391e7e0"
+      },
+      {
+        "status": 200,
+        "path": "/rooms/22661dd9-5424-4439-b47b-d737b391e7e0"
+      },
+      {
+        "status": 200,
+        "path": "/rooms/22661dd9-5424-4439-b47b-d737b391e7e0"
+      }
+    ],
+    "liveUrl": "http://127.0.0.1:8211/LiveRoom?roomId=22661dd9-5424-4439-b47b-d737b391e7e0&isCreator=true"
+  }
+]

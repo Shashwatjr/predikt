@@ -1,0 +1,204 @@
+{
+  "status": 201,
+  "payload": {
+    "location": {
+      "lat": 12.98,
+      "lng": 77.6
+    }
+  },
+  "body": {
+    "roomId": "11165703-86a9-4da1-8fff-dd0f5737b64e",
+    "actualOutcome": "2026-10-27T00:32:09.791Z",
+    "actualOptionKey": null,
+    "outcomeSource": "arrival_confirmed",
+    "confidenceLevel": "verified",
+    "comebackPrompt": "Want to beat your last miss?",
+    "rematchCta": "Rematch with same group",
+    "momentCardCta": "Create Moment Card",
+    "momentCard": {
+      "titles": [
+        "Route Oracle",
+        "ETA Sniper",
+        "Dot Bonus"
+      ],
+      "shareText": "Route Oracle unlocked. Closest guess wins Aura.",
+      "badge": "Route Oracle"
+    },
+    "badges": [
+      {
+        "userId": "b15a08ec-55e0-4017-bbfc-8f35e394fea2",
+        "badgeKey": "route_oracle",
+        "title": "Route Oracle"
+      },
+      {
+        "userId": "b15a08ec-55e0-4017-bbfc-8f35e394fea2",
+        "badgeKey": "group_oracle",
+        "title": "Group Oracle"
+      },
+      {
+        "userId": "b15a08ec-55e0-4017-bbfc-8f35e394fea2",
+        "badgeKey": "dot_bonus",
+        "title": "Dot Bonus"
+      },
+      {
+        "userId": "b15a08ec-55e0-4017-bbfc-8f35e394fea2",
+        "badgeKey": "eta_sniper",
+        "title": "ETA Sniper"
+      }
+    ],
+    "reactions": [
+      "🔥",
+      "🎯",
+      "👑",
+      "😂",
+      "😭",
+      "🤝",
+      "⚡"
+    ],
+    "predictionSummary": [],
+    "predictionEntries": [],
+    "winner": {
+      "userId": "b15a08ec-55e0-4017-bbfc-8f35e394fea2",
+      "user": {
+        "userId": "b15a08ec-55e0-4017-bbfc-8f35e394fea2",
+        "name": "ScoredGuest",
+        "prediktHandle": null,
+        "avatarKey": null,
+        "totalAura": 144,
+        "weeklyAura": 144,
+        "cloutBalance": 50,
+        "creditBalance": 10,
+        "winsCount": 0,
+        "badges": [],
+        "creator": null
+      },
+      "name": "ScoredGuest",
+      "totalRoomAura": 144,
+      "totalRoomClout": 30,
+      "overallRank": 1
+    },
+    "rankings": [
+      {
+        "roomResultId": "8f0141ee-7f08-41f1-ab34-3fc0cb0566cf",
+        "roomId": "11165703-86a9-4da1-8fff-dd0f5737b64e",
+        "userId": "b15a08ec-55e0-4017-bbfc-8f35e394fea2",
+        "totalRoomAura": 144,
+        "totalRoomClout": 30,
+        "milestonesWon": 1,
+        "overallRank": 1,
+        "createdAt": "2026-10-27T00:32:09.828Z",
+        "user": {
+          "userId": "b15a08ec-55e0-4017-bbfc-8f35e394fea2",
+          "name": "ScoredGuest",
+          "prediktHandle": null,
+          "profileImage": null,
+          "avatarKey": null,
+          "totalAura": 144,
+          "weeklyAura": 144,
+          "cloutBalance": 210,
+          "creditBalance": 10,
+          "winsCount": 1,
+          "userFlexes": [
+            {
+              "userFlexId": "cfd2659d-5a35-4c10-ac38-f9aba310b0b6",
+              "userId": "b15a08ec-55e0-4017-bbfc-8f35e394fea2",
+              "flexId": "ce02ba61-ee8e-4a66-aa4a-4565f4a77f82",
+              "roomId": "11165703-86a9-4da1-8fff-dd0f5737b64e",
+              "milestoneId": "8ea3fba3-991a-49f0-a243-3b2e131b306c",
+              "earnedAt": "2026-10-27T00:32:09.838Z",
+              "flex": {
+                "flexId": "ce02ba61-ee8e-4a66-aa4a-4565f4a77f82",
+                "flexName": "dot_hunter",
+                "flexType": "dot_hunter",
+                "description": "Earned for dot hunter",
+                "criteria": null,
+                "createdAt": "2026-10-27T00:32:09.836Z"
+              }
+            },
+            {
+              "userFlexId": "707e5a38-9efb-4740-badc-6acf0959de0b",
+              "userId": "b15a08ec-55e0-4017-bbfc-8f35e394fea2",
+              "flexId": "563d9b0d-2d5c-49cb-b24e-a3465896b83d",
+              "roomId": "11165703-86a9-4da1-8fff-dd0f5737b64e",
+              "milestoneId": null,
+              "earnedAt": "2026-10-27T00:32:09.870Z",
+              "flex": {
+                "flexId": "563d9b0d-2d5c-49cb-b24e-a3465896b83d",
+                "flexName": "room_champion",
+                "flexType": "room_champion",
+                "description": "Earned for room champion",
+                "criteria": null,
+                "createdAt": "2026-10-27T00:32:09.869Z"
+              }
+            },
+            {
+              "userFlexId": "a1b00cae-f071-4c3d-9e92-78be97acfe72",
+              "userId": "b15a08ec-55e0-4017-bbfc-8f35e394fea2",
+              "flexId": "707dba93-ab25-4f90-8ae3-2ab859457333",
+              "roomId": "11165703-86a9-4da1-8fff-dd0f5737b64e",
+              "milestoneId": null,
+              "earnedAt": "2026-10-27T00:32:09.872Z",
+              "flex": {
+                "flexId": "707dba93-ab25-4f90-8ae3-2ab859457333",
+                "flexName": "milestone_master",
+                "flexType": "milestone_master",
+                "description": "Earned for milestone master",
+                "criteria": null,
+                "createdAt": "2026-10-27T00:32:09.872Z"
+              }
+            }
+          ],
+          "creatorProfile": null
+        }
+      },
+      {
+        "roomResultId": "d92a97eb-2b9b-4b83-81a7-da7555fa0d2e",
+        "roomId": "11165703-86a9-4da1-8fff-dd0f5737b64e",
+        "userId": "3b4fd950-1b02-481d-8236-276a6dbaf93a",
+        "totalRoomAura": 94,
+        "totalRoomClout": 20,
+        "milestonesWon": 0,
+        "overallRank": 2,
+        "createdAt": "2026-10-27T00:32:09.842Z",
+        "user": {
+          "userId": "3b4fd950-1b02-481d-8236-276a6dbaf93a",
+          "name": "Integration Host",
+          "prediktHandle": "host1793060820447",
+          "profileImage": null,
+          "avatarKey": null,
+          "totalAura": 94,
+          "weeklyAura": 94,
+          "cloutBalance": 90,
+          "creditBalance": 55,
+          "winsCount": 0,
+          "userFlexes": [],
+          "creatorProfile": null
+        }
+      },
+      {
+        "roomResultId": "807aef6b-293f-44e8-8051-3890ef8818cf",
+        "roomId": "11165703-86a9-4da1-8fff-dd0f5737b64e",
+        "userId": "2a7f41d4-ec5b-4d5c-94db-8841ecb7e4c8",
+        "totalRoomAura": 6,
+        "totalRoomClout": 10,
+        "milestonesWon": 0,
+        "overallRank": 3,
+        "createdAt": "2026-10-27T00:32:09.848Z",
+        "user": {
+          "userId": "2a7f41d4-ec5b-4d5c-94db-8841ecb7e4c8",
+          "name": "Seeded Forwarder",
+          "prediktHandle": "fwd1793060867418",
+          "profileImage": null,
+          "avatarKey": null,
+          "totalAura": 6,
+          "weeklyAura": 6,
+          "cloutBalance": 40,
+          "creditBalance": 40,
+          "winsCount": 0,
+          "userFlexes": [],
+          "creatorProfile": null
+        }
+      }
+    ]
+  }
+}

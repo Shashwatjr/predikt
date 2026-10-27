@@ -298,6 +298,7 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFill,
     zIndex: 1000,
     backgroundColor: '#02050f',
+    overflow: 'hidden',
   },
   glowTop: {
     position: 'absolute',

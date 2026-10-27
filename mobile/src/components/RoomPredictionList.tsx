@@ -4,6 +4,7 @@ import { useTheme } from '../context/ThemeContext';
 import { formatClock } from '../utils/benchmarks';
 
 export interface RoomPredictionEntry {
+  differenceFromActualMinutes?: number | null;
   predictionId: string;
   status: 'visible' | 'submitted' | 'revoked';
   predictedReachedTime?: string | null;

@@ -24,6 +24,10 @@ type SafePreview = {
   } | null;
 };
 
+export function currentShareWebBaseUrl() {
+  return getWebBaseUrl();
+}
+
 function getWebBaseUrl() {
   const envBase = process.env.EXPO_PUBLIC_WEB_BASE_URL?.trim();
   if (envBase) return normalizeWebBaseUrl(envBase);

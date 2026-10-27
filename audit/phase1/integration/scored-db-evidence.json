@@ -1,0 +1,362 @@
+{
+  "status": "PASS",
+  "featureCheckpointLeaderboardV2": false,
+  "roomId": "11165703-86a9-4da1-8fff-dd0f5737b64e",
+  "startedAt": "2026-10-27T00:31:55.323Z",
+  "noStartCutoffAt": "2026-10-27T02:27:47.538Z",
+  "actualArrival": "2026-10-27T00:32:09.791Z",
+  "arrivalConfirmedAt": "2026-10-27T00:32:09.791Z",
+  "winner": {
+    "userId": "b15a08ec-55e0-4017-bbfc-8f35e394fea2",
+    "prediktHandle": null,
+    "name": "ScoredGuest"
+  },
+  "predictions": [
+    {
+      "predictionId": "5da88735-f1aa-49ef-b9d1-c0ee82b4d3c8",
+      "milestoneId": "8ea3fba3-991a-49f0-a243-3b2e131b306c",
+      "roomId": "11165703-86a9-4da1-8fff-dd0f5737b64e",
+      "userId": "b15a08ec-55e0-4017-bbfc-8f35e394fea2",
+      "predictedReachedTime": "2026-10-27T00:32:47.538Z",
+      "selectedOptionKey": null,
+      "submittedAt": "2026-10-27T00:28:27.000Z",
+      "editDeadline": "2026-10-27T00:30:27.000Z",
+      "revokedAt": null,
+      "lockedStatus": true,
+      "differenceFromActualMinutes": 0.6333333333333333,
+      "differenceFromActualSeconds": 38,
+      "rankForMilestone": 1,
+      "baseAura": 100,
+      "rankBonusAura": 15,
+      "multiplier": "1",
+      "totalAuraAwarded": 144,
+      "cloutAwarded": 30,
+      "auraEligible": true,
+      "lockedCheckpoint": null,
+      "hotTake": null,
+      "user": {
+        "userId": "b15a08ec-55e0-4017-bbfc-8f35e394fea2",
+        "prediktHandle": null,
+        "name": "ScoredGuest"
+      }
+    },
+    {
+      "predictionId": "5b26a5d0-db7a-43e9-80b7-080d452581ff",
+      "milestoneId": "8ea3fba3-991a-49f0-a243-3b2e131b306c",
+      "roomId": "11165703-86a9-4da1-8fff-dd0f5737b64e",
+      "userId": "3b4fd950-1b02-481d-8236-276a6dbaf93a",
+      "predictedReachedTime": "2026-10-27T00:28:47.538Z",
+      "selectedOptionKey": null,
+      "submittedAt": "2026-10-27T00:27:47.570Z",
+      "editDeadline": "2026-10-27T00:29:47.570Z",
+      "revokedAt": null,
+      "lockedStatus": true,
+      "differenceFromActualMinutes": 3.366666666666667,
+      "differenceFromActualSeconds": 202,
+      "rankForMilestone": 2,
+      "baseAura": 70,
+      "rankBonusAura": 5,
+      "multiplier": "1",
+      "totalAuraAwarded": 94,
+      "cloutAwarded": 20,
+      "auraEligible": true,
+      "lockedCheckpoint": null,
+      "hotTake": null,
+      "user": {
+        "userId": "3b4fd950-1b02-481d-8236-276a6dbaf93a",
+        "prediktHandle": "host1793060820447",
+        "name": "Integration Host"
+      }
+    },
+    {
+      "predictionId": "cfe5c247-2252-4c16-9847-c32b2adf85c6",
+      "milestoneId": "8ea3fba3-991a-49f0-a243-3b2e131b306c",
+      "roomId": "11165703-86a9-4da1-8fff-dd0f5737b64e",
+      "userId": "2a7f41d4-ec5b-4d5c-94db-8841ecb7e4c8",
+      "predictedReachedTime": "2026-10-27T00:37:47.538Z",
+      "selectedOptionKey": null,
+      "submittedAt": "2026-10-27T00:27:47.600Z",
+      "editDeadline": "2026-10-27T00:29:47.600Z",
+      "revokedAt": null,
+      "lockedStatus": true,
+      "differenceFromActualMinutes": 5.633333333333334,
+      "differenceFromActualSeconds": 338,
+      "rankForMilestone": 3,
+      "baseAura": 5,
+      "rankBonusAura": 0,
+      "multiplier": "1",
+      "totalAuraAwarded": 6,
+      "cloutAwarded": 10,
+      "auraEligible": true,
+      "lockedCheckpoint": null,
+      "hotTake": null,
+      "user": {
+        "userId": "2a7f41d4-ec5b-4d5c-94db-8841ecb7e4c8",
+        "prediktHandle": "fwd1793060867418",
+        "name": "Seeded Forwarder"
+      }
+    }
+  ],
+  "results": [
+    {
+      "roomResultId": "8f0141ee-7f08-41f1-ab34-3fc0cb0566cf",
+      "roomId": "11165703-86a9-4da1-8fff-dd0f5737b64e",
+      "userId": "b15a08ec-55e0-4017-bbfc-8f35e394fea2",
+      "totalRoomAura": 144,
+      "totalRoomClout": 30,
+      "milestonesWon": 1,
+      "overallRank": 1,
+      "createdAt": "2026-10-27T00:32:09.828Z"
+    },
+    {
+      "roomResultId": "d92a97eb-2b9b-4b83-81a7-da7555fa0d2e",
+      "roomId": "11165703-86a9-4da1-8fff-dd0f5737b64e",
+      "userId": "3b4fd950-1b02-481d-8236-276a6dbaf93a",
+      "totalRoomAura": 94,
+      "totalRoomClout": 20,
+      "milestonesWon": 0,
+      "overallRank": 2,
+      "createdAt": "2026-10-27T00:32:09.842Z"
+    },
+    {
+      "roomResultId": "807aef6b-293f-44e8-8051-3890ef8818cf",
+      "roomId": "11165703-86a9-4da1-8fff-dd0f5737b64e",
+      "userId": "2a7f41d4-ec5b-4d5c-94db-8841ecb7e4c8",
+      "totalRoomAura": 6,
+      "totalRoomClout": 10,
+      "milestonesWon": 0,
+      "overallRank": 3,
+      "createdAt": "2026-10-27T00:32:09.848Z"
+    }
+  ],
+  "aura": [
+    {
+      "transactionId": "cf51c580-f490-4f7c-bcf9-2a91095ff4eb",
+      "userId": "b15a08ec-55e0-4017-bbfc-8f35e394fea2",
+      "roomId": "11165703-86a9-4da1-8fff-dd0f5737b64e",
+      "milestoneId": "8ea3fba3-991a-49f0-a243-3b2e131b306c",
+      "amount": 144,
+      "reason": "Aura from milestone Private finish",
+      "createdAt": "2026-10-27T00:32:09.825Z"
+    },
+    {
+      "transactionId": "2f858c82-82fe-466b-a2f6-1767bb8386db",
+      "userId": "3b4fd950-1b02-481d-8236-276a6dbaf93a",
+      "roomId": "11165703-86a9-4da1-8fff-dd0f5737b64e",
+      "milestoneId": "8ea3fba3-991a-49f0-a243-3b2e131b306c",
+      "amount": 94,
+      "reason": "Aura from milestone Private finish",
+      "createdAt": "2026-10-27T00:32:09.841Z"
+    },
+    {
+      "transactionId": "f9d9520c-eb3f-46b0-bd9a-44ad49b5523a",
+      "userId": "2a7f41d4-ec5b-4d5c-94db-8841ecb7e4c8",
+      "roomId": "11165703-86a9-4da1-8fff-dd0f5737b64e",
+      "milestoneId": "8ea3fba3-991a-49f0-a243-3b2e131b306c",
+      "amount": 6,
+      "reason": "Aura from milestone Private finish",
+      "createdAt": "2026-10-27T00:32:09.847Z"
+    }
+  ],
+  "clout": [
+    {
+      "transactionId": "74912ced-a133-44c8-8fb7-6c8eb9897ad8",
+      "userId": "3b4fd950-1b02-481d-8236-276a6dbaf93a",
+      "roomId": "11165703-86a9-4da1-8fff-dd0f5737b64e",
+      "milestoneId": null,
+      "amount": 20,
+      "transactionType": "earn",
+      "reason": "Submitted predictions for all milestones",
+      "createdAt": "2026-10-27T00:27:47.572Z"
+    },
+    {
+      "transactionId": "8c940fd6-57b7-4b41-b4ab-e91c23c824f2",
+      "userId": "2a7f41d4-ec5b-4d5c-94db-8841ecb7e4c8",
+      "roomId": "11165703-86a9-4da1-8fff-dd0f5737b64e",
+      "milestoneId": null,
+      "amount": 20,
+      "transactionType": "earn",
+      "reason": "Submitted predictions for all milestones",
+      "createdAt": "2026-10-27T00:27:47.601Z"
+    },
+    {
+      "transactionId": "e5810cc0-95fe-482f-831c-f86acac5cd85",
+      "userId": "b15a08ec-55e0-4017-bbfc-8f35e394fea2",
+      "roomId": "11165703-86a9-4da1-8fff-dd0f5737b64e",
+      "milestoneId": null,
+      "amount": 20,
+      "transactionType": "earn",
+      "reason": "Submitted predictions for all milestones",
+      "createdAt": "2026-10-27T00:28:27.002Z"
+    },
+    {
+      "transactionId": "ffb4d0b3-0f5a-420a-a5a8-fcde8fb50da1",
+      "userId": "b15a08ec-55e0-4017-bbfc-8f35e394fea2",
+      "roomId": "11165703-86a9-4da1-8fff-dd0f5737b64e",
+      "milestoneId": "8ea3fba3-991a-49f0-a243-3b2e131b306c",
+      "amount": 30,
+      "transactionType": "earn",
+      "reason": "Clout from milestone Private finish",
+      "createdAt": "2026-10-27T00:32:09.826Z"
+    },
+    {
+      "transactionId": "20095608-1ac7-49b4-8633-7337b2f3f7ab",
+      "userId": "3b4fd950-1b02-481d-8236-276a6dbaf93a",
+      "roomId": "11165703-86a9-4da1-8fff-dd0f5737b64e",
+      "milestoneId": "8ea3fba3-991a-49f0-a243-3b2e131b306c",
+      "amount": 20,
+      "transactionType": "earn",
+      "reason": "Clout from milestone Private finish",
+      "createdAt": "2026-10-27T00:32:09.841Z"
+    },
+    {
+      "transactionId": "2746d1b7-1149-48a7-918a-7d418030a0bc",
+      "userId": "2a7f41d4-ec5b-4d5c-94db-8841ecb7e4c8",
+      "roomId": "11165703-86a9-4da1-8fff-dd0f5737b64e",
+      "milestoneId": "8ea3fba3-991a-49f0-a243-3b2e131b306c",
+      "amount": 10,
+      "transactionType": "earn",
+      "reason": "Clout from milestone Private finish",
+      "createdAt": "2026-10-27T00:32:09.848Z"
+    },
+    {
+      "transactionId": "45d4baa2-9ab4-45f9-a9c9-6d062fd662f4",
+      "userId": "b15a08ec-55e0-4017-bbfc-8f35e394fea2",
+      "roomId": "11165703-86a9-4da1-8fff-dd0f5737b64e",
+      "milestoneId": null,
+      "amount": 10,
+      "transactionType": "earn",
+      "reason": "Stayed active until room results",
+      "createdAt": "2026-10-27T00:32:09.861Z"
+    },
+    {
+      "transactionId": "6733caa9-9b85-4e1b-91d4-1303be8dbe86",
+      "userId": "3b4fd950-1b02-481d-8236-276a6dbaf93a",
+      "roomId": "11165703-86a9-4da1-8fff-dd0f5737b64e",
+      "milestoneId": null,
+      "amount": 10,
+      "transactionType": "earn",
+      "reason": "Stayed active until room results",
+      "createdAt": "2026-10-27T00:32:09.862Z"
+    },
+    {
+      "transactionId": "c5ad8805-3f02-4b12-a0f8-0cb5b4a11e08",
+      "userId": "2a7f41d4-ec5b-4d5c-94db-8841ecb7e4c8",
+      "roomId": "11165703-86a9-4da1-8fff-dd0f5737b64e",
+      "milestoneId": null,
+      "amount": 10,
+      "transactionType": "earn",
+      "reason": "Stayed active until room results",
+      "createdAt": "2026-10-27T00:32:09.863Z"
+    },
+    {
+      "transactionId": "3f0f7391-1121-44bd-917a-560886a4b551",
+      "userId": "b15a08ec-55e0-4017-bbfc-8f35e394fea2",
+      "roomId": "11165703-86a9-4da1-8fff-dd0f5737b64e",
+      "milestoneId": null,
+      "amount": 150,
+      "transactionType": "earn",
+      "reason": "Overall room winner bonus",
+      "createdAt": "2026-10-27T00:32:09.864Z"
+    }
+  ],
+  "rewardEntries": [
+    {
+      "rewardLedgerEntryId": "79f6f778-baf4-4e3b-ab3f-f19c5a2f1312",
+      "userId": "b15a08ec-55e0-4017-bbfc-8f35e394fea2",
+      "rewardType": "AURA",
+      "amount": 144,
+      "balanceAfter": 144,
+      "reasonCode": "AURA_MILESTONE_SCORE",
+      "sourceType": "milestone",
+      "sourceId": "8ea3fba3-991a-49f0-a243-3b2e131b306c",
+      "idempotencyKey": "aura_ms:8ea3fba3-991a-49f0-a243-3b2e131b306c:b15a08ec-55e0-4017-bbfc-8f35e394fea2",
+      "metadata": {
+        "roomId": "11165703-86a9-4da1-8fff-dd0f5737b64e"
+      },
+      "createdAt": "2026-10-27T00:32:09.835Z"
+    },
+    {
+      "rewardLedgerEntryId": "f4915f88-95b6-4c6a-a313-1d22b9fde959",
+      "userId": "3b4fd950-1b02-481d-8236-276a6dbaf93a",
+      "rewardType": "AURA",
+      "amount": 94,
+      "balanceAfter": 94,
+      "reasonCode": "AURA_MILESTONE_SCORE",
+      "sourceType": "milestone",
+      "sourceId": "8ea3fba3-991a-49f0-a243-3b2e131b306c",
+      "idempotencyKey": "aura_ms:8ea3fba3-991a-49f0-a243-3b2e131b306c:3b4fd950-1b02-481d-8236-276a6dbaf93a",
+      "metadata": {
+        "roomId": "11165703-86a9-4da1-8fff-dd0f5737b64e"
+      },
+      "createdAt": "2026-10-27T00:32:09.846Z"
+    },
+    {
+      "rewardLedgerEntryId": "213bc37a-d6be-4c7c-8546-2f62fe23ebb8",
+      "userId": "2a7f41d4-ec5b-4d5c-94db-8841ecb7e4c8",
+      "rewardType": "AURA",
+      "amount": 6,
+      "balanceAfter": 6,
+      "reasonCode": "AURA_MILESTONE_SCORE",
+      "sourceType": "milestone",
+      "sourceId": "8ea3fba3-991a-49f0-a243-3b2e131b306c",
+      "idempotencyKey": "aura_ms:8ea3fba3-991a-49f0-a243-3b2e131b306c:2a7f41d4-ec5b-4d5c-94db-8841ecb7e4c8",
+      "metadata": {
+        "roomId": "11165703-86a9-4da1-8fff-dd0f5737b64e"
+      },
+      "createdAt": "2026-10-27T00:32:09.852Z"
+    },
+    {
+      "rewardLedgerEntryId": "5ebf5fe0-c0ff-4f6d-9b41-9a7d78eb3286",
+      "userId": "b15a08ec-55e0-4017-bbfc-8f35e394fea2",
+      "rewardType": "GEMS",
+      "amount": 50,
+      "balanceAfter": 50,
+      "reasonCode": "GEM_FIRST_WIN",
+      "sourceType": "room",
+      "sourceId": "11165703-86a9-4da1-8fff-dd0f5737b64e",
+      "idempotencyKey": "gem_first_win:b15a08ec-55e0-4017-bbfc-8f35e394fea2",
+      "metadata": null,
+      "createdAt": "2026-10-27T00:32:09.868Z"
+    }
+  ],
+  "forwards": [
+    {
+      "inviteForwardId": "52b774a3-adb9-486e-84b5-a04f89532ea2",
+      "roomId": "11165703-86a9-4da1-8fff-dd0f5737b64e",
+      "originalInviterUserId": "3b4fd950-1b02-481d-8236-276a6dbaf93a",
+      "forwarderUserId": "2a7f41d4-ec5b-4d5c-94db-8841ecb7e4c8",
+      "joinedGuestUserId": "b15a08ec-55e0-4017-bbfc-8f35e394fea2",
+      "createdAt": "2026-10-27T00:28:26.981Z"
+    }
+  ],
+  "delivery": {
+    "roomId": "22661dd9-5424-4439-b47b-d737b391e7e0",
+    "creatorPredictionIso": "2026-10-27T01:28:00.000Z",
+    "persisted": [
+      {
+        "predictionId": "cd35b6d4-1644-40da-b3a4-885303c66d31",
+        "milestoneId": "3a6ea7a4-7de4-4c2c-a6db-f39137c5f1d6",
+        "roomId": "22661dd9-5424-4439-b47b-d737b391e7e0",
+        "userId": "3b4fd950-1b02-481d-8236-276a6dbaf93a",
+        "predictedReachedTime": "2026-10-27T01:28:00.000Z",
+        "selectedOptionKey": null,
+        "submittedAt": "2026-10-27T00:28:38.883Z",
+        "editDeadline": "2026-10-27T00:30:38.883Z",
+        "revokedAt": null,
+        "lockedStatus": false,
+        "differenceFromActualMinutes": null,
+        "differenceFromActualSeconds": null,
+        "rankForMilestone": null,
+        "baseAura": 0,
+        "rankBonusAura": 0,
+        "multiplier": "1",
+        "totalAuraAwarded": 0,
+        "cloutAwarded": 0,
+        "auraEligible": true,
+        "lockedCheckpoint": null,
+        "hotTake": null
+      }
+    ]
+  }
+}

@@ -1,47 +1,22 @@
 import axios, { AxiosError, AxiosHeaders, InternalAxiosRequestConfig } from 'axios';
 import { Platform } from 'react-native';
 
+import { resolveApiBaseUrl } from './apiBaseUrl';
+
 /**
  * Expo web and iOS simulator can reach the local API through localhost.
  * Android emulator maps the host machine to 10.0.2.2.
  * Physical devices still need EXPO_PUBLIC_API_BASE_URL set to the laptop's LAN URL.
+ * A hosted web origin keeps the production API. Local web honors an explicit override.
  */
 const DEFAULT_API_BASE_URL =
   Platform.OS === 'android' ? 'http://10.0.2.2:3000' : 'http://localhost:3000';
-const PRODUCTION_WEB_API_BASE_URL =
-  'https://predikt-api-676327407919.asia-southeast1.run.app';
 
-function resolveApiBaseUrl(rawUrl?: string) {
-  if (Platform.OS === 'web' && typeof window !== 'undefined') {
-    const host = window.location.hostname;
-    if (host === 'localhost' || host === '127.0.0.1') {
-      return 'http://localhost:3000';
-    }
-
-    return PRODUCTION_WEB_API_BASE_URL;
-  }
-
-  return sanitizeApiBaseUrl(rawUrl);
-}
-
-function sanitizeApiBaseUrl(rawUrl?: string) {
-  const trimmed = rawUrl?.trim();
-  if (!trimmed || /YOUR_MAC_IP|<|>|\s/i.test(trimmed)) {
-    return DEFAULT_API_BASE_URL;
-  }
-
-  try {
-    const parsed = new URL(trimmed);
-    if (!['http:', 'https:'].includes(parsed.protocol) || !parsed.hostname) {
-      return DEFAULT_API_BASE_URL;
-    }
-    return trimmed.replace(/\/+$/, '');
-  } catch {
-    return DEFAULT_API_BASE_URL;
-  }
-}
-
-export const API_BASE_URL = resolveApiBaseUrl(process.env.EXPO_PUBLIC_API_BASE_URL);
+export const API_BASE_URL = resolveApiBaseUrl(process.env.EXPO_PUBLIC_API_BASE_URL, {
+  platform: Platform.OS,
+  hostname: typeof window !== 'undefined' ? window.location.hostname : null,
+  fallback: DEFAULT_API_BASE_URL,
+});
 
 if (__DEV__) {
   console.log('[PREDIKT_API] baseURL', API_BASE_URL);

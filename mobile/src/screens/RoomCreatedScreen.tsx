@@ -1,5 +1,6 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
   Linking,
   Platform,
   ScrollView,
@@ -48,7 +49,35 @@ function buildShortRouteLabel(room: any, fallback: string) {
 
 export default function RoomCreatedScreen({ navigation, route }: Props) {
   const { colors } = useTheme();
-  const { room } = route.params;
+  const { roomId } = route.params;
+  const [room, setRoom] = useState<any>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadAttempt, setLoadAttempt] = useState(0);
+  useEffect(() => {
+    let active = true;
+    setRoom(null);
+    setLoadError(null);
+    api.get(`/rooms/${encodeURIComponent(roomId)}`).then(({ data }) => {
+      if (active) setRoom(data);
+    }).catch(() => {
+      if (active) setLoadError('Unable to load this room. Check your access and try again.');
+    });
+    return () => { active = false; };
+  }, [roomId, loadAttempt]);
+  if (!room) {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.bg }]}>
+        {loadError ? <><Text style={{ color: colors.textPrimary }}>{loadError}</Text>
+          <PrimaryButton label="Retry" onPress={() => setLoadAttempt((value) => value + 1)} /></>
+          : <ActivityIndicator accessibilityLabel="Loading room" />}
+      </View>
+    );
+  }
+  return <LoadedRoomCreatedScreen navigation={navigation} room={room} />;
+}
+
+function LoadedRoomCreatedScreen({ navigation, room }: { navigation: Props['navigation']; room: any }) {
+  const { colors } = useTheme();
   const inviteCode = room.inviteCode ?? room.code ?? '';
   const [manualPhone, setManualPhone] = useState('');
   const [showManualShare, setShowManualShare] = useState(false);
@@ -57,16 +86,16 @@ export default function RoomCreatedScreen({ navigation, route }: Props) {
   const sharePayload = useMemo(() => buildSharePayload({ ...room, inviteCode }), [room, inviteCode]);
   const creationMeta = room.scoringRule?.creationMeta ?? room.creationMeta ?? {};
   const category = room.category ?? creationMeta.category ?? room.templateKey;
-  const expectedDurationMinutes = Math.round(
-    (room.expectedDurationSeconds ??
-      room.route?.estimatedDurationSeconds ??
-      room.journeyRoute?.estimatedDurationSeconds ??
-      3600) / 60,
-  );
+  const durationSeconds = [
+    room.expectedDurationSeconds,
+    room.route?.estimatedDurationSeconds,
+    room.journeyRoute?.estimatedDurationSeconds,
+  ].find((value: unknown) => typeof value === 'number' && Number.isFinite(value) && value >= 0) as number | undefined;
+  const expectedDurationMinutes = durationSeconds == null ? null : Math.round(durationSeconds / 60);
   const plannedStartAt = room.journeyScheduledStartAt ? new Date(room.journeyScheduledStartAt) : null;
   const predictionCloseAt = room.predictionCloseTime ? new Date(room.predictionCloseTime) : null;
   const expectedArrivalAt =
-    plannedStartAt && Number.isFinite(expectedDurationMinutes)
+    plannedStartAt && expectedDurationMinutes != null && Number.isFinite(expectedDurationMinutes)
       ? new Date(plannedStartAt.getTime() + expectedDurationMinutes * 60 * 1000)
       : null;
   const shortRouteLabel = buildShortRouteLabel(room, sharePayload.shareTitle);
@@ -78,7 +107,7 @@ export default function RoomCreatedScreen({ navigation, route }: Props) {
     { icon: '🏷️', label: 'Room', value: sharePayload.shareTitle },
     { icon: '📍', label: 'From', value: room.startingPointLabel ?? 'Start' },
     { icon: '🏁', label: 'To', value: room.destinationLabel ?? 'Destination' },
-    { icon: '⏱️', label: 'Journey time', value: `${expectedDurationMinutes} min` },
+    { icon: '⏱️', label: 'Journey time', value: expectedDurationMinutes == null ? '—' : `${expectedDurationMinutes} min` },
     { icon: '🕒', label: 'Provider arrival', value: formatDateTime(expectedArrivalAt) },
     { icon: '🚦', label: 'Planned start', value: formatDateTime(plannedStartAt) },
     { icon: '🔒', label: 'Predictions close', value: formatDateTime(predictionCloseAt) },

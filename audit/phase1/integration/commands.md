@@ -68,3 +68,35 @@ Invite preview location fields -> hidden (null); no production URL used.
 ```
 
 No secrets, personal data, production writes, schema migrations, lockfile changes, or deployment actions were performed.
+
+
+## Continuation at 8047f58 (2026-10-27)
+
+See `continuation-20261027.md` and JSON evidence in this directory. Final local API 3410, SPA 8211, disposable DB 55444. No migration-history writes.
+
+```text
+git merge-base 8047f58 3d24155 -> 7aa032d
+git merge-base 8047f58 2c3ad02 -> eb2bd27
+git diff 3d24155^ 3d24155 -- mobile | git apply --3way -> clean (later start-state fix preserved)
+mobile: npm run typecheck -> PASS
+mobile: node --test tests/api-base-url.test.mjs tests/invite-deeplink.test.mjs tests/journey-room-render.test.mjs tests/journey-functional-review.test.mjs -> PASS (34)
+mobile: EXPO_PUBLIC_API_BASE_URL=http://127.0.0.1:3410 npx expo export --platform web --output-dir /tmp/phase1-integration-web -> PASS
+backend: npm run build -> PASS
+backend: npm test -- --runInBand rooms/rooms.service.spec.ts rooms/arrival-benchmarks.spec.ts lifecycle/lifecycle.service.spec.ts predictions/predictions.service.spec.ts -> FAIL (26 passed, 1 inherited deletion contract failure)
+backend: npm test -- --runInBand rewards/reward.service.spec.ts -> PASS (13)
+Browser guest join + prediction and creator journey/start -> 201
+Browser fetch with Geolocation destination: POST journey/confirm-arrival -> 201, actualOutcome + real winner/rankings
+Browser Delivery ETA create -> POST /rooms 201; POST predictions 201; RoomCreated refresh PASS
+Browser Result refresh and Share receipt at 320/1440 -> PASS (share adapter captured; native OS sheet not tested)
+Read-only verify-local-scored.cjs -> PASS (arrival, scores, rewards, attribution and delivery persistence)
+```
+
+Verifier usage after an HTTP journey, with a loopback disposable test DB:
+
+```sh
+DATABASE_URL="$LOCAL_TEST_DATABASE_URL" TEST_ROOM_ID="$SCORED_ROOM_ID" \
+TEST_DELIVERY_ROOM_ID="$DELIVERY_ROOM_ID" TEST_EVIDENCE_PATH=/tmp/scored-evidence.json \
+node audit/phase1/integration/verify-local-scored.cjs
+```
+
+OG unit test imports the renderer; prior HTTP curl targets a standalone fixture server. Actual hosted preview request path remains NOT RUN.

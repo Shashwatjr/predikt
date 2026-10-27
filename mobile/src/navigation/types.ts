@@ -9,7 +9,7 @@ export type RootStackParamList = {
         presetTemplate?: 'sports' | 'delivery' | 'free_play';
       }
     | undefined;
-  RoomCreated: { room: any };
+  RoomCreated: { roomId: string };
   JoinRoom: { joinCode?: string; forwardedBy?: string } | undefined;
   Prediction: {
     roomId: string;

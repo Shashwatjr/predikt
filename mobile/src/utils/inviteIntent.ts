@@ -101,17 +101,22 @@ export async function resolveForwardedBy(): Promise<string | null> {
  * is left in place so refresh keeps it. A reload with an empty URL restores the
  * last code from this tab. Account login still uses the pending AsyncStorage copy.
  */
-export async function resolveInviteJoinCode(): Promise<string | null> {
+export async function resolveInviteSelection(): Promise<InviteSelection> {
   if (Platform.OS === 'web' && typeof window !== 'undefined') {
     try {
       const selected = currentWebInvite();
       if (selected.joinCode) {
         writeStoredWebInvite(selected);
-        return selected.joinCode;
+        return selected;
       }
     } catch {
       // Fall through to pending storage.
     }
   }
-  return consumePendingJoinCode();
+  return { joinCode: await consumePendingJoinCode(), forwardedBy: null };
+}
+
+export async function resolveInviteJoinCode(): Promise<string | null> {
+  const selected = await resolveInviteSelection();
+  return selected.joinCode;
 }

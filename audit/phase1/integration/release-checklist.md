@@ -20,3 +20,11 @@
 ## Not run
 
 Production/device/messaging checks, live preview-host smoke, DNS rollback, and migration rebuild remain NOT RUN/BLOCKED.
+
+
+## Continuation evidence (2026-10-27)
+
+- PASS locally: identifier-only RoomCreated/reload, valid-member forward attribution, browser guest prediction/start, HTTP verified arrival, real scored winner/error/reward reconciliation, creator Delivery ETA prediction persistence, result share at 320/1440. See `continuation-20261027.md` and `screenshots/scored/`.
+- FAIL: inherited default-delete/cancel test contract in `rooms.service.spec.ts` (1 of 27 affected backend tests); no backend change made to mask it.
+- OG hosted path remains unverified: renderer tests and standalone fixture-server curl are not actual preview-host acceptance.
+- `2c3ad02` baseline/history-marking scripts excluded. Migration repair is still separate and blocked pending verified reconciliation.

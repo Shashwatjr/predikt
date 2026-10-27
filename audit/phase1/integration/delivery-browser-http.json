@@ -1,0 +1,41 @@
+{
+  "roomId": "22661dd9-5424-4439-b47b-d737b391e7e0",
+  "creatorId": "3b4fd950-1b02-481d-8236-276a6dbaf93a",
+  "creatorPredictionIso": "2026-10-27T01:28:00.000Z",
+  "predictionStatus": 201,
+  "predictionResponse": [
+    {
+      "predictionId": "cd35b6d4-1644-40da-b3a4-885303c66d31",
+      "milestoneId": "3a6ea7a4-7de4-4c2c-a6db-f39137c5f1d6",
+      "milestoneName": "6:58 am",
+      "milestoneOrder": 1,
+      "milestoneType": "final_destination",
+      "submittedAt": "2026-10-27T00:28:38.883Z",
+      "editDeadline": "2026-10-27T00:30:38.883Z",
+      "revokedAt": null,
+      "auraEligible": true,
+      "lockedCheckpoint": null,
+      "status": "submitted",
+      "isCurrentUser": true,
+      "differenceFromActualMinutes": null,
+      "differenceFromActualSeconds": null,
+      "rankForMilestone": null,
+      "totalAuraAwarded": 0,
+      "cloutAwarded": 0,
+      "user": {
+        "userId": "3b4fd950-1b02-481d-8236-276a6dbaf93a",
+        "name": "@host1793060820447",
+        "prediktHandle": "host1793060820447",
+        "avatarKey": null,
+        "totalAura": 0,
+        "weeklyAura": 0,
+        "cloutBalance": 60,
+        "creditBalance": 40,
+        "winsCount": 0,
+        "badges": [],
+        "creator": null
+      }
+    }
+  ],
+  "createdUrl": "http://127.0.0.1:8211/RoomCreated?roomId=22661dd9-5424-4439-b47b-d737b391e7e0"
+}

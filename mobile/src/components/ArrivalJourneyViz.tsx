@@ -249,8 +249,10 @@ export default function ArrivalJourneyViz({
   );
 }
 
-function truncateLabel(label: string, max: number) {
+function truncateLabel(label: unknown, max: number) {
+  if (typeof label !== 'string') return '—';
   const first = label.split(',')[0]?.trim() || label.trim();
+  if (!first) return '—';
   if (first.length <= max) return first;
   return `${first.slice(0, max - 1).trimEnd()}…`;
 }

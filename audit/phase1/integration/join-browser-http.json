@@ -1,0 +1,167 @@
+{
+  "roomId": "11165703-86a9-4da1-8fff-dd0f5737b64e",
+  "forwarderId": "2a7f41d4-ec5b-4d5c-94db-8841ecb7e4c8",
+  "creatorId": "3b4fd950-1b02-481d-8236-276a6dbaf93a",
+  "posts": [
+    {
+      "path": "/auth/guest",
+      "status": 201,
+      "body": {
+        "user": {
+          "userId": "b15a08ec-55e0-4017-bbfc-8f35e394fea2",
+          "name": "ScoredGuest",
+          "isGuest": true,
+          "prediktHandle": null,
+          "avatarKey": null,
+          "selectedBackgroundKey": null,
+          "totalAura": 0,
+          "weeklyAura": 0,
+          "cloutBalance": 0,
+          "creditBalance": 0,
+          "lifetimeCloutEarned": 0,
+          "predictionAccuracyScore": 0,
+          "roomsCreatedCount": 0,
+          "predictionsMadeCount": 0,
+          "winsCount": 0,
+          "currentStreak": 0,
+          "longestStreak": 0,
+          "termsAcceptedAt": null,
+          "privacyAcceptedAt": null,
+          "marketingOptIn": false,
+          "aiPersonalisationOptOut": false,
+          "commentaryEnabled": true,
+          "aiCommentaryOptOut": false,
+          "preferredCommentaryPersonality": null,
+          "commentaryToneLevel": "playful",
+          "locationConsentStatus": null,
+          "createdAt": "2026-10-27T00:28:26.896Z",
+          "updatedAt": "2026-10-27T00:28:26.896Z"
+        }
+      }
+    },
+    {
+      "path": "/rooms/11165703-86a9-4da1-8fff-dd0f5737b64e/join",
+      "status": 201,
+      "body": {
+        "roomId": "11165703-86a9-4da1-8fff-dd0f5737b64e",
+        "membershipId": "12955307-1737-48a7-a258-23dac1004090",
+        "role": "participant",
+        "status": "joined",
+        "joinedAt": "2026-10-27T00:28:26.969Z",
+        "nextAction": "prediction",
+        "hasSubmittedPrediction": false,
+        "canLateJoinPredict": false,
+        "predictionWindow": {
+          "open": false,
+          "projectedArrivalAt": null,
+          "deadlineAt": null
+        },
+        "lateJoinPredictionWindowEndsAt": null,
+        "lateJoinPredictionArrivalCutoffAt": null
+      }
+    },
+    {
+      "path": "/rooms/11165703-86a9-4da1-8fff-dd0f5737b64e/predictions",
+      "status": 201,
+      "body": [
+        {
+          "predictionId": "5b26a5d0-db7a-43e9-80b7-080d452581ff",
+          "milestoneId": "8ea3fba3-991a-49f0-a243-3b2e131b306c",
+          "milestoneName": "Private finish",
+          "milestoneOrder": 1,
+          "milestoneType": "final_destination",
+          "submittedAt": "2026-10-27T00:27:47.570Z",
+          "editDeadline": "2026-10-27T00:29:47.570Z",
+          "revokedAt": null,
+          "auraEligible": true,
+          "lockedCheckpoint": null,
+          "status": "submitted",
+          "isCurrentUser": false,
+          "differenceFromActualMinutes": null,
+          "differenceFromActualSeconds": null,
+          "rankForMilestone": null,
+          "totalAuraAwarded": 0,
+          "cloutAwarded": 0,
+          "user": {
+            "userId": "3b4fd950-1b02-481d-8236-276a6dbaf93a",
+            "name": "@host1793060820447",
+            "prediktHandle": "host1793060820447",
+            "avatarKey": null,
+            "totalAura": 0,
+            "weeklyAura": 0,
+            "cloutBalance": 40,
+            "creditBalance": 40,
+            "winsCount": 0,
+            "badges": [],
+            "creator": null
+          }
+        },
+        {
+          "predictionId": "cfe5c247-2252-4c16-9847-c32b2adf85c6",
+          "milestoneId": "8ea3fba3-991a-49f0-a243-3b2e131b306c",
+          "milestoneName": "Private finish",
+          "milestoneOrder": 1,
+          "milestoneType": "final_destination",
+          "submittedAt": "2026-10-27T00:27:47.600Z",
+          "editDeadline": "2026-10-27T00:29:47.600Z",
+          "revokedAt": null,
+          "auraEligible": true,
+          "lockedCheckpoint": null,
+          "status": "submitted",
+          "isCurrentUser": false,
+          "differenceFromActualMinutes": null,
+          "differenceFromActualSeconds": null,
+          "rankForMilestone": null,
+          "totalAuraAwarded": 0,
+          "cloutAwarded": 0,
+          "user": {
+            "userId": "2a7f41d4-ec5b-4d5c-94db-8841ecb7e4c8",
+            "name": "@fwd1793060867418",
+            "prediktHandle": "fwd1793060867418",
+            "avatarKey": null,
+            "totalAura": 0,
+            "weeklyAura": 0,
+            "cloutBalance": 20,
+            "creditBalance": 40,
+            "winsCount": 0,
+            "badges": [],
+            "creator": null
+          }
+        },
+        {
+          "predictionId": "5da88735-f1aa-49ef-b9d1-c0ee82b4d3c8",
+          "milestoneId": "8ea3fba3-991a-49f0-a243-3b2e131b306c",
+          "milestoneName": "Private finish",
+          "milestoneOrder": 1,
+          "milestoneType": "final_destination",
+          "submittedAt": "2026-10-27T00:28:27.000Z",
+          "editDeadline": "2026-10-27T00:30:27.000Z",
+          "revokedAt": null,
+          "auraEligible": true,
+          "lockedCheckpoint": null,
+          "status": "submitted",
+          "isCurrentUser": true,
+          "differenceFromActualMinutes": null,
+          "differenceFromActualSeconds": null,
+          "rankForMilestone": null,
+          "totalAuraAwarded": 0,
+          "cloutAwarded": 0,
+          "user": {
+            "userId": "b15a08ec-55e0-4017-bbfc-8f35e394fea2",
+            "name": "ScoredGuest",
+            "prediktHandle": null,
+            "avatarKey": null,
+            "totalAura": 0,
+            "weeklyAura": 0,
+            "cloutBalance": 20,
+            "creditBalance": 10,
+            "winsCount": 0,
+            "badges": [],
+            "creator": null
+          }
+        }
+      ]
+    }
+  ],
+  "forwardedUrl": "http://127.0.0.1:8211/JoinRoom?joinCode=F3SFF&forwardedBy=2a7f41d4-ec5b-4d5c-94db-8841ecb7e4c8"
+}

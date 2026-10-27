@@ -1,0 +1,28 @@
+[
+  {
+    "width": 320,
+    "dimensions": {
+      "client": 320,
+      "scroll": 320
+    },
+    "shares": [
+      {
+        "title": "My Prediktion result",
+        "text": "My Prediktion result\n@scoredguest\nExact location is hidden.\nRoom code: F3SFF\nOpen: http://127.0.0.1:8211?joinCode=F3SFF"
+      }
+    ]
+  },
+  {
+    "width": 1440,
+    "dimensions": {
+      "client": 1440,
+      "scroll": 1440
+    },
+    "shares": [
+      {
+        "title": "My Prediktion result",
+        "text": "My Prediktion result\n@scoredguest\nExact location is hidden.\nRoom code: F3SFF\nOpen: http://127.0.0.1:8211?joinCode=F3SFF"
+      }
+    ]
+  }
+]

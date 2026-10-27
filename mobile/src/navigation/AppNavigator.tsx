@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect } from 'react';
 import { ActivityIndicator, View } from 'react-native';
-import { NavigationContainer, useNavigationContainerRef } from '@react-navigation/native';
+import { getStateFromPath as getDefaultStateFromPath, NavigationContainer, useNavigationContainerRef } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
@@ -21,7 +21,7 @@ import NotificationsScreen from '../screens/NotificationsScreen';
 import LegalScreen from '../screens/LegalScreen';
 import HelpScreen from '../screens/HelpScreen';
 import { RootStackParamList } from './types';
-import { resolveInviteJoinCode } from '../utils/inviteIntent';
+import { resolveInviteSelection } from '../utils/inviteIntent';
 import { inviteStateFromPath } from './inviteRouting';
 import { consumePostAuthIntent } from '../utils/postAuthIntent';
 import ScreenCrashBoundary from '../components/ScreenCrashBoundary';
@@ -64,9 +64,12 @@ export default function AppNavigator() {
       );
       return;
     }
-    void resolveInviteJoinCode().then((joinCode) => {
-      if (!joinCode || !navigationRef.isReady()) return;
-      navigationRef.navigate('JoinRoom', { joinCode });
+    void resolveInviteSelection().then((selection) => {
+      if (!selection.joinCode || !navigationRef.isReady()) return;
+      navigationRef.navigate('JoinRoom', {
+        joinCode: selection.joinCode,
+        forwardedBy: selection.forwardedBy ?? undefined,
+      });
     });
   }, [navigationRef]);
 
@@ -99,8 +102,14 @@ export default function AppNavigator() {
       ref={navigationRef}
       onReady={runInitialRouting}
       linking={{
-        prefixes: ['https://myprediktion.com', 'https://www.myprediktion.com', 'http://localhost:8081'],
-        getStateFromPath: (path) => (inviteStateFromPath(path) as any) ?? undefined,
+        prefixes: [
+          'https://myprediktion.com',
+          'https://www.myprediktion.com',
+          'http://localhost:8081',
+          typeof window !== 'undefined' ? window.location.origin : 'http://localhost:8081',
+        ],
+        getStateFromPath: (path, options) =>
+          (inviteStateFromPath(path) as any) ?? getDefaultStateFromPath(path, options),
       }}
     >
       <Stack.Navigator

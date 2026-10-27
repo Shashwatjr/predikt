@@ -66,10 +66,30 @@ function toArray<T>(value: unknown): T[] {
 
 const startDelayOptions = [3, 5, 10, 15] as const;
 
-function shortenPlaceLabel(label: string | null | undefined): string {
-  if (!label) return 'Unknown';
-  const firstChunk = label.split(',')[0]?.trim() || label.trim();
+function placeText(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function firstPlace(...values: unknown[]): string | null {
+  for (const value of values) {
+    const text = placeText(value);
+    if (text) return text;
+  }
+  return null;
+}
+
+function shortenPlaceLabel(label: unknown): string {
+  const text = placeText(label);
+  if (!text) return '—';
+  const firstChunk = text.split(',')[0]?.trim() || text;
   return firstChunk.length > 26 ? `${firstChunk.slice(0, 23).trimEnd()}…` : firstChunk;
+}
+
+function finiteDurationSeconds(...values: unknown[]): number | null {
+  for (const value of values) {
+    if (typeof value === 'number' && Number.isFinite(value) && value >= 0) return value;
+  }
+  return null;
 }
 
 function normalizeRoomStatus(status?: string | null) {
@@ -586,7 +606,7 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
     if (!room) return;
     // Route to the full share screen (code, invite link, WhatsApp, native share, …)
     // rather than firing a single bare share sheet.
-    navigation.navigate('RoomCreated', { room });
+    navigation.navigate('RoomCreated', { roomId: room.roomId });
   }
 
   async function handleEndRoom() {
@@ -877,14 +897,17 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
           title={room?.roomTitle ?? 'Arrival room'}
           statusLabel={liveState?.journeyStatus ? String(liveState.journeyStatus).replace(/_/g, ' ') : 'Preparing your journey'}
           targetTime={waitingTargetTime}
-          startLabel={room?.startingPointLabel ?? room?.routeSummary?.startLabel ?? 'Start'}
-          destinationLabel={room?.destinationLabel ?? room?.routeSummary?.destinationLabel ?? 'Destination'}
-          expectedDurationMinutes={Math.round(
-            (liveState?.expectedDurationSeconds ??
-              room?.route?.estimatedDurationSeconds ??
-              room?.routeSummary?.estimatedDurationSeconds ??
-              3600) / 60,
-          )}
+          startLabel={firstPlace(room?.startingPointLabel, room?.route?.startLabel, room?.routeSummary?.startLabel) ?? 'Start'}
+          destinationLabel={firstPlace(room?.destinationLabel, room?.route?.destinationLabel, room?.routeSummary?.destinationLabel) ?? 'Destination'}
+          expectedDurationMinutes={(() => {
+            const seconds = finiteDurationSeconds(
+              liveState?.expectedDurationSeconds,
+              room?.expectedDurationSeconds,
+              room?.route?.estimatedDurationSeconds,
+              room?.routeSummary?.estimatedDurationSeconds,
+            );
+            return seconds == null ? null : Math.round(seconds / 60);
+          })()}
           modeLabel="Car"
           modeIcon="🚗"
           safetyMessage={liveState?.safetyMessage ?? 'Movement is delayed for safety.'}
@@ -903,7 +926,28 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
     );
   }
 
-  const routeLabel = `${shortenPlaceLabel(room?.startingPointLabel ?? room?.routeSummary?.startLabel)} → ${shortenPlaceLabel(room?.destinationLabel ?? room?.routeSummary?.destinationLabel)}`;
+  const startPlace = firstPlace(
+    room?.startingPointLabel,
+    room?.route?.startLabel,
+    room?.journeyRoute?.startLabel,
+    room?.routeSummary?.startLabel,
+  );
+  const destinationPlace = firstPlace(
+    room?.destinationLabel,
+    room?.route?.destinationLabel,
+    room?.journeyRoute?.destinationLabel,
+    room?.routeSummary?.destinationLabel,
+  );
+  const routeLabel = `${shortenPlaceLabel(startPlace)} → ${shortenPlaceLabel(destinationPlace)}`;
+  const journeyDurationSeconds = finiteDurationSeconds(
+    liveState?.expectedDurationSeconds,
+    room?.expectedDurationSeconds,
+    room?.route?.estimatedDurationSeconds,
+    room?.journeyRoute?.estimatedDurationSeconds,
+    room?.routeSummary?.estimatedDurationSeconds,
+  );
+  const journeyDurationLabel =
+    journeyDurationSeconds == null ? '—' : `${Math.round(journeyDurationSeconds / 60)} min`;
   const hostGuessLabel = myPredictionDate ? formatClock(myPredictionDate, false) : room?.benchmarks?.hostPrediction?.arrivalTime ? formatClock(new Date(room.benchmarks.hostPrediction.arrivalTime), false) : 'Pending';
   const botGuessLabel =
     room?.benchmarks?.oracle?.arrivalTime
@@ -987,7 +1031,7 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
   const etaMinutesLabel =
     liveState?.etaMinutes != null
       ? `${liveState.etaMinutes} min`
-      : `${Math.round((liveState?.expectedDurationSeconds ?? 2640) / 60)} min`;
+      : journeyDurationLabel;
   const heroMetaCopy =
     phase === 'open'
       ? lockCountdownLabel
@@ -1090,10 +1134,11 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
               </View>
               <View style={styles.journeyHeroRouteBlock}>
                 <Text style={styles.journeyHeroRoute}>{routeLabel}</Text>
+                <Text style={styles.journeyHeroMeta}>Journey time · {journeyDurationLabel}</Text>
                 <Text style={styles.journeyHeroMeta}>{heroMetaCopy}</Text>
               </View>
             </View>
-            <View style={styles.journeyHeroPills}>
+            <View style={[styles.journeyHeroPills, !isDesktop && styles.journeyHeroPillsNarrow]}>
               <Pressable
                 onPress={() => setShowPrivacyInfo((v) => !v)}
                 accessibilityRole="button"
@@ -1355,8 +1400,8 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
               progressPercentage={pct}
               etaMinutes={liveState?.etaMinutes}
               status={liveState?.journeyStatus ?? liveState?.status}
-              startLabel={room?.startingPointLabel ?? room?.routeSummary?.startLabel ?? 'Start'}
-              destinationLabel={room?.destinationLabel ?? room?.routeSummary?.destinationLabel ?? 'Destination'}
+              startLabel={startPlace ?? 'Start'}
+              destinationLabel={destinationPlace ?? 'Destination'}
               safetyMessage={liveState?.safetyMessage}
               primaryColor="#A855F7"
               secondaryColor="#3B82F6"
@@ -1787,8 +1832,8 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
           progressPercentage={pct}
           etaMinutes={liveState.etaMinutes}
           status={liveState.journeyStatus ?? liveState.status}
-          startLabel={room?.startingPointLabel ?? room?.routeSummary?.startLabel ?? 'Start'}
-          destinationLabel={room?.destinationLabel ?? room?.routeSummary?.destinationLabel ?? 'Destination'}
+          startLabel={startPlace ?? 'Start'}
+          destinationLabel={destinationPlace ?? 'Destination'}
           safetyMessage={liveState.safetyMessage}
           primaryColor={categoryTheme.primaryColor}
           secondaryColor={categoryTheme.secondaryColor}
@@ -1937,7 +1982,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   journeyHeroHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' },
-  journeyHeroLead: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 14, minWidth: 240 },
+  journeyHeroLead: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 14, minWidth: 0, maxWidth: '100%' },
   journeyHeroRouteIcon: {
     width: 52,
     height: 52,
@@ -1952,7 +1997,8 @@ const styles = StyleSheet.create({
   journeyHeroRouteBlock: { flex: 1, gap: 6 },
   journeyHeroRoute: { color: '#FFFFFF', fontSize: 20, fontWeight: '900', lineHeight: 26 },
   journeyHeroMeta: { color: '#9BA7C2', fontSize: 14, fontWeight: '700' },
-  journeyHeroPills: { flexDirection: 'row', gap: 10, flexWrap: 'wrap', alignItems: 'center' },
+  journeyHeroPills: { flexDirection: 'row', gap: 10, flexWrap: 'wrap', alignItems: 'center', maxWidth: '100%', flexShrink: 1 },
+  journeyHeroPillsNarrow: { flexBasis: '100%' },
   journeyHeroStatusPill: {
     flexDirection: 'row',
     alignItems: 'center',

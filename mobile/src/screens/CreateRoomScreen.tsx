@@ -1095,11 +1095,7 @@ export default function CreateRoomScreen({ navigation, route }: Props) {
           predictedArrivalTime: creatorPrediction.toISOString(),
         });
         navigation.navigate('RoomCreated', {
-          room: {
-            ...res.data,
-            viewerHasPredicted: true,
-            hostPrediction: { arrivalTime: creatorPrediction.toISOString() },
-          },
+          roomId: res.data.roomId,
         });
       } catch (predictionError: unknown) {
         appAlert(
@@ -1207,7 +1203,7 @@ export default function CreateRoomScreen({ navigation, route }: Props) {
         outcomeSource: 'forecast_snapshot',
         confidenceLevel: forecastChance >= 60 ? 'high' : forecastChance >= 35 ? 'medium' : 'low',
       });
-      navigation.navigate('RoomCreated', { room: res.data });
+      navigation.navigate('RoomCreated', { roomId: res.data.roomId });
     } catch (err: unknown) {
       const message = getApiErrorMessage(err, 'Could not create the weather room. Try again in a moment.');
       setCreateError(message);
@@ -1331,7 +1327,22 @@ export default function CreateRoomScreen({ navigation, route }: Props) {
           creatorPredictionIso: isFoodEta ? predictedDate?.toISOString() : undefined,
         },
       });
-      navigation.navigate('RoomCreated', { room: res.data });
+      if (isFoodEta && predictedDate) {
+        try {
+          await api.post(`/rooms/${res.data.roomId}/predictions`, {
+            predictedArrivalTime: predictedDate.toISOString(),
+          });
+        } catch (predictionError: unknown) {
+          appAlert('Room created', getApiErrorMessage(predictionError, 'Your delivery prediction still needs to be saved.'));
+          navigation.navigate('Prediction', {
+            roomId: res.data.roomId,
+            room: res.data,
+            returnToRoomCreated: true,
+          });
+          return;
+        }
+      }
+      navigation.navigate('RoomCreated', { roomId: res.data.roomId });
     } catch (err: unknown) {
       const message = getApiErrorMessage(err, 'Could not create the room. Try again in a moment.');
       setCreateError(message);
@@ -1410,7 +1421,7 @@ export default function CreateRoomScreen({ navigation, route }: Props) {
         outcomeSource: 'creator_attest',
         confidenceLevel: 'creator_attested',
       });
-      navigation.navigate('RoomCreated', { room: res.data });
+      navigation.navigate('RoomCreated', { roomId: res.data.roomId });
     } catch (err: unknown) {
       const message = getApiErrorMessage(err, 'Could not create the open prediction room. Try again in a moment.');
       setCreateError(message);

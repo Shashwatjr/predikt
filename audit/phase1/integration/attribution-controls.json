@@ -1,0 +1,12 @@
+[
+  {
+    "forwardedBy": "user-1",
+    "joinedGuestUserId": "02cb3793-5f6d-4cd1-99ec-a423523a5321",
+    "status": 201
+  },
+  {
+    "forwardedBy": "3b4fd950-1b02-481d-8236-276a6dbaf93a",
+    "joinedGuestUserId": "db7a9307-a397-4eb9-aa2f-01414399bfd0",
+    "status": 201
+  }
+]
