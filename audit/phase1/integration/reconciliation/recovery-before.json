@@ -1,0 +1,11 @@
+{
+  "when": "before the recovery change, same disposable loopback database",
+  "partial_score_then_end_recovers_without_duplicating": "FAIL: after an injected aura write failed, milestone status was reached and the later end left the second prediction unscored (aura 0, clout 0)",
+  "terminal_retry_partial_fanout_recovers_without_rewriting_completion": "FAIL: Room is already completed",
+  "separate_connection_score_and_finalize_contention": "FAIL: Room is already completed",
+  "bounded_eight_finalization_contention": "FAIL: Room is already completed",
+  "bounded_contention_fulfilled": 4,
+  "bounded_contention_rejected": ["Unique constraint failed on idempotency_key", "Milestone already reached"],
+  "terminal_retry_gap_reproduced_not_fixed": "PASS as a defect reproduction, not a recovery",
+  "committed_state": "prediction_rooms.status=completed is stored before result_ready fanout; room_milestones.status=reached is stored before remaining rank and ledger writes. Both states make the normal creator retry return Room is already completed or Milestone already reached."
+}

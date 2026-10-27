@@ -51,7 +51,7 @@ The migration preload P3005 is retained as rejected evidence; the successful pro
 
 ## Exact remaining release gates
 
-1. Lifecycle recovery: completed-before-external-failure blocks the normal retry; implement/test durable authenticated recovery/outbox without resetting terminal/scored state. Milestone reached-before-scoring failure/arrival contention and broader real-DB reward engine account/cap contention/load remain unverified.
-2. Migration inventory/reconciliation and adoption approval; data-preserving upgrade/copy, compatibility, restore and post-write rollback rehearsals. Existing six-migration repository chain still lacks prerequisites.
-3. Preview Docker image build, dedicated HTTPS-origin rebuild/deployment (separately authorized), then actual hosted OG-before-SPA, edge/deep routes, real API/CORS/auth/privacy and messaging crawler acceptance. Hosted status is NOT RUN.
+1. Lifecycle recovery: local creator retry for completed-but-partial scoring and `result_ready` fanout is covered in `recovery-20261027.md`. Broader production-like reward-engine load remains NOT RUN.
+2. Local upgrade rehearsal passed on a copy of the existing schema and on a pre-delta fixture (`migration/upgrade-rehearsal.json`). No history was stamped. Hosted inventory, adoption, and cutover remain NOT RUN. The six-file chain still cannot initialize an empty database by itself.
+3. Preview Docker image build NOT RUN this pass: registry metadata for `node:24-alpine` timed out. Dockerfile and package script remain in the repo. Hosted HTTPS/OG/API acceptance remains NOT RUN.
 4. Real Android/iPhone/native permissions/location, background/network recovery, OS share-sheet/clipboard and WhatsApp/iMessage delivery/deep links. Responsive Chromium, simulated geolocation and an instrumented share adapter do not satisfy these gates.

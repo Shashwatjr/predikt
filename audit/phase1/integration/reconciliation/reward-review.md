@@ -21,7 +21,9 @@ The supplemental tests exercise the real new locks, not a mocked transaction tha
 
 ## Explicit unresolved release blockers
 
-`terminal_retry_gap_reproduced_not_fixed` is a **passing reproduction of a defect**, not a recovered lifecycle. The test injects a `result_ready` notification failure after public `LifecycleService.end` persisted `completed` and credits. The first call throws; a subsequent normal `end` is rejected as terminal. Thus the safe internal helper retries above do not establish a reachable HTTP recovery mechanism. A durable per-step recovery/outbox or explicitly authenticated terminal recovery design remains required. Do not reset a completed room or remove terminal guards to replay rewards.
+Superseded for the terminal-retry and partial-score paths by `recovery-20261027.md` (local disposable DB). The paragraph below is the pre-fix finding.
+
+`terminal_retry_gap_reproduced_not_fixed` was a **passing reproduction of a defect**, not a recovered lifecycle. The test injects a `result_ready` notification failure after public `LifecycleService.end` persisted `completed` and credits. The first call throws; a subsequent normal `end` is rejected as terminal. Thus the safe internal helper retries above do not establish a reachable HTTP recovery mechanism. A durable per-step recovery/outbox or explicitly authenticated terminal recovery design remains required. Do not reset a completed room or remove terminal guards to replay rewards.
 
 Milestone reach/scoring is still outside the finalization claim and marks reached before all scoring completes. Partial score recovery and simultaneous reach/arrival serialization require a separate tested design. The new checks do not claim atomicity for the entire journey. Winner-Gem/badge/rematch keys reuse existing engine guarantees and prior scoped tests; arbitrary real-DB cross-source engine-cap/account contention and production-like load were not retested here. The engine's mock-backed race test is not a real-DB load test. These broader lifecycle/engine contention gates remain open; do not infer release readiness from helper test success.
 

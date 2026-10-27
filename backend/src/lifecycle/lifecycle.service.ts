@@ -233,7 +233,16 @@ export class LifecycleService {
     });
     if (!milestone) throw new NotFoundException('Milestone not found');
     if (milestone.status === 'reached') {
-      throw new BadRequestException('Milestone already reached');
+      // Status is committed before scoring. A retry must finish unscored predictions
+      // and must not move the stored arrival time. A fully scored milestone stays terminal.
+      const unscored = await this.prisma.milestonePrediction.count({
+        where: { milestoneId, revokedAt: null, rankForMilestone: null, differenceFromActualSeconds: null },
+      });
+      if (unscored === 0 || !milestone.actualReachedTime) {
+        throw new BadRequestException('Milestone already reached');
+      }
+      const leaderboard = await this.scoreMilestone(roomId, milestoneId, milestone.actualReachedTime);
+      return { roomId, milestoneId, actualReachedTime: milestone.actualReachedTime, leaderboard };
     }
 
     const actualReachedTime = dto.actualReachedTime
@@ -256,13 +265,20 @@ export class LifecycleService {
 
   async end(roomId: string, dto: EndRoomDto, user: User) {
     const room = await this.getCreatorRoom(roomId, user);
-    this.guardTerminal(room.status);
+    if (room.status === 'cancelled') this.guardTerminal(room.status);
     const blocked = findBannedBettingTerms(dto.resultText);
     if (blocked.length) {
       throw new BadRequestException({
         message: POLICY_BLOCK_MESSAGE,
         blockedTerms: blocked.map((term) => ({ field: 'resultText', term })),
       });
+    }
+
+    if (room.status === 'completed') {
+      // Completion is committed before notifications and can also precede a partial score.
+      // The creator may resume those writes. Outcome fields and cancelled rooms stay put.
+      await this.resumeScoredMilestone(room);
+      return this.finalizeRoom(roomId, user.userId);
     }
 
     if (!['live', 'predictions_locked', 'predictions_open'].includes(room.status)) {
@@ -285,13 +301,22 @@ export class LifecycleService {
     });
 
     if (finalMilestone && finalMilestone.status !== 'reached') {
-      await this.reachMilestone(
-        roomId,
-        finalMilestone.milestoneId,
-        { actualReachedTime: actualEndTime.toISOString() },
-        user,
-      );
+      try {
+        await this.reachMilestone(
+          roomId,
+          finalMilestone.milestoneId,
+          { actualReachedTime: actualEndTime.toISOString() },
+          user,
+        );
+      } catch (error) {
+        if (!this.isBenignCompletionRace(error)) throw error;
+      }
     }
+
+    await this.resumeScoredMilestone(room);
+    const latest = await this.prisma.predictionRoom.findUnique({ where: { roomId }, select: { status: true } });
+    if (latest?.status === 'cancelled') this.guardTerminal(latest.status);
+    if (latest?.status === 'completed') return this.finalizeRoom(roomId, user.userId);
 
     await this.prisma.predictionRoom.update({
       where: { roomId },
@@ -339,11 +364,14 @@ export class LifecycleService {
       });
     }
 
-    await this.scoreMultipleChoiceMilestone(
-      roomId,
-      finalMilestone.milestoneId,
-      dto.actualOptionKey,
-    );
+    const optionKey = finalMilestone.status === 'reached' && finalMilestone.actualOptionKey
+      ? finalMilestone.actualOptionKey
+      : dto.actualOptionKey;
+    await this.scoreMultipleChoiceMilestone(roomId, finalMilestone.milestoneId, optionKey);
+
+    const latest = await this.prisma.predictionRoom.findUnique({ where: { roomId }, select: { status: true } });
+    if (latest?.status === 'cancelled') this.guardTerminal(latest.status);
+    if (latest?.status === 'completed') return this.finalizeRoom(roomId, user.userId);
 
     const actualEndTime = dto.actualEndTime ? new Date(dto.actualEndTime) : new Date();
     await this.prisma.predictionRoom.update({
@@ -375,12 +403,14 @@ export class LifecycleService {
 
   async confirmArrival(roomId: string, user: User) {
     const room = await this.getCreatorRoom(roomId, user);
+    if (room.status === 'completed') return this.end(roomId, {}, user);
     this.guardTerminal(room.status);
     return this.confirmArrivalWithContext(room, user, {});
   }
 
   async previewArrivalConfirmation(roomId: string, user: User, dto: EndRoomDto) {
     const room = await this.getCreatorRoom(roomId, user);
+    if (room.status === 'completed') return this.end(roomId, dto, user);
     this.guardTerminal(room.status);
 
     const verification = this.buildArrivalVerification(room, dto.location?.lat, dto.location?.lng);
@@ -536,6 +566,10 @@ export class LifecycleService {
     lng: number,
   ): Promise<{ finalized: boolean; distanceMeters: number | null; result?: unknown }> {
     const room = await this.getCreatorRoom(roomId, user);
+    if (room.status === 'completed') {
+      const result = await this.end(roomId, {}, user);
+      return { finalized: true, distanceMeters: null, result };
+    }
     this.guardTerminal(room.status);
     const verification = this.buildArrivalVerification(room, lat, lng);
     if (verification.shouldBlock) {
@@ -821,6 +855,9 @@ export class LifecycleService {
       const cloutAwarded = (CLOUT_BY_RANK[rank] ?? 5) + (tier.name === 'exact_second' ? 10 : 0);
 
       await this.prisma.$transaction(async (tx) => {
+        // lockedStatus is set at prediction lock, before any award exists.
+        // rankForMilestone is the claim written with the ledger rows.
+        if (!(await this.claimUnscoredPrediction(tx, prediction.predictionId))) return;
         // Result integrity: write score evidence before balances so post-room audit trails
         // can explain how each user's Aura and Clout were derived.
         await tx.milestonePrediction.update({
@@ -939,6 +976,7 @@ export class LifecycleService {
     // v2: persist accuracy for Late-tier + creator guesses so results can show and tag
     // them, but award no Aura/Clout and leave them out of the ranked leaderboard.
     for (const prediction of ineligiblePredictions) {
+      if (prediction.differenceFromActualSeconds != null) continue;
       const diffSeconds = Math.abs(
         Math.round((prediction.predictedReachedTime.getTime() - actualReachedTime.getTime()) / 1000),
       );
@@ -981,6 +1019,7 @@ export class LifecycleService {
         : MULTIPLE_CHOICE_PARTICIPATION_CLOUT;
 
       await this.prisma.$transaction(async (tx) => {
+        if (!(await this.claimUnscoredPrediction(tx, prediction.predictionId))) return;
         await tx.milestonePrediction.update({
           where: { predictionId: prediction.predictionId },
           data: {
@@ -1843,6 +1882,35 @@ export class LifecycleService {
     if (journeyStatus === 'auto_closed') return 'Journey auto-closed: no verified arrival';
     if (journeyStatus === 'abandoned') return 'Plans changed — nobody counted as a loss';
     return reasonCode ? `Journey closed: ${reasonCode.replace(/_/g, ' ')}` : 'Journey closed';
+  }
+
+  private async claimUnscoredPrediction(tx: Prisma.TransactionClient, predictionId: string) {
+    await tx.$queryRaw`SELECT 1 FROM (SELECT pg_advisory_xact_lock(hashtextextended(${predictionId}, 0))) AS result`;
+    const current = await tx.milestonePrediction.findUnique({
+      where: { predictionId },
+      select: { rankForMilestone: true },
+    });
+    return current?.rankForMilestone == null;
+  }
+
+  private async resumeScoredMilestone(room: { roomId: string; answerType?: string | null }) {
+    const finalMilestone = await this.prisma.roomMilestone.findFirst({
+      where: { roomId: room.roomId, milestoneType: 'final_destination' },
+      orderBy: { milestoneOrder: 'desc' },
+    });
+    if (!finalMilestone || finalMilestone.status !== 'reached') return;
+    if (room.answerType === 'multiple_choice') {
+      if (!finalMilestone.actualOptionKey) return;
+      await this.scoreMultipleChoiceMilestone(room.roomId, finalMilestone.milestoneId, finalMilestone.actualOptionKey);
+      return;
+    }
+    if (!finalMilestone.actualReachedTime) return;
+    await this.scoreMilestone(room.roomId, finalMilestone.milestoneId, finalMilestone.actualReachedTime);
+  }
+
+  private isBenignCompletionRace(error: unknown) {
+    return error instanceof BadRequestException
+      && (error.message.includes('already reached') || error.message.includes('must be live'));
   }
 
   private guardTerminal(status: string) {

@@ -1,0 +1,111 @@
+{
+  "source": "predikt_ui loopback clone plus a separate pre-delta fixture",
+  "historyStamped": false,
+  "migrationFilesEdited": false,
+  "migrationChecksums": {
+    "20260713000000_admin_portal_beta": "db8dc0328a1a45025493bcb8edb5c5b70a14db760d07cc98ad61dd9a01e11d3d",
+    "20260714000000_room_checkpoints": "307112d2031d9c24129696c2f886e59cfcd93afe41ef31420d049712aa554773",
+    "20260719000000_add_oracle_result_column": "3a86b1ba3660e3438276a825fb7e73df201769fa51e06c77316b9a3cf2f587ab",
+    "20260719000001_add_milestone_prediction_checkpoint_fields": "1200d0b300764216b4933a67bda924f1763ef82b8d8230dfd5428565aabc7fa4",
+    "20260725000000_room_checkpoint_eta_columns": "d04773d4352347b19a0e5f2e5f9b21d404fba96b70ac9a49537641143e5e5cc7",
+    "20260725130000_travel_eta_overhaul": "6a642c13a6011977ce4a3595fad104ac0960423fb7244d0625bac1dd3a7e6f90"
+  },
+  "candidateSha256": "f38c4740c88c18819d207f2a103ead4f358e6742ae5982a05497735ed9226005",
+  "existing": {
+    "database": "predikt_upgrade_existing_1793065969",
+    "countsBefore": {
+      "users": 125,
+      "rooms": 71,
+      "predictions": 40,
+      "credits": 73,
+      "reward_rows": 64,
+      "credit_balance": 1042,
+      "clout_balance": 2890,
+      "aura_balance": 359,
+      "ledger_amount": 1264
+    },
+    "historyBefore": false,
+    "schemaDiffEmpty": true,
+    "candidateCreateOnPopulatedDb": "ROLLED_BACK",
+    "countsAfterCandidateAttempt": {
+      "users": 125,
+      "rooms": 71,
+      "predictions": 40,
+      "credits": 73,
+      "reward_rows": 64,
+      "credit_balance": 1042,
+      "clout_balance": 2890,
+      "aura_balance": 359,
+      "ledger_amount": 1264
+    },
+    "candidatePreservedData": true,
+    "migrateDeployExit": 1,
+    "migrateDeployRefused": true,
+    "historyAfterRefusedDeploy": false,
+    "countsAfterRefusedDeploy": {
+      "users": 125,
+      "rooms": 71,
+      "predictions": 40,
+      "credits": 73,
+      "reward_rows": 64,
+      "credit_balance": 1042,
+      "clout_balance": 2890,
+      "aura_balance": 359,
+      "ledger_amount": 1264
+    },
+    "applicationCompatibility": "PASS"
+  },
+  "preDelta": {
+    "database": "predikt_upgrade_predelta_1793065969",
+    "countsBeforeDeltas": {
+      "users": 1,
+      "rooms": 1,
+      "predictions": 1,
+      "credits": 1,
+      "reward_rows": 1,
+      "credit_balance": 15,
+      "clout_balance": 40,
+      "aura_balance": 5,
+      "ledger_amount": 5
+    },
+    "countsAfterSixOriginalMigrations": {
+      "users": 1,
+      "rooms": 1,
+      "predictions": 1,
+      "credits": 1,
+      "reward_rows": 1,
+      "credit_balance": 15,
+      "clout_balance": 40,
+      "aura_balance": 5,
+      "ledger_amount": 5
+    },
+    "dataPreserved": true,
+    "oracleResultColumnAdded": true,
+    "predictionCheckpointColumnAdded": true,
+    "historyPresent": false,
+    "schemaDiffEmpty": true,
+    "applicationCompatibility": "PASS",
+    "reapplyFirstMigration": "ROLLED_BACK",
+    "countsAfterFailedReapply": {
+      "users": 1,
+      "rooms": 1,
+      "predictions": 1,
+      "credits": 1,
+      "reward_rows": 1,
+      "credit_balance": 15,
+      "clout_balance": 40,
+      "aura_balance": 5,
+      "ledger_amount": 5
+    },
+    "migrateDeployRefused": true,
+    "historyAfterRefusedDeploy": false
+  },
+  "rollback": {
+    "snapshotDatabase": "predikt_upgrade_restore_1793065969",
+    "postUpgradeWriteOnUpgradedDb": "1",
+    "postUpgradeWriteOnSnapshot": "0",
+    "fixtureUserOnSnapshot": "15",
+    "oracleResultOnSnapshot": false,
+    "limit": "No down migration exists. Restoring the pre-delta snapshot keeps fixture balances and drops writes made after it. Re-running an applied delta rolls back only when the attempt is one transaction. migrate deploy on either database was refused and no history row was inserted."
+  }
+}

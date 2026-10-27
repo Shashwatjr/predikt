@@ -1,0 +1,18 @@
+{
+  "creator_credit_partial_failure_then_retry": "PASS",
+  "creator_credit_eight_contenders": "PASS",
+  "flex_eight_contenders_and_retry": "PASS",
+  "drop_cap_two_users_eight_contenders": "PASS",
+  "badge_eight_contenders_then_post_award_failure_retry": "PASS",
+  "notification_eight_contenders_and_partial_fanout_retry": "PASS",
+  "partial_score_then_end_recovers_without_duplicating": "PASS",
+  "terminal_retry_partial_fanout_recovers_without_rewriting_completion": "PASS",
+  "separate_connection_score_and_finalize_contention": "PASS",
+  "bounded_contention_fulfilled": 8,
+  "bounded_contention_rejected": [],
+  "bounded_eight_finalization_contention": "PASS",
+  "cancelled_room_does_not_recover_rewards": "PASS",
+  "terminal_retry_without_predictions_recovers": "PASS",
+  "unit_tests": "rewards + lifecycle 19 PASS",
+  "backend_build": "PASS"
+}

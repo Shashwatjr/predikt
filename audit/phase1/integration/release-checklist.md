@@ -36,5 +36,6 @@ Latest status is in `reconciliation/checks-and-status.md`; earlier failures abov
 
 - RESOLVED: inherited deletion-contract mismatch. Tests now distinguish per-user removal from explicit shared cancellation and assert no shared-state writes on default removal.
 - PASS locally: new external-effect rollback/contention tests and fixes; seven-step isolated candidate fresh migration replay with empty schema diff; actual packaged preview handler and compiled-browser same-origin API smoke.
-- BLOCKED: terminal retry after post-completion failure, milestone scoring/reach recovery/contention and broader real-DB reward engine load/cap/account contention; existing DB migration reconciliation/data-transfer/rollback proof.
+- LOCAL FIX: creator retry after completed-but-partial scoring or `result_ready` fanout. See `reconciliation/recovery-20261027.md`. Broader production-like reward load remains NOT RUN.
+- LOCAL UPGRADE REHEARSAL: existing-schema copy and pre-delta fixture. See `reconciliation/migration/upgrade-rehearsal.json`. No history stamp. Hosted cutover remains NOT RUN.
 - NOT RUN: preview Docker image build and actual hosted HTTPS/edge/OG/API/CORS acceptance; real-device/native location and OS/messaging share tests. Sources/config/package/checklists are prepared; no deployment is authorized or claimed.

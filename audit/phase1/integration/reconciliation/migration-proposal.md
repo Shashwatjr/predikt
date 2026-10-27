@@ -36,3 +36,12 @@ Before any cutover, the new database is disposable: abandon it and leave the old
 Required gates still open: inventory/reconciliation, candidate history approval, data-transfer rehearsal, row/ledger integrity, backup restore and post-write rollback rehearsal, compatibility/locking/runtime measurements, and separate authorization for any non-local action. No production/Neon operations are authorized by this document.
 
 Prisma's [baselining guidance](https://www.prisma.io/docs/orm/prisma-migrate/workflows/baselining) distinguishes existing-data onboarding from fresh replay; its [migration-history guidance](https://www.prisma.io/docs/orm/v7/prisma-migrate/understanding-prisma-migrate/migration-histories) explains file/history consistency. Those general principles support keeping the originals intact. Actual command behavior here is proven using the repository's 5.22.0 CLI, not inferred from newer CLI instructions.
+
+## Upgrade rehearsal — 2026-10-27
+
+`rehearse-upgrade.py` used new loopback databases only. It did not edit migration files, write `predikt_ui`, or insert `_prisma_migrations` rows. `migrate deploy` on both populated databases returned P3005 and was left refused.
+
+- Copy of the existing local schema and rows: diff against the checked-in datamodel was empty. Applying `prerequisites-candidate.sql` in one transaction rolled back; user, room, prediction, credit, and ledger counts and balance sums were unchanged. The generated client read a room and rolled back a probe insert.
+- Separate pre-delta database: candidate SQL, one synthetic user/room/prediction/credit/reward row, then the six original migration files. Counts and balances were unchanged, `oracle_result` and `aura_eligible` appeared, and the schema diff was empty. The client probe passed. Re-applying the first migration in one transaction rolled back. A later user insert exists only on the upgraded database; the pre-delta snapshot restore has the fixture credit balance 15, no post-upgrade user, and no `oracle_result` column.
+
+Fresh replay remains a different proof. There is still no down migration. Restoring the snapshot drops writes made after it. A failed delta re-apply is safe only inside one transaction. History was not stamped, so `migrate deploy` is still not the upgrade path for these databases. Hosted inventory, backup restore, and cutover remain NOT RUN. Evidence: `migration/upgrade-rehearsal.json`.

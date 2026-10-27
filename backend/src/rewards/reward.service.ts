@@ -103,6 +103,9 @@ export class RewardService {
   }
 
   private async grantInTx(tx: Tx, input: GrantInput): Promise<GrantResult> {
+    // Serialize same-key grants inside the caller's transaction so a concurrent
+    // insert loses the race before the unique constraint aborts that transaction.
+    await tx.$queryRaw`SELECT 1 FROM (SELECT pg_advisory_xact_lock(hashtextextended(${input.idempotencyKey}, 0))) AS result`;
     const skip = (skippedReason: GrantSkipReason): GrantResult => ({
       applied: false,
       skippedReason,

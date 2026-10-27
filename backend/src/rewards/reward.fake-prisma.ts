@@ -236,6 +236,10 @@ export class FakePrisma {
       ).length,
   };
 
+  async $queryRaw() {
+    return [];
+  }
+
   async $transaction<T>(cb: (tx: FakePrisma) => Promise<T>): Promise<T> {
     const snapshot = this.clone();
     try {
