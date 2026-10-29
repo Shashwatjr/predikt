@@ -1,0 +1,32 @@
+Prisma schema loaded from prisma/schema.prisma
+Datasource "db": PostgreSQL database "wave1_test", schema "public" at "127.0.0.1:55439"
+
+7 migrations found in prisma/migrations
+
+Applying migration `20260712000000_inferred_prerequisites`
+Applying migration `20260713000000_admin_portal_beta`
+Applying migration `20260714000000_room_checkpoints`
+Applying migration `20260719000000_add_oracle_result_column`
+Applying migration `20260719000001_add_milestone_prediction_checkpoint_fields`
+Applying migration `20260725000000_room_checkpoint_eta_columns`
+Applying migration `20260725130000_travel_eta_overhaul`
+
+The following migration(s) have been applied:
+
+migrations/
+  └─ 20260712000000_inferred_prerequisites/
+    └─ migration.sql
+  └─ 20260713000000_admin_portal_beta/
+    └─ migration.sql
+  └─ 20260714000000_room_checkpoints/
+    └─ migration.sql
+  └─ 20260719000000_add_oracle_result_column/
+    └─ migration.sql
+  └─ 20260719000001_add_milestone_prediction_checkpoint_fields/
+    └─ migration.sql
+  └─ 20260725000000_room_checkpoint_eta_columns/
+    └─ migration.sql
+  └─ 20260725130000_travel_eta_overhaul/
+    └─ migration.sql
+
+All migrations have been successfully applied.

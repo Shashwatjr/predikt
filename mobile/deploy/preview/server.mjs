@@ -59,7 +59,9 @@ export function createPreviewServer({ root, webOrigin, apiOrigin }) {
         // reward amounts, credentials, or client-supplied descriptive query fields.
         const document = buildInvitePreviewDocument({ inviteCode: joinCode, webBaseUrl: web.origin });
         const head = document.match(/<head>([\s\S]*?)<\/head>/)[1];
-        html = html.replace(/<title>[\s\S]*?<\/title>/i, '').replace('<head>', '<head>' + head);
+        html = html.replace(/<title>[\s\S]*?<\/title>/gi, '')
+          .replace(/<meta\b[^>]*(?:name|property)=["'](?:description|og:[^"']+|twitter:[^"']+)["'][^>]*>\s*/gi, '')
+          .replace('<head>', '<head>' + head);
       }
       res.setHeader('Content-Type', 'text/html; charset=utf-8');
       res.writeHead(200).end(req.method === 'HEAD' ? undefined : html);

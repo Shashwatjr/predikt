@@ -43,6 +43,16 @@ describe('RoutesService route preview', () => {
     expect(preview.suggestedRoomTitle).toContain('Arrival PREDIKT');
   });
 
+  it('normalizes coordinate-only labels before building titles, questions and route metadata', async () => {
+    const service = new RoutesService({ createFromRoute: jest.fn() } as any, config);
+    jest.spyOn(service, 'placeDetails').mockResolvedValue({ placeId: 'dest', label: '23.456789, 87.654321', latitude: 23.456789, longitude: 87.654321 } as any);
+    const preview = await service.preview({ startLocation: { latitude: 12.345678, longitude: 76.543219, label: '12.345678, 76.543219' }, destinationPlaceId: 'dest' } as any);
+    expect(preview.startLabel).toBe('Selected start');
+    expect(preview.destinationLabel).toBe('Selected destination');
+    expect(preview.suggestedRoomTitle).toBe('Arrival PREDIKT: Selected start → Selected destination');
+    expect(preview.suggestedQuestion).toBe('When will I reach Selected destination?');
+  });
+
   it('route creation stores expected duration and baseline snapshot', async () => {
     const roomsService = { createFromRoute: jest.fn().mockResolvedValue({ roomId: 'room-1' }) };
     const service = new RoutesService(roomsService as any, config);

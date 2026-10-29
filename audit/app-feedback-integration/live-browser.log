@@ -1,0 +1,35 @@
+PASS no Start 390 cancelled cancelled_by_host
+PASS no Start 390 completed completed
+PASS no Start 390 result_ready arrived_verified
+PASS no Start 390 predictions_locked auto_closed
+PASS no Start 390 predictions_locked abandoned
+PASS no Start 390 predictions_locked plan_changed
+PASS no Start 390 predictions_locked cancelled_by_host
+PASS no Start 390 predictions_locked arrived_verified
+PASS creator distinct delay view 390
+PASS guest waiting view 390
+PASS no Start 1440 cancelled cancelled_by_host
+PASS no Start 1440 completed completed
+PASS no Start 1440 result_ready arrived_verified
+PASS no Start 1440 predictions_locked auto_closed
+PASS no Start 1440 predictions_locked abandoned
+PASS no Start 1440 predictions_locked plan_changed
+PASS no Start 1440 predictions_locked cancelled_by_host
+PASS no Start 1440 predictions_locked arrived_verified
+PASS creator distinct delay view 1440
+PASS guest waiting view 1440
+PASS creator current checkpoint ETA and immediate illustration 390
+PASS complete location tap bubbles 390
+PASS fresh guest checkpoint withheld 390
+PASS delayed guest checkpoint and illustration displayed 390
+PASS creator current checkpoint ETA and immediate illustration 1440
+PASS complete location tap bubbles 1440
+PASS complete location hover bubble 1440
+PASS fresh guest checkpoint withheld 1440
+PASS delayed guest checkpoint and illustration displayed 1440
+PASS raw coordinate properties excluded
+PASS coordinate-like route labels excluded
+PASS coordinate-like route labels excluded from summary
+PASS coordinate-like route labels excluded
+PASS coordinate-like route labels excluded from summary
+PASS no browser errors

@@ -13,12 +13,13 @@ import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import api, { getApiErrorMessage } from '../services/api';
 import appAlert from '../utils/appAlert';
+import CountdownRing from '../components/CountdownRing';
 import { getCategoryTheme } from '../config/categoryTheme';
 import LiveStatusCard from '../components/LiveStatusCard';
 import CoachMark from '../components/CoachMark';
 import ArrivalWaitingRoom from '../components/ArrivalWaitingRoom';
 import RoomPredictionList, { RoomPredictionEntry } from '../components/RoomPredictionList';
-import CheckpointLeaderboard, { CheckpointBoard } from '../components/CheckpointLeaderboard';
+import CheckpointLeaderboard, { CheckpointBoard, CheckpointEtaMap } from '../components/CheckpointLeaderboard';
 import LiveLeaderboard, { LiveLeaderboardData } from '../components/LiveLeaderboard';
 import { deriveArrivalBenchmarks, formatClock } from '../utils/benchmarks';
 import { botGuessTeaser, botEtaTeaser, botEtaRead } from '../utils/botVoice';
@@ -28,8 +29,8 @@ import { formatTravelStatusWithPercent, getTravelStageFromProgress } from '../ut
 import { buildSharePayload, shareViaWebShareApi } from '../utils/shareRoom';
 import { copyToClipboard } from '../utils/shareLine';
 
-// v2 (checkpoint_leaderboard_v2): six time-based checkpoints; v1 samples 50/80.
-const V2_CHECKPOINTS = [20, 40, 60, 80, 90, 100];
+// v2 (checkpoint_leaderboard_v2): seven time-based checkpoints; v1 samples 50/80.
+const V2_CHECKPOINTS = [20, 40, 60, 80, 90, 95, 100];
 const V1_CHECKPOINTS = [50, 80];
 const ETA_MOVE_NOTIFY_THRESHOLD_MS = 20 * 60 * 1000;
 
@@ -54,6 +55,7 @@ interface LiveState {
   secondsUntilStart: number | null;
   progressPercentage: number | null;
   etaMinutes: number | null;
+  checkpointEtas?: CheckpointEtaMap | null;
   locationDisplayMode: string;
   safetyMessage: string;
   waitingForDelayedStart?: boolean;
@@ -138,6 +140,8 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
   const [etaMovedBanner, setEtaMovedBanner] = useState<string | null>(null);
   const etaMovedShown = useRef<Set<number>>(new Set());
   const [viewerCountdownSeconds, setViewerCountdownSeconds] = useState<number | null>(null);
+  const [activeBubble, setActiveBubble] = useState<'start' | 'destination' | null>(null);
+  const bubbleDismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [lockCountdownSeconds, setLockCountdownSeconds] = useState<number | null>(null);
   const [reviewCountdownSeconds, setReviewCountdownSeconds] = useState<number | null>(null);
   const sampledCheckpoints = useRef<Set<number>>(new Set());
@@ -530,7 +534,10 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
     setStarting(true);
     try {
       const permission = await Location.requestForegroundPermissionsAsync();
-      const coords = permission.status === 'granted' ? await Location.getCurrentPositionAsync({}) : null;
+      const coords =
+        permission.status === 'granted'
+          ? await Location.getCurrentPositionAsync({}).catch(() => null)
+          : null;
       await api.post(`/rooms/${roomId}/journey/start`, {
         startDelayMinutes,
         location: coords
@@ -539,7 +546,19 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
       });
       fetchLiveState();
     } catch (err: unknown) {
-      appAlert('Start failed', getApiErrorMessage(err, 'Could not start this room.'));
+      const axiosErr = err as any;
+      if (
+        axiosErr?.response?.status === 422 &&
+        axiosErr?.response?.data?.error === 'TOO_FAR_FROM_START'
+      ) {
+        appAlert(
+          'Too far from start',
+          axiosErr.response.data.message ??
+            'You appear to be more than 1 km from your declared start point. Move closer or update your start location to begin.',
+        );
+      } else {
+        appAlert('Start failed', getApiErrorMessage(err, 'Could not start this room.'));
+      }
     } finally {
       setStarting(false);
     }
@@ -786,7 +805,11 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
     isArrivalCategory &&
     trackingCountdownActive &&
     !['completed', 'cancelled'].includes(liveState?.status ?? '');
-  const showArrivalWaitingRoom = false;
+  const showArrivalWaitingRoom =
+    !isCreator &&
+    isArrivalCategory &&
+    !!liveState?.waitingForDelayedStart &&
+    !isTerminal;
 
   const creatorDesktopJourneyBoard =
     isDesktop && isCreator && !isGenericRoom && category !== 'weather_rain' && phase !== 'ended';
@@ -962,6 +985,7 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
     !isGenericRoom &&
     category !== 'weather_rain' &&
     phase !== 'started' &&
+    phase !== 'ended' &&
     liveState.status !== 'live';
   const participantRows = safePredictions
     .filter((entry) => entry.status !== 'revoked')
@@ -1133,7 +1157,53 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
                 <Text style={styles.journeyHeroRouteIconText}>📍</Text>
               </View>
               <View style={styles.journeyHeroRouteBlock}>
-                <Text style={styles.journeyHeroRoute}>{routeLabel}</Text>
+                <View style={styles.journeyHeroRouteLabelRow}>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`Start: ${startPlace ?? 'Unknown'}`}
+                    onPress={() => {
+                      if (bubbleDismissTimer.current) clearTimeout(bubbleDismissTimer.current);
+                      setActiveBubble('start');
+                      bubbleDismissTimer.current = setTimeout(() => setActiveBubble(null), 3000);
+                    }}
+                    {...(Platform.OS === 'web' ? {
+                      onMouseEnter: () => setActiveBubble('start'),
+                      onMouseLeave: () => setActiveBubble(null),
+                      onFocus: () => setActiveBubble('start'),
+                      onBlur: () => setActiveBubble(null),
+                    } as any : {})}
+                  >
+                    <Text style={styles.journeyHeroRoute}>{shortenPlaceLabel(startPlace)}</Text>
+                    {activeBubble === 'start' && startPlace ? (
+                      <View style={styles.locationBubble}>
+                        <Text style={styles.locationBubbleText}>{startPlace}</Text>
+                      </View>
+                    ) : null}
+                  </Pressable>
+                  <Text style={styles.journeyHeroRoute}> → </Text>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`Destination: ${destinationPlace ?? 'Unknown'}`}
+                    onPress={() => {
+                      if (bubbleDismissTimer.current) clearTimeout(bubbleDismissTimer.current);
+                      setActiveBubble('destination');
+                      bubbleDismissTimer.current = setTimeout(() => setActiveBubble(null), 3000);
+                    }}
+                    {...(Platform.OS === 'web' ? {
+                      onMouseEnter: () => setActiveBubble('destination'),
+                      onMouseLeave: () => setActiveBubble(null),
+                      onFocus: () => setActiveBubble('destination'),
+                      onBlur: () => setActiveBubble(null),
+                    } as any : {})}
+                  >
+                    <Text style={styles.journeyHeroRoute}>{shortenPlaceLabel(destinationPlace)}</Text>
+                    {activeBubble === 'destination' && destinationPlace ? (
+                      <View style={styles.locationBubble}>
+                        <Text style={styles.locationBubbleText}>{destinationPlace}</Text>
+                      </View>
+                    ) : null}
+                  </Pressable>
+                </View>
                 <Text style={styles.journeyHeroMeta}>Journey time · {journeyDurationLabel}</Text>
                 <Text style={styles.journeyHeroMeta}>{heroMetaCopy}</Text>
               </View>
@@ -1407,6 +1477,9 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
               secondaryColor="#3B82F6"
               embedded
             />
+            {checkpointList.map((cp) => (
+              <CheckpointLeaderboard key={cp} board={checkpointBoards[cp]} checkpointEtas={liveState?.checkpointEtas} etaMinutes={liveState?.etaMinutes} />
+            ))}
           </View>
 
           <View style={[styles.creatorDesktopStatusStrip, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -1746,7 +1819,7 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
           ) : null}
           {!isGenericRoom
             ? checkpointList.map((cp) => (
-                <CheckpointLeaderboard key={cp} board={checkpointBoards[cp]} />
+                <CheckpointLeaderboard key={cp} board={checkpointBoards[cp]} checkpointEtas={liveState?.checkpointEtas} etaMinutes={liveState?.etaMinutes} />
               ))
             : null}
           {canRePredict ? (
@@ -1760,16 +1833,19 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
         </View>
       ) : null}
 
-      {isCreator && liveState && !isGenericRoom && category !== 'weather_rain' && !creatorDesktopJourneyBoard && (secondsUntilStart > 0 || liveState.status !== 'live') ? (
+      {isCreator && liveState && !isGenericRoom && category !== 'weather_rain' && !creatorDesktopJourneyBoard && !isTerminal && (secondsUntilStart > 0 || liveState.status !== 'live') ? (
         <View style={[styles.creatorCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <LinearGradient colors={[colors.purple + '30', 'transparent']} style={styles.creatorHeader}>
             <Text style={[styles.creatorTitle, { color: colors.textPrimary }]}>Start Journey</Text>
           </LinearGradient>
           <View style={styles.creatorBody}>
             {liveState.status === 'live' && secondsUntilStart > 0 ? (
-              <Text style={[styles.startDelayCopy, { color: colors.textSecondary }]}>
-                {isCreator ? `Journey timer starts in ${minutesUntilStart} min.` : `Friends will see this flip live in about ${minutesUntilStart} min.`}
-              </Text>
+              <View style={{ alignItems: 'center', marginBottom: 12 }}>
+                <CountdownRing
+                  seconds={secondsUntilStart}
+                  label="until tracking is visible to guests"
+                />
+              </View>
             ) : (
               <>
                 <Text style={[styles.startDelayCopy, { color: colors.textSecondary }]}>
@@ -1800,15 +1876,16 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
         </View>
       ) : null}
 
-      {!isCreator && liveState?.waitingForDelayedStart && trackingCountdownLabel && !suppressGuestStartCountdown && !isGenericRoom && category !== 'weather_rain' ? (
+      {!isCreator && liveState?.waitingForDelayedStart && viewerCountdownSeconds != null && !suppressGuestStartCountdown && !isGenericRoom && category !== 'weather_rain' ? (
         <View style={[styles.creatorCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <LinearGradient colors={[colors.purple + '30', 'transparent']} style={styles.creatorHeader}>
             <Text style={[styles.creatorTitle, { color: colors.textPrimary }]}>Journey starting soon</Text>
           </LinearGradient>
-          <View style={styles.creatorBody}>
-            <Text style={[styles.startDelayCopy, { color: colors.textSecondary }]}>
-              {trackingCountdownLabel}
-            </Text>
+          <View style={[styles.creatorBody, { alignItems: 'center' }]}>
+            <CountdownRing
+              seconds={viewerCountdownSeconds}
+              label="until tracking goes live"
+            />
           </View>
         </View>
       ) : null}
@@ -1995,8 +2072,23 @@ const styles = StyleSheet.create({
   },
   journeyHeroRouteIconText: { fontSize: 22 },
   journeyHeroRouteBlock: { flex: 1, gap: 6 },
+  journeyHeroRouteLabelRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center' },
   journeyHeroRoute: { color: '#FFFFFF', fontSize: 20, fontWeight: '900', lineHeight: 26 },
   journeyHeroMeta: { color: '#9BA7C2', fontSize: 14, fontWeight: '700' },
+  locationBubble: {
+    position: 'absolute',
+    top: 30,
+    left: 0,
+    zIndex: 100,
+    backgroundColor: 'rgba(15,21,39,0.97)',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(168,85,247,0.5)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    maxWidth: 280,
+  },
+  locationBubbleText: { color: '#FFFFFF', fontSize: 13, fontWeight: '700', lineHeight: 18 },
   journeyHeroPills: { flexDirection: 'row', gap: 10, flexWrap: 'wrap', alignItems: 'center', maxWidth: '100%', flexShrink: 1 },
   journeyHeroPillsNarrow: { flexBasis: '100%' },
   journeyHeroStatusPill: {

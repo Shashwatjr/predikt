@@ -12,23 +12,21 @@ import { LocationPingDto } from './dto/location-ping.dto';
 import { User } from '@prisma/client';
 import { LifecycleService } from '../lifecycle/lifecycle.service';
 import { NotificationsService } from '../notifications/notifications.service';
-import { createMapsProvider, distanceMetersBetween } from '../routes/maps-provider';
+import { distanceMetersBetween, fetchGoogleDurationInTraffic } from '../routes/maps-provider';
 import { featureFlags } from '../config/feature-flags';
 
-// Checkpoints that get a live provider ETA re-read (billed). 90/100 are verify-only
-// and use the free derived ETA. Decision recorded in the plan.
-const LIVE_REREAD_CHECKPOINTS = [20, 40, 60, 80];
-// Hard cap on billable Google Maps calls per journey. The natural cadence is
-// 20/40/60/80 (4) plus the arrival re-read (1) = 5. This counter is the backstop:
-// once this many billable snapshots exist for a room we stop calling the provider
-// and fall back to the free time-based derived ETA, so a retried/replayed journey
-// can never run up the Maps bill.
+// Paid Google refreshes. 90 is derived-only; 100 stores zero remaining without a paid call.
+const PROVIDER_ETA_CHECKPOINTS = [20, 40, 60, 80, 95] as const;
+const MILESTONE_ETA_CHECKPOINTS = [20, 40, 60, 80, 90, 95, 100] as const;
+// Hard cap on billable Google Maps calls per journey (20/40/60/80/95).
 const MAX_BILLABLE_ETA_CALLS = 5;
-// Snapshot source values that count as a paid provider re-read (anything that is
-// not a free derived/fallback extrapolation).
-const FREE_SNAPSHOT_SOURCES = new Set(['derived', 'fallback']);
+// Snapshot source values that are free / reconstructed — not paid provider reads.
+const FREE_SNAPSHOT_SOURCES = new Set(['derived', 'fallback', 'arrived']);
+// Inserted before the network call. Unique (room, checkpoint) is the claim.
+const PROVIDER_ATTEMPT_SOURCE = 'provider-attempt';
+// A failed attempt is stored so the checkpoint cannot be retried. The ETA is derived.
+const PROVIDER_FAILED_SOURCE = 'provider-failed';
 const ETA_MOVE_NOTIFY_THRESHOLD_MS = 20 * 60 * 1000;
-const PING_REREAD_MIN_INTERVAL_MS = 4 * 60 * 1000;
 const ARRIVAL_GEOFENCE_METERS = 1000;
 
 const num = (value: unknown): number | null =>
@@ -44,11 +42,9 @@ export class LiveProgressService {
   ) {}
 
   /**
-   * v2 (checkpoint_leaderboard_v2): records one discrete, time-based checkpoint
-   * from the creator's one-shot timer. Does a live Google ETA re-read at
-   * 20/40/60/80 and a free derived ETA at 90/100, stores both GPS + ETA on the
-   * checkpoint, and raises a one-time notification if the arrival estimate has
-   * moved more than 20 min vs the original start ETA.
+   * v2 (checkpoint_leaderboard_v2): records one discrete checkpoint from the
+   * creator timer. Paid Google traffic ETAs at 20/40/60/80/95; derived at 90;
+   * zero remaining at 100 without a paid call.
    */
   async recordClientCheckpoint(roomId: string, dto: CheckpointUpdateDto, user: User) {
     if (!featureFlags.checkpointLeaderboardV2) {
@@ -75,53 +71,35 @@ export class LiveProgressService {
 
     const destLat = num(room.destinationLat) ?? num(room.journeyRoute?.destinationLat);
     const destLng = num(room.destinationLng) ?? num(room.journeyRoute?.destinationLng);
-
-    let etaSeconds: number | null = null;
-    let remainingMeters: number | null = null;
-    let source: string | null = null;
-
-    // Live re-read only at the scoring-relevant checkpoints, when we know the
-    // destination, and while under the per-journey billable-call cap. Any provider
-    // failure (or the cap) falls back to the free time-based derived ETA — the
-    // journey never crashes on a Maps error.
+    const seededRemaining =
+      destLat != null && destLng != null
+        ? distanceMetersBetween(
+            { latitude: lat, longitude: lng },
+            { latitude: destLat, longitude: destLng },
+          )
+        : null;
+    const existingSnapshot = await this.prisma.roomMilestoneSnapshot.findUnique({
+      where: { roomId_checkpointPercent: { roomId, checkpointPercent: checkpointPct } },
+    });
     const billableCallsSoFar = await this.prisma.roomMilestoneSnapshot.count({
       where: { roomId, source: { notIn: Array.from(FREE_SNAPSHOT_SOURCES) } },
     });
-    if (
-      LIVE_REREAD_CHECKPOINTS.includes(checkpointPct) &&
-      destLat != null &&
-      destLng != null &&
-      billableCallsSoFar < MAX_BILLABLE_ETA_CALLS
-    ) {
-      try {
-        const provider = createMapsProvider(this.configService);
-        const preview = await provider.getRoutePreview(
-          { placeId: '', label: 'current', latitude: lat, longitude: lng },
-          { placeId: '', label: 'destination', latitude: destLat, longitude: destLng },
-          room.journeyRoute?.travelMode,
-        );
-        etaSeconds = Math.round(preview.durationSeconds);
-        remainingMeters = Math.round(preview.distanceMeters);
-        source = provider.name;
-      } catch {
-        // fall through to derived
-      }
-    }
-
-    if (etaSeconds == null) {
-      const derived = this.buildTimedProgress(room, capturedAt);
-      etaSeconds = derived.etaMinutes != null ? derived.etaMinutes * 60 : 0;
-      // Straight-line remaining distance is a safe, free approximation for the
-      // fallback snapshot (never exposed raw to viewers — meters only).
-      remainingMeters =
-        destLat != null && destLng != null
-          ? distanceMetersBetween(
-              { latitude: lat, longitude: lng },
-              { latitude: destLat, longitude: destLng },
-            )
-          : null;
-      source = billableCallsSoFar >= MAX_BILLABLE_ETA_CALLS ? 'fallback' : 'derived';
-    }
+    const captured = await this.captureMilestoneReading({
+      roomId,
+      checkpoint: checkpointPct,
+      lat,
+      lng,
+      capturedAt,
+      room,
+      destLat,
+      destLng,
+      remainingMeters: seededRemaining,
+      billableCallsSoFar,
+      existing: existingSnapshot,
+    });
+    const etaSeconds = captured.etaSeconds;
+    const remainingMeters = captured.remainingMeters;
+    const source = captured.source;
 
     // Recompute the journey's expected duration from this fresh checkpoint:
     // elapsed-so-far + remaining ETA. Future milestones (which are derived from
@@ -135,28 +113,34 @@ export class LiveProgressService {
           )
         : null;
 
-    await this.prisma.$transaction([
-      this.prisma.roomCheckpoint.upsert({
-        where: { roomId_checkpoint: { roomId, checkpoint: checkpointPct } },
-        update: { lat, lng, capturedAt, etaSeconds, source },
-        create: { roomId, checkpoint: checkpointPct, lat, lng, capturedAt, etaSeconds, source },
-      }),
-      this.prisma.roomMilestoneSnapshot.upsert({
-        where: { roomId_checkpointPercent: { roomId, checkpointPercent: checkpointPct } },
-        update: { capturedAt, etaSeconds, remainingMeters, source },
-        create: { roomId, checkpointPercent: checkpointPct, capturedAt, etaSeconds, remainingMeters, source },
-      }),
+    const writes = [];
+    if (captured.persistCurrent) {
+      writes.push(
+        ...this.milestoneWriteOps({
+          roomId,
+          checkpoint: checkpointPct,
+          lat,
+          lng,
+          capturedAt,
+          etaSeconds,
+          remainingMeters,
+          source,
+        }),
+      );
+    }
+    writes.push(
       this.prisma.predictionRoom.update({
         where: { roomId },
         data: {
           lastTravellerUpdateAt: capturedAt,
           journeyStatus: checkpointPct >= 95 ? 'overdue' : 'live',
-          ...(recomputedDurationSeconds != null
+          ...(captured.persistCurrent && recomputedDurationSeconds != null
             ? { expectedDurationSeconds: recomputedDurationSeconds }
             : {}),
         },
       }),
-    ]);
+    );
+    await this.prisma.$transaction(writes);
 
     await this.maybeNotifyEtaMoved(room, checkpointPct, etaSeconds, capturedAt);
 
@@ -318,63 +302,9 @@ export class LiveProgressService {
             { latitude: destLat, longitude: destLng },
           )
         : null;
+    const withinArrivalGeofence =
+      remainingMeters != null && remainingMeters <= ARRIVAL_GEOFENCE_METERS;
 
-    if (remainingMeters != null && remainingMeters <= ARRIVAL_GEOFENCE_METERS) {
-      const arrival = await this.lifecycleService.finalizeArrivalFromLocation(roomId, user, lat, lng);
-      if (arrival.finalized) {
-        return {
-          arrived: true,
-          remainingMeters,
-          etaMinutes: 0,
-          canConfirmArrival: true,
-          result: arrival.result,
-        };
-      }
-    }
-
-    const lastBillable = await this.prisma.roomMilestoneSnapshot.findFirst({
-      where: { roomId, source: { notIn: Array.from(FREE_SNAPSHOT_SOURCES) } },
-      orderBy: { capturedAt: 'desc' },
-    });
-    const billableCallsSoFar = await this.prisma.roomMilestoneSnapshot.count({
-      where: { roomId, source: { notIn: Array.from(FREE_SNAPSHOT_SOURCES) } },
-    });
-    const rereadDue =
-      !lastBillable || capturedAt.getTime() - lastBillable.capturedAt.getTime() >= PING_REREAD_MIN_INTERVAL_MS;
-
-    let etaSeconds: number | null = null;
-    let source = 'derived';
-    if (rereadDue && destLat != null && destLng != null && billableCallsSoFar < MAX_BILLABLE_ETA_CALLS) {
-      try {
-        const provider = createMapsProvider(this.configService);
-        const preview = await provider.getRoutePreview(
-          { placeId: '', label: 'current', latitude: lat, longitude: lng },
-          { placeId: '', label: 'destination', latitude: destLat, longitude: destLng },
-          room.journeyRoute?.travelMode,
-        );
-        etaSeconds = Math.round(preview.durationSeconds);
-        source = provider.name;
-      } catch {
-        etaSeconds = null;
-      }
-    }
-
-    if (etaSeconds == null) {
-      if (lastBillable?.etaSeconds != null) {
-        const elapsedSince = Math.max(0, capturedAt.getTime() - lastBillable.capturedAt.getTime()) / 1000;
-        etaSeconds = Math.max(60, Math.round(lastBillable.etaSeconds - elapsedSince));
-        source = 'derived';
-      } else {
-        const timed = this.buildTimedProgress(room, capturedAt);
-        etaSeconds = timed.etaMinutes != null ? Math.max(60, timed.etaMinutes * 60) : 60;
-      }
-    }
-
-    const recomputedDurationSeconds =
-      room.startTime != null
-        ? Math.max(60, Math.round((capturedAt.getTime() - room.startTime.getTime()) / 1000) + etaSeconds)
-        : null;
-    const etaMinutes = Math.max(1, Math.ceil(etaSeconds / 60));
     const startLat = num(room.startingLat) ?? num(room.journeyRoute?.startLat);
     const startLng = num(room.startingLng) ?? num(room.journeyRoute?.startLng);
     const totalMeters =
@@ -384,17 +314,113 @@ export class LiveProgressService {
             { latitude: destLat, longitude: destLng },
           )
         : null;
-    const progressPercentage =
-      remainingMeters != null && totalMeters != null && totalMeters > 0
+    const progressPercentage = withinArrivalGeofence
+      ? 100
+      : remainingMeters != null && totalMeters != null && totalMeters > 0
         ? Math.min(99, Math.max(1, Math.round(((totalMeters - remainingMeters) / totalMeters) * 100)))
         : this.buildTimedProgress(room, capturedAt).progressPercentage;
+
+    const existingSnapshots = await this.prisma.roomMilestoneSnapshot.findMany({
+      where: { roomId },
+      select: { checkpointPercent: true, source: true, etaSeconds: true, capturedAt: true },
+    });
+    const existingByCheckpoint = new Map(
+      existingSnapshots.map((row) => [row.checkpointPercent, row]),
+    );
+    const billableCallsSoFar = existingSnapshots.filter(
+      (row) => row.source != null && !FREE_SNAPSHOT_SOURCES.has(row.source),
+    ).length;
+    const dueCheckpoints = MILESTONE_ETA_CHECKPOINTS.filter(
+      (checkpoint) => progressPercentage >= checkpoint && !existingByCheckpoint.has(checkpoint),
+    );
+    // An in-flight or completed higher checkpoint owns this crossing. A ping
+    // must not turn a skipped earlier checkpoint into a second provider attempt.
+    const reachedCheckpoint = [...MILESTONE_ETA_CHECKPOINTS].reverse().find(
+      (checkpoint) => progressPercentage >= checkpoint,
+    );
+    const currentCheckpoint = reachedCheckpoint != null &&
+      !existingByCheckpoint.has(reachedCheckpoint) ? reachedCheckpoint : null;
+    const earlierMissed =
+      currentCheckpoint == null
+        ? []
+        : dueCheckpoints.filter((checkpoint) => checkpoint < currentCheckpoint);
+
+    let liveEtaSeconds: number | null = null;
+    let liveSource = 'derived';
+    let ownedMilestone = currentCheckpoint == null;
+    const roundedRemaining =
+      remainingMeters == null ? null : Math.round(remainingMeters);
+
+    if (currentCheckpoint != null) {
+      const recorded = await this.recordCrossedMilestones({
+        roomId,
+        room,
+        lat,
+        lng,
+        capturedAt,
+        currentCheckpoint,
+        earlierMissed,
+        destLat,
+        destLng,
+        remainingMeters: roundedRemaining,
+        billableCallsSoFar,
+      });
+      liveEtaSeconds = recorded.etaSeconds;
+      liveSource = recorded.source;
+      ownedMilestone = recorded.owned;
+    }
+
+    if (withinArrivalGeofence) {
+      const arrival = await this.lifecycleService.finalizeArrivalFromLocation(roomId, user, lat, lng);
+      if (arrival.finalized) {
+        return {
+          arrived: true,
+          remainingMeters,
+          etaMinutes: 0,
+          etaSeconds: 0,
+          progressPercentage: 100,
+          source: 'arrived',
+          canConfirmArrival: true,
+          result: arrival.result,
+        };
+      }
+    }
+
+    const lastBillable = [...existingSnapshots]
+      .filter((row) => row.source != null && !FREE_SNAPSHOT_SOURCES.has(row.source) && row.etaSeconds != null)
+      .sort((a, b) => b.capturedAt.getTime() - a.capturedAt.getTime())[0];
+
+    if (liveEtaSeconds == null) {
+      if (lastBillable?.etaSeconds != null) {
+        const elapsedSince =
+          Math.max(0, capturedAt.getTime() - lastBillable.capturedAt.getTime()) / 1000;
+        liveEtaSeconds = Math.max(60, Math.round(lastBillable.etaSeconds - elapsedSince));
+        liveSource = 'derived';
+      } else {
+        const timed = this.buildTimedProgress(room, capturedAt);
+        liveEtaSeconds = timed.etaMinutes != null ? Math.max(60, timed.etaMinutes * 60) : 60;
+        liveSource = 'derived';
+      }
+    }
+
+    const recomputedDurationSeconds =
+      room.startTime != null
+        ? Math.max(
+            60,
+            Math.round((capturedAt.getTime() - room.startTime.getTime()) / 1000) + liveEtaSeconds,
+          )
+        : null;
+    const etaMinutes = Math.max(1, Math.ceil(liveEtaSeconds / 60));
+    const displayProgress = withinArrivalGeofence
+      ? 99
+      : progressPercentage;
 
     await this.prisma.$transaction([
       this.prisma.liveLocationEvent.create({
         data: {
           roomId,
           creatorUserId: user.userId,
-          progressPercentage,
+          progressPercentage: displayProgress,
           etaMinutes,
           locationDisplayMode: room.locationDisplayMode,
           createdAt: capturedAt,
@@ -404,8 +430,10 @@ export class LiveProgressService {
         where: { roomId },
         data: {
           lastTravellerUpdateAt: capturedAt,
-          journeyStatus: 'live',
-          ...(recomputedDurationSeconds != null ? { expectedDurationSeconds: recomputedDurationSeconds } : {}),
+          journeyStatus: displayProgress >= 95 ? 'overdue' : 'live',
+          ...(ownedMilestone && recomputedDurationSeconds != null
+            ? { expectedDurationSeconds: recomputedDurationSeconds }
+            : {}),
           autoCloseAt: new Date(capturedAt.getTime() + 45 * 60 * 1000),
         },
       }),
@@ -415,14 +443,14 @@ export class LiveProgressService {
       arrived: false,
       remainingMeters,
       etaMinutes,
-      etaSeconds,
-      progressPercentage,
-      source,
-      canConfirmArrival: remainingMeters != null && remainingMeters <= ARRIVAL_GEOFENCE_METERS,
+      etaSeconds: liveEtaSeconds,
+      progressPercentage: displayProgress,
+      source: liveSource,
+      canConfirmArrival: withinArrivalGeofence,
     };
   }
 
-  async getLiveState(roomId: string) {
+  async getLiveState(roomId: string, viewer?: { userId?: string | null } | null) {
     await this.lifecycleService.evaluateRoomLifecycle(roomId, { actorType: 'system', actorId: null });
     const room = await this.prisma.predictionRoom.findUnique({
       where: { roomId },
@@ -430,7 +458,12 @@ export class LiveProgressService {
     if (!room) throw new NotFoundException('Room not found');
 
     const now = new Date();
-    const viewerVisibleTime = new Date(now.getTime() - room.safetyDelayMinutes * 60 * 1000);
+    const isCreator = !!viewer?.userId && viewer.userId === room.creatorUserId;
+    const safetyDelayMs = Math.max(0, (room.safetyDelayMinutes ?? 0) * 60 * 1000);
+    const guestCutoff = new Date(now.getTime() - safetyDelayMs);
+    // Creators see their own movement immediately. Guests and anonymous polls stay delayed.
+    const eventCutoff = isCreator ? now : guestCutoff;
+    const viewerVisibleTime = eventCutoff;
 
     const delayedEvent = await this.prisma.liveLocationEvent.findFirst({
       where: { roomId, createdAt: { lte: viewerVisibleTime } },
@@ -456,14 +489,33 @@ export class LiveProgressService {
         }
       : null;
     const scoringRule = room.scoringRule as { startDelayMinutes?: number } | null;
-    const visibleStartTime = room.visibleMovementStartTime ?? room.startTime;
+    const visibleStartTime = isCreator ? room.startTime : room.visibleMovementStartTime ?? room.startTime;
     const viewerShouldStillWait = !!visibleStartTime && now < visibleStartTime;
     const timedProgress = this.buildTimedProgress(room, now);
-    const milestoneBanner = this.buildMilestoneBanner(timedProgress.progressPercentage);
-    const latestSnapshot = await this.prisma.roomMilestoneSnapshot.findFirst({
-      where: { roomId },
-      orderBy: { capturedAt: 'desc' },
+    const delayedViewer = !isCreator && safetyDelayMs > 0;
+    const snapshots = await this.prisma.roomMilestoneSnapshot.findMany({
+      where: {
+        roomId,
+        // Guests only receive snapshots strictly older than the configured safety delay.
+        ...(isCreator || safetyDelayMs === 0 ? {} : { capturedAt: { lt: guestCutoff } }),
+      },
+      orderBy: { checkpointPercent: 'asc' },
+      select: {
+        checkpointPercent: true,
+        etaSeconds: true,
+        remainingMeters: true,
+        source: true,
+        capturedAt: true,
+      },
     });
+    const visibleSnapshots = snapshots.filter((row) => {
+      if (row.source === PROVIDER_ATTEMPT_SOURCE) return false;
+      if (isCreator || safetyDelayMs === 0) return true;
+      return now.getTime() - row.capturedAt.getTime() > safetyDelayMs;
+    });
+    const latestSnapshot = visibleSnapshots.length
+      ? visibleSnapshots[visibleSnapshots.length - 1]
+      : null;
     const snapshotEtaMinutes =
       latestSnapshot?.etaSeconds != null
         ? Math.max(
@@ -476,9 +528,13 @@ export class LiveProgressService {
     const derivedEtaMinutes =
       viewerShouldStillWait
         ? null
-        : delayedEvent?.etaMinutes ?? snapshotEtaMinutes ?? timedProgress.etaMinutes;
+        : delayedEvent?.etaMinutes ?? snapshotEtaMinutes ?? (delayedViewer ? null : timedProgress.etaMinutes);
     const liveEtaMinutes =
       room.status === 'live' && derivedEtaMinutes === 0 ? 1 : derivedEtaMinutes;
+
+    const visibleProgress = viewerShouldStillWait ? 0 : delayedEvent?.progressPercentage ??
+      (delayedViewer ? latestSnapshot?.checkpointPercent ?? 0 : timedProgress.progressPercentage);
+    const milestoneBanner = this.buildMilestoneBanner(visibleProgress);
 
     // Privacy boundary: viewer-facing live state uses safety-delayed progress and must never expose raw or exact GPS coordinates.
     return {
@@ -488,7 +544,7 @@ export class LiveProgressService {
       journeyScheduledStartAt: room.journeyScheduledStartAt?.toISOString() ?? null,
       journeyStartedAt: room.journeyStartedAt?.toISOString() ?? null,
       lastTravellerUpdateAt: room.lastTravellerUpdateAt?.toISOString() ?? null,
-      expectedDurationSeconds: room.expectedDurationSeconds ?? null,
+      expectedDurationSeconds: delayedViewer ? null : room.expectedDurationSeconds ?? null,
       gracePeriodSeconds: room.gracePeriodSeconds ?? null,
       autoCloseAt: room.autoCloseAt?.toISOString() ?? null,
       noStartCutoffAt: room.noStartCutoffAt?.toISOString() ?? null,
@@ -508,8 +564,10 @@ export class LiveProgressService {
       displayedProgressTimestamp: delayedEvent?.createdAt?.toISOString() ?? null,
       safetyDelayMinutes: room.safetyDelayMinutes,
       waitingForDelayedStart: viewerShouldStillWait,
-      progressPercentage: viewerShouldStillWait ? 0 : (delayedEvent?.progressPercentage ?? timedProgress.progressPercentage),
+      progressPercentage: visibleProgress,
       etaMinutes: viewerShouldStillWait ? null : liveEtaMinutes,
+      // Participant-safe milestone ETAs from RoomMilestoneSnapshot only (no coordinates).
+      checkpointEtas: this.publicCheckpointEtas(visibleSnapshots),
       locationDisplayMode: room.locationDisplayMode,
       currentMilestone: delayedEvent?.currentMilestone ?? null,
       milestoneBanner,
@@ -521,6 +579,353 @@ export class LiveProgressService {
         ? 'Movement is delayed for safety. Exact location hidden.'
         : 'Movement is delayed for safety. Exact location hidden.',
     };
+  }
+
+  /**
+   * Persist the actual crossed checkpoint. Earlier skipped marks are reconstructed
+   * as derived — never stamped with the same Google reading as the current mark.
+   * The current provider checkpoint is claimed before any network call. A lost
+   * claim or an existing row does not call Google and does not overwrite the owner.
+   */
+  private async recordCrossedMilestones(input: {
+    roomId: string;
+    room: {
+      startTime: Date | null;
+      expectedDurationSeconds: number | null;
+      journeyRoute?: { travelMode?: string | null } | null;
+    };
+    lat: number;
+    lng: number;
+    capturedAt: Date;
+    currentCheckpoint: number;
+    earlierMissed: number[];
+    destLat: number | null;
+    destLng: number | null;
+    remainingMeters: number | null;
+    billableCallsSoFar: number;
+  }): Promise<{ etaSeconds: number; source: string; owned: boolean }> {
+    const {
+      roomId,
+      room,
+      lat,
+      lng,
+      capturedAt,
+      currentCheckpoint,
+      earlierMissed,
+      destLat,
+      destLng,
+      remainingMeters,
+      billableCallsSoFar,
+    } = input;
+
+    const captured = await this.captureMilestoneReading({
+      roomId,
+      checkpoint: currentCheckpoint,
+      lat,
+      lng,
+      capturedAt,
+      room,
+      destLat,
+      destLng,
+      remainingMeters,
+      billableCallsSoFar,
+      existing: null,
+    });
+    if (!captured.persistCurrent) {
+      return { etaSeconds: captured.etaSeconds, source: captured.source, owned: false };
+    }
+    const currentEtaSeconds = captured.etaSeconds;
+    const currentSource = captured.source;
+    const currentRemaining = captured.remainingMeters;
+
+    const writes = [];
+    for (const checkpoint of earlierMissed) {
+      const reconstructed =
+        currentCheckpoint === 100
+          ? 0
+          : currentSource === 'google'
+            ? Math.max(
+                60,
+                Math.round(
+                  (currentEtaSeconds * (100 - checkpoint)) / Math.max(1, 100 - currentCheckpoint),
+                ),
+              )
+            : this.deriveEtaSeconds(room, capturedAt, checkpoint);
+      const reconstructedRemaining =
+        remainingMeters == null
+          ? null
+          : currentCheckpoint === 100
+            ? Math.max(0, Math.round(remainingMeters))
+            : Math.round(
+                (remainingMeters * (100 - checkpoint)) / Math.max(1, 100 - currentCheckpoint),
+              );
+      writes.push(
+        ...this.milestoneWriteOps({
+          roomId,
+          checkpoint,
+          lat,
+          lng,
+          capturedAt,
+          etaSeconds: reconstructed,
+          remainingMeters: reconstructedRemaining,
+          source: 'derived',
+          preserveExisting: true,
+        }),
+      );
+    }
+
+    writes.push(
+      ...this.milestoneWriteOps({
+        roomId,
+        checkpoint: currentCheckpoint,
+        lat,
+        lng,
+        capturedAt,
+        etaSeconds: currentEtaSeconds,
+        remainingMeters: currentRemaining,
+        source: currentSource,
+      }),
+    );
+
+    await this.prisma.$transaction(writes);
+    return { etaSeconds: currentEtaSeconds, source: currentSource, owned: true };
+  }
+
+  /**
+   * One provider attempt per room+checkpoint. The unique snapshot insert is the
+   * claim and commits before the Google call, so the network request is never
+   * held inside a database transaction. A lost claim does not call the provider
+   * and does not overwrite the winner. Provider failure is stored as
+   * `provider-failed` with a derived ETA and counts toward the five-call cap.
+   */
+  private async captureMilestoneReading(input: {
+    roomId: string;
+    checkpoint: number;
+    lat: number;
+    lng: number;
+    capturedAt: Date;
+    room: {
+      startTime: Date | null;
+      expectedDurationSeconds: number | null;
+      journeyRoute?: { travelMode?: string | null } | null;
+    };
+    destLat: number | null;
+    destLng: number | null;
+    remainingMeters: number | null;
+    billableCallsSoFar: number;
+    existing: {
+      source: string | null;
+      etaSeconds: number | null;
+      remainingMeters: number | null;
+    } | null;
+  }): Promise<{
+    etaSeconds: number;
+    remainingMeters: number | null;
+    source: string;
+    persistCurrent: boolean;
+  }> {
+    const {
+      roomId,
+      checkpoint,
+      lat,
+      lng,
+      capturedAt,
+      room,
+      destLat,
+      destLng,
+      remainingMeters,
+      billableCallsSoFar,
+      existing,
+    } = input;
+    const derivedSeconds = this.deriveEtaSeconds(room, capturedAt, null);
+
+    if (existing) {
+      return {
+        etaSeconds: existing.etaSeconds ?? derivedSeconds,
+        remainingMeters: existing.remainingMeters ?? remainingMeters,
+        source: existing.source === PROVIDER_ATTEMPT_SOURCE ? 'derived' : existing.source ?? 'derived',
+        persistCurrent: false,
+      };
+    }
+
+    if (checkpoint === 100) {
+      return {
+        etaSeconds: 0,
+        remainingMeters: remainingMeters ?? 0,
+        source: 'arrived',
+        persistCurrent: true,
+      };
+    }
+
+    if (checkpoint === 90 || !(PROVIDER_ETA_CHECKPOINTS as readonly number[]).includes(checkpoint)) {
+      return {
+        etaSeconds: derivedSeconds,
+        remainingMeters,
+        source: 'derived',
+        persistCurrent: true,
+      };
+    }
+
+    if (
+      billableCallsSoFar >= MAX_BILLABLE_ETA_CALLS ||
+      destLat == null ||
+      destLng == null ||
+      !this.googleMapsKeyConfigured()
+    ) {
+      return {
+        etaSeconds: derivedSeconds,
+        remainingMeters,
+        source: billableCallsSoFar >= MAX_BILLABLE_ETA_CALLS ? 'fallback' : 'derived',
+        persistCurrent: true,
+      };
+    }
+
+    const claimed = await this.claimProviderAttempt(roomId, checkpoint, capturedAt);
+    if (!claimed) {
+      return {
+        etaSeconds: derivedSeconds,
+        remainingMeters,
+        source: 'derived',
+        persistCurrent: false,
+      };
+    }
+
+    try {
+      const traffic = await fetchGoogleDurationInTraffic(
+        this.configService,
+        { latitude: lat, longitude: lng },
+        { latitude: destLat, longitude: destLng },
+        room.journeyRoute?.travelMode ?? undefined,
+      );
+      if (!traffic) {
+        return {
+          etaSeconds: derivedSeconds,
+          remainingMeters,
+          source: PROVIDER_FAILED_SOURCE,
+          persistCurrent: true,
+        };
+      }
+      return {
+        etaSeconds: traffic.durationInTrafficSeconds,
+        remainingMeters: traffic.distanceMeters,
+        source: 'google',
+        persistCurrent: true,
+      };
+    } catch {
+      return {
+        etaSeconds: derivedSeconds,
+        remainingMeters,
+        source: PROVIDER_FAILED_SOURCE,
+        persistCurrent: true,
+      };
+    }
+  }
+
+  private async claimProviderAttempt(roomId: string, checkpoint: number, capturedAt: Date) {
+    try {
+      await this.prisma.roomMilestoneSnapshot.create({
+        data: {
+          roomId,
+          checkpointPercent: checkpoint,
+          capturedAt,
+          etaSeconds: null,
+          remainingMeters: null,
+          source: PROVIDER_ATTEMPT_SOURCE,
+        },
+      });
+      return true;
+    } catch (error) {
+      if (this.isUniqueConstraintError(error)) return false;
+      throw error;
+    }
+  }
+
+  private isUniqueConstraintError(error: unknown) {
+    return typeof error === 'object' && error !== null && (error as { code?: string }).code === 'P2002';
+  }
+
+  private googleMapsKeyConfigured() {
+    const read = (key: string) => this.configService.get<string>(key)?.trim();
+    return Boolean(
+      read('GOOGLE_DIRECTIONS_API_KEY') || read('GOOGLE_MAPS_API_KEY') || read('GOOGLE_PLACES_API_KEY'),
+    );
+  }
+
+  private milestoneWriteOps(input: {
+    roomId: string;
+    checkpoint: number;
+    lat: number;
+    lng: number;
+    capturedAt: Date;
+    etaSeconds: number;
+    remainingMeters: number | null;
+    source: string;
+    preserveExisting?: boolean;
+  }) {
+    const { roomId, checkpoint, lat, lng, capturedAt, etaSeconds, remainingMeters, source } = input;
+    return [
+      this.prisma.roomCheckpoint.upsert({
+        where: { roomId_checkpoint: { roomId, checkpoint } },
+        update: input.preserveExisting ? {} : { lat, lng, capturedAt, etaSeconds, source },
+        create: { roomId, checkpoint, lat, lng, capturedAt, etaSeconds, source },
+      }),
+      this.prisma.roomMilestoneSnapshot.upsert({
+        where: { roomId_checkpointPercent: { roomId, checkpointPercent: checkpoint } },
+        update: input.preserveExisting ? {} : { capturedAt, etaSeconds, remainingMeters, source },
+        create: {
+          roomId,
+          checkpointPercent: checkpoint,
+          capturedAt,
+          etaSeconds,
+          remainingMeters,
+          source,
+        },
+      }),
+    ];
+  }
+
+  private deriveEtaSeconds(
+    room: { startTime: Date | null; expectedDurationSeconds: number | null },
+    capturedAt: Date,
+    _checkpoint: number | null,
+  ) {
+    const timed = this.buildTimedProgress({ status: 'live', ...room }, capturedAt);
+    if (timed.etaMinutes == null) return 60;
+    return Math.max(0, timed.etaMinutes * 60);
+  }
+
+  private publicCheckpointEtas(
+    snapshots: Array<{
+      checkpointPercent: number;
+      etaSeconds: number | null;
+      remainingMeters: number | null;
+      source: string | null;
+      capturedAt: Date;
+    }>,
+  ) {
+    const out: Record<
+      string,
+      {
+        checkpoint: number;
+        etaSeconds: number | null;
+        etaMinutes: number | null;
+        remainingMeters: number | null;
+        source: string | null;
+        capturedAt: string;
+      }
+    > = {};
+    for (const row of snapshots) {
+      out[String(row.checkpointPercent)] = {
+        checkpoint: row.checkpointPercent,
+        etaSeconds: row.etaSeconds,
+        etaMinutes:
+          row.etaSeconds == null ? null : Math.max(0, Math.ceil(row.etaSeconds / 60)),
+        remainingMeters: row.remainingMeters,
+        source: row.source,
+        capturedAt: row.capturedAt.toISOString(),
+      };
+    }
+    return out;
   }
 
   private buildTimedProgress(room: { status: string; startTime: Date | null; expectedDurationSeconds: number | null }, now: Date) {

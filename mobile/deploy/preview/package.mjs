@@ -18,9 +18,10 @@ try { await stat(output); throw Error('Output already exists; choose a fresh pac
 catch (e) { if (e.code !== 'ENOENT') throw e; }
 await mkdir(output + '/lib', { recursive: true });
 await cp(resolve(exportDir), output + '/public', { recursive: true });
-for (const [name, path] of [['shareCard','share/shareCard'], ['invitePreviewHtml','share/invitePreviewHtml'], ['inviteRouting','navigation/inviteRouting']]) {
+await cp(resolve('assets/logo-wordmark-ondark.png'), output + '/public/og.png');
+for (const [name, path] of [['locationLabel','utils/locationLabel'], ['shareCard','share/shareCard'], ['invitePreviewHtml','share/invitePreviewHtml'], ['inviteRouting','navigation/inviteRouting']]) {
   const source = await readFile(resolve('src/' + path + '.ts'), 'utf8');
-  const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText.replace("from './shareCard'", "from './shareCard.mjs'");
+  const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText.replace("from '../utils/locationLabel'", "from './locationLabel.mjs'").replace("from './shareCard'", "from './shareCard.mjs'");
   await writeFile(output + '/lib/' + name + '.mjs', compiled);
 }
 await cp(new URL('./server.mjs', import.meta.url), output + '/server.mjs');

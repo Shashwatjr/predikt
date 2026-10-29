@@ -76,10 +76,10 @@ export default function JoinRoomScreen({ navigation, route }: Props) {
       const httpStatus = readHttpStatus(error);
       const failed = describeInviteEntry({
         preview: null,
-        httpStatus: httpStatus === 404 || httpStatus === 400 ? httpStatus : undefined,
+        httpStatus: httpStatus === 404 || httpStatus === 400 || httpStatus === 403 ? httpStatus : undefined,
       });
       setRoom(null);
-      if (httpStatus === 404 || httpStatus === 400) {
+      if (httpStatus === 404 || httpStatus === 400 || httpStatus === 403) {
         setEntry(failed);
         appAlert(failed.title, failed.body);
       } else {

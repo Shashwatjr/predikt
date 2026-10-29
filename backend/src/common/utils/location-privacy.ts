@@ -1,3 +1,4 @@
+import { safeLocationLabels } from './location-label';
 import { RoomCategory, Visibility } from '@prisma/client';
 import {
   DEFAULT_LOCATION_PRIVACY_MODE,
@@ -33,6 +34,7 @@ export function safeMilestones(milestones: any[] = []) {
 
 export function safeRouteProjection(route: any) {
   if (!route) return null;
+  route = safeLocationLabels(route);
   return {
     // Privacy boundary: route projections are viewer-safe summaries only and must never
     // include raw coordinates, route history, or replayable movement trails.
@@ -49,6 +51,7 @@ export function safeRouteProjection(route: any) {
 }
 
 export function safeRoomProjection(room: any, options: { includeInviteCode?: boolean } = {}) {
+  room = safeLocationLabels(room);
   const creationMeta =
     room.scoringRule && typeof room.scoringRule === 'object'
       ? (room.scoringRule as Record<string, unknown>).creationMeta

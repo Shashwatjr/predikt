@@ -1,0 +1,8 @@
+PASS generic crawler HTML preserves invite privacy 390 PUBLIC
+PASS generic crawler HTML preserves invite privacy 390 PRIVATE
+PASS generic crawler HTML preserves invite privacy 390 GHOST
+PASS real PNG response and browser image 390
+PASS generic crawler HTML preserves invite privacy 1440 PUBLIC
+PASS generic crawler HTML preserves invite privacy 1440 PRIVATE
+PASS generic crawler HTML preserves invite privacy 1440 GHOST
+PASS real PNG response and browser image 1440

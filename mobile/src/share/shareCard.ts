@@ -1,3 +1,4 @@
+import { safeLocationLabel } from '../utils/locationLabel';
 const CANONICAL_WEB_BASE_URL = 'https://myprediktion.com';
 
 const BLOCKED_KEY = /lat|lng|longitude|latitude|token|authorization|password|secret|coordinate/i;
@@ -45,8 +46,8 @@ export function buildInviteShareCard(input: {
   const lines = [
     'Join a room on My Prediktion.',
     'Exact location is hidden.',
-    revealPlaces ? safeLine(input.startLabel ? `From ${input.startLabel}` : null) : null,
-    revealPlaces ? safeLine(input.destinationLabel ? `To ${input.destinationLabel}` : null) : null,
+    revealPlaces ? safeLine(input.startLabel ? `From ${safeLocationLabel(input.startLabel, 'startLabel')}` : null) : null,
+    revealPlaces ? safeLine(input.destinationLabel ? `To ${safeLocationLabel(input.destinationLabel, 'destinationLabel')}` : null) : null,
     `Room code: ${cleanCode(input.inviteCode)}`,
     safeLine(input.lockLabel ? `Lock time: ${input.lockLabel}` : null),
     `Open: ${url}`,

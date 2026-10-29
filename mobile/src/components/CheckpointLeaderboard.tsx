@@ -23,8 +23,81 @@ export type CheckpointBoard =
       standings: CheckpointStanding[];
     };
 
+/** Participant-safe milestone ETA from live-state (RoomMilestoneSnapshot; no coordinates). */
+export interface CheckpointEta {
+  checkpoint?: number;
+  etaSeconds?: number | null;
+  etaMinutes?: number | null;
+  remainingMeters?: number | null;
+  capturedAt?: string | null;
+  source?: string | null;
+}
+
+export type CheckpointEtaMap = Record<string, CheckpointEta>;
+
 interface Props {
   board?: CheckpointBoard | null;
+  /** Optional live-state `checkpointEtas` keyed by checkpoint percent. */
+  checkpointEtas?: CheckpointEtaMap | null;
+  /** Polled live-state `etaMinutes` when this milestone has no stored row. */
+  etaMinutes?: number | null;
+}
+
+export function milestoneEtaMinutes(
+  checkpoint: number,
+  checkpointEtas?: CheckpointEtaMap | null,
+  etaMinutes?: number | null,
+): number | null {
+  const entry = checkpointEtas?.[String(checkpoint)];
+  if (entry) {
+    if (entry.etaMinutes != null && Number.isFinite(entry.etaMinutes)) {
+      return Math.max(0, Math.round(entry.etaMinutes));
+    }
+    if (entry.etaSeconds != null && Number.isFinite(entry.etaSeconds)) {
+      return Math.max(0, Math.ceil(entry.etaSeconds / 60));
+    }
+  }
+  if (etaMinutes != null && Number.isFinite(etaMinutes)) {
+    return Math.max(0, Math.round(etaMinutes));
+  }
+  return null;
+}
+
+function projectedFromMilestone(
+  board: Extract<CheckpointBoard, { available: true }>,
+  checkpointEtas?: CheckpointEtaMap | null,
+): Date {
+  const entry = checkpointEtas?.[String(board.checkpoint)];
+  if (entry?.capturedAt && entry.etaSeconds != null && Number.isFinite(entry.etaSeconds)) {
+    const captured = new Date(entry.capturedAt);
+    if (!Number.isNaN(captured.getTime())) {
+      return new Date(captured.getTime() + entry.etaSeconds * 1000);
+    }
+  }
+  return new Date(board.projectedArrivalAt);
+}
+
+function paceNoteFor(
+  board: Extract<CheckpointBoard, { available: true }>,
+  checkpointEtas?: CheckpointEtaMap | null,
+  etaMinutes?: number | null,
+): string {
+  const entry = checkpointEtas?.[String(board.checkpoint)];
+  const minutes = milestoneEtaMinutes(board.checkpoint, checkpointEtas, etaMinutes);
+  if (entry?.source === 'google' && minutes != null) {
+    return `Google Maps traffic ETA ${minutes} min`;
+  }
+  if (entry?.source === 'derived' || entry?.source === 'fallback' || entry?.source === 'provider-failed') {
+    return minutes != null
+      ? `derived ETA ${minutes} min`
+      : 'based on a derived ETA';
+  }
+  if (entry?.source === 'arrived') {
+    return 'arrived (0 min remaining)';
+  }
+  if (board.basis === 'eta_reread') return 'based on a live ETA re-read';
+  if (board.basis === 'gps') return 'based on real pace';
+  return 'based on elapsed time';
 }
 
 const MEDALS = ['🥇', '🥈', '🥉'];
@@ -41,17 +114,12 @@ function offBy(diffSeconds: number): string {
   return `${mins} min off`;
 }
 
-export default function CheckpointLeaderboard({ board }: Props) {
+export default function CheckpointLeaderboard({ board, checkpointEtas, etaMinutes }: Props) {
   const { colors } = useTheme();
   if (!board || !board.available || !board.standings.length) return null;
 
-  const projected = safeClock(board.projectedArrivalAt);
-  const paceNote =
-    board.basis === 'eta_reread'
-      ? 'based on a live ETA re-read'
-      : board.basis === 'gps'
-        ? 'based on real pace'
-        : 'based on elapsed time';
+  const projected = safeClock(projectedFromMilestone(board, checkpointEtas).toISOString());
+  const paceNote = paceNoteFor(board, checkpointEtas, etaMinutes);
 
   return (
     <View style={[styles.wrap, { borderColor: colors.border, backgroundColor: colors.surface }]}>

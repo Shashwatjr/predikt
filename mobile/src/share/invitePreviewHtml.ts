@@ -13,6 +13,7 @@ export function buildInvitePreviewHtml(card: ShareCard) {
   const title = escapeHtml(card.title);
   const description = escapeHtml('Exact location is hidden.');
   const url = escapeHtml(card.url);
+  const image = escapeHtml(new URL('/og.png', card.url).href);
   const body = escapeHtml(card.text);
   return `<!doctype html>
 <html lang="en">
@@ -24,7 +25,10 @@ export function buildInvitePreviewHtml(card: ShareCard) {
 <meta property="og:title" content="${title}">
 <meta property="og:description" content="${description}">
 <meta property="og:url" content="${url}">
-<meta name="twitter:card" content="summary">
+<meta property="og:image" content="${image}">
+<meta property="og:image:type" content="image/png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="${image}">
 <meta name="twitter:title" content="${title}">
 <meta name="twitter:description" content="${description}">
 </head>
@@ -44,7 +48,6 @@ export function buildInvitePreviewDocument(input: {
     buildInviteShareCard({
       inviteCode: input.inviteCode,
       webBaseUrl: input.webBaseUrl,
-      forwardedBy: input.forwardedBy,
     }),
   );
 }

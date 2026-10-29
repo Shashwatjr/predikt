@@ -1,3 +1,4 @@
+import { safeLocationLabels } from '../common/utils/location-label';
 import {
   BadRequestException,
   ForbiddenException,
@@ -8,6 +9,7 @@ import {
 import { CreateRoomDto } from './dto/create-room.dto';
 import {
   MovementAvatarType,
+  Prisma,
   RoomCategory,
   SocialMode,
   User,
@@ -25,6 +27,7 @@ import {
 import { findBannedBettingTerms } from '../common/utils/content-policy';
 import { POLICY_BLOCK_MESSAGE } from '../common/constants/policy.constants';
 import { safePublicUser } from '../common/utils/safe-user-select';
+import { publicInviteRoom } from './public-invite';
 import { ShareRoomEventDto } from './dto/share-room-event.dto';
 import { NotificationsService } from '../notifications/notifications.service';
 import { featureFlags } from '../config/feature-flags';
@@ -315,8 +318,8 @@ function buildSafeInvitePreview(room: any) {
     lockTime: room.lockTime ?? room.predictionCloseTime,
     visibility: room.visibility,
     participantCount: participantIds.size,
-    creatorDisplayName: room.creator?.name ?? null,
-    creatorHandle: room.creator?.prediktHandle ?? null,
+    creatorDisplayName: room.locationDisplayMode === 'ghost' ? null : room.creator?.name ?? null,
+    creatorHandle: room.locationDisplayMode === 'ghost' ? null : room.creator?.prediktHandle ?? null,
     benchmarks: buildArrivalBenchmarks(room),
     canLateJoinPredict: canUserStillPredictAfterJourneyStart(room),
     predictionWindow: buildPredictionWindow(room),
@@ -326,12 +329,13 @@ function buildSafeInvitePreview(room: any) {
     selectedRoomTheme: room.selectedRoomTheme ?? null,
     routeSummary: room.journeyRoute
       ? {
-          startLabel: room.journeyRoute.startLabel,
-          destinationLabel: room.journeyRoute.destinationLabel,
+          startLabel: null,
+          destinationLabel: null,
           travelMode: room.journeyRoute.travelMode,
+          estimatedDurationSeconds: room.journeyRoute.estimatedDurationSeconds,
         }
       : null,
-    safePreview: safeRoomProjection(room, { includeInviteCode: true }),
+    safePreview: publicInviteRoom(room),
   };
 }
 
@@ -399,12 +403,11 @@ function buildShareCopy(room: any, inviteUrl: string) {
 
 function safeRoomSummary(room: any) {
   return {
-    ...safeRoomProjection(room, { includeInviteCode: true }),
-    pinnedCommentText: room.pinnedCommentText,
-    instagramStoryText: room.instagramStoryText,
-    facebookPostText: room.facebookPostText,
-    resultShareText: room.resultShareText,
-    creator: safePublicUser(room.creator),
+    ...publicInviteRoom(room),
+    creator: room.locationDisplayMode === 'ghost' ? null : {
+      name: room.creator?.name ?? null,
+      prediktHandle: room.creator?.prediktHandle ?? null,
+    },
   };
 }
 
@@ -420,6 +423,7 @@ export class RoomsService {
   ) {}
 
   async createFromRoute(dto: any, creator: RoomCreatorIdentity) {
+    dto = safeLocationLabels({ ...dto });
     const room = await this.create(dto, creator);
     if (dto.routeMeta) {
       await this.prisma.journeyRoute.create({
@@ -446,6 +450,7 @@ export class RoomsService {
   }
 
   async create(dto: CreateRoomDto, creator: RoomCreatorIdentity) {
+    dto = safeLocationLabels({ ...dto });
     await this.enforceContentPolicy(
       {
         roomTitle: dto.roomTitle,
@@ -694,6 +699,10 @@ export class RoomsService {
         where: { userId: creator.userId },
         data: { roomsCreatedCount: { increment: 1 } },
       });
+      // The user-row update above is held until commit, then the advisory lock
+      // serializes the per-user check. A failed room insert never reaches here,
+      // so a rejected create cannot write a credit.
+      await this.grantFirstRoomCredit(tx, creator.userId, room.roomId);
     });
 
     await this.auditService.log({
@@ -851,7 +860,7 @@ export class RoomsService {
   }
 
   async findById(roomId: string, requestingUser: User) {
-    const room = await this.prisma.predictionRoom.findUnique({
+    const room = safeLocationLabels(await this.prisma.predictionRoom.findUnique({
       where: { roomId },
       include: {
         creator: { select: ROOM_CREATOR_SELECT },
@@ -866,7 +875,7 @@ export class RoomsService {
           select: { progressPercentage: true, createdAt: true },
         },
       },
-    });
+    }));
     if (!room) throw new NotFoundException('Room not found');
 
     const isCreator = room.creatorUserId === requestingUser.userId;
@@ -1315,6 +1324,7 @@ export class RoomsService {
       },
     });
     if (!room) throw new NotFoundException('Room not found');
+    if (room.visibility === 'private') throw new ForbiddenException('This room is private.');
     return safeRoomSummary(room);
   }
 
@@ -1336,6 +1346,7 @@ export class RoomsService {
       },
     });
     if (!room) throw new NotFoundException('Room not found');
+    if (room.visibility === 'private') throw new ForbiddenException('This room is private.');
     await this.auditService.log({
       actorType: 'system',
       actorId: null,
@@ -1422,6 +1433,43 @@ export class RoomsService {
     }
 
     return { success: true };
+  }
+
+  /**
+   * Credits +15 once per user for the first successfully created room.
+   * Idempotency key `first_room:${userId}` plus the transaction lock make
+   * retries and concurrent creates share one ledger row. Balance and ledger
+   * commit together; a unique-key conflict rolls this transaction back and
+   * leaves the prior grant in place.
+   */
+  private async grantFirstRoomCredit(
+    tx: Prisma.TransactionClient,
+    userId: string,
+    roomId: string,
+  ) {
+    const idempotencyKey = `first_room:${userId}`;
+    await tx.$queryRaw`SELECT 1 FROM (SELECT pg_advisory_xact_lock(hashtextextended(${idempotencyKey}, 0))) AS result`;
+    const existing = await tx.creditLedger.findUnique({
+      where: { idempotencyKey },
+    });
+    if (existing) return;
+
+    const updatedUser = await tx.user.update({
+      where: { userId },
+      data: { creditBalance: { increment: 15 } },
+    });
+    await tx.creditLedger.create({
+      data: {
+        userId,
+        eventType: 'first_room',
+        delta: 15,
+        balanceAfter: updatedUser.creditBalance,
+        sourceId: roomId,
+        sourceType: 'room',
+        idempotencyKey,
+        metadata: { label: 'First room credit bonus' },
+      },
+    });
   }
 
   private async enforceContentPolicy(fields: Record<string, unknown>, userId: string) {

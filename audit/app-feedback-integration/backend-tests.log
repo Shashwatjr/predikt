@@ -1,0 +1,54 @@
+FAIL backend/src/security.integration.spec.ts
+  ● Security And Enterprise Hardening (integration) › ledgers signup, first room, first prediction, and result-declared credits without duplication and requires admin for reversal
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 1
+    Received: 0
+
+      535 |       where: { userId: creatorAuth.user.userId, eventType: 'first_room' },
+      536 |     });
+    > 537 |     expect(firstRoomLedgerCount).toBe(1);
+          |                                  ^
+      538 |
+      539 |     await request(app.getHttpServer())
+      540 |       .post(`/rooms/${firstRoomId}/predictions`)
+
+      at Object.<anonymous> (security.integration.spec.ts:537:34)
+
+[Nest] 44819  - 10/29/2026, 9:53:11 AM     LOG [MapsProvider] Route ETA via osm (OpenStreetMap): 10 min.
+[Nest] 44819  - 10/29/2026, 9:53:11 AM     LOG [MapsProvider] Route ETA via osm (OpenStreetMap): 3944 min.
+[Nest] 44819  - 10/29/2026, 9:53:11 AM     LOG [MapsProvider] Route ETA via osm (OpenStreetMap): 17 min.
+[Nest] 44819  - 10/29/2026, 9:53:11 AM     LOG [MapsProvider] Route ETA via osm (OpenStreetMap): 55 min.
+[Nest] 44819  - 10/29/2026, 9:53:11 AM     LOG [MapsProvider] Route ETA via google (Google Maps): 15 mins.
+[Nest] 44819  - 10/29/2026, 9:53:11 AM     LOG [MapsProvider] Route ETA via google (Google Maps): 15 mins.
+[Nest] 44819  - 10/29/2026, 9:53:11 AM    WARN [MapsProvider] Route provider "google" failed: Google Directions returned REQUEST_DENIED — API keys with referer restrictions cannot be used with this API..
+[Nest] 44819  - 10/29/2026, 9:53:11 AM    WARN [MapsProvider] Route ETA fell back to osm (OpenStreetMap): 69 min. This is the last-resort estimate.
+[Nest] 44819  - 10/29/2026, 9:53:11 AM    WARN [MapsProvider] Route fetch attempt 1 failed (Error: ECONNRESET); retrying once.
+[Nest] 44819  - 10/29/2026, 9:53:11 AM     LOG [MapsProvider] Route ETA via google (Google Maps): 40 mins.
+
+Summary of all failing tests
+FAIL ./security.integration.spec.ts
+  ● Security And Enterprise Hardening (integration) › ledgers signup, first room, first prediction, and result-declared credits without duplication and requires admin for reversal
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 1
+    Received: 0
+
+      535 |       where: { userId: creatorAuth.user.userId, eventType: 'first_room' },
+      536 |     });
+    > 537 |     expect(firstRoomLedgerCount).toBe(1);
+          |                                  ^
+      538 |
+      539 |     await request(app.getHttpServer())
+      540 |       .post(`/rooms/${firstRoomId}/predictions`)
+
+      at Object.<anonymous> (security.integration.spec.ts:537:34)
+
+
+Test Suites: 1 failed, 31 passed, 32 total
+Tests:       1 failed, 194 passed, 195 total
+Snapshots:   0 total
+Time:        3.276 s, estimated 4 s
+Ran all test suites.

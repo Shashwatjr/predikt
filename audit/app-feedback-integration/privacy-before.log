@@ -1,0 +1,4 @@
+PASS raw coordinate properties excluded
+BLOCKER coordinate-like route labels enter LiveRoom UI/accessibility
+BLOCKER coordinate-like route labels enter neutral summary
+PASS no browser errors

@@ -1,0 +1,16 @@
+PASS Copy Code and Copy Invite Link
+PASS target WhatsApp
+PASS target Telegram
+PASS target SMS
+PASS target Email
+PASS target X / Twitter
+PASS target Facebook
+PASS manual WhatsApp and coordinate-like labels excluded from share payloads
+PASS primary Share, Instagram copy before open, WeChat copy only, blocked handoff and share fallbacks
+PASS neutral closure cancelled
+PASS neutral closure cancelled_by_host
+PASS neutral closure plan_changed
+PASS neutral closure auto_closed
+PASS neutral closure abandoned
+PASS scored completed room retains deployed scoreboard
+PASS no browser errors
