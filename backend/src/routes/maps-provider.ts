@@ -416,6 +416,77 @@ class OsrmMapsProvider implements MapsProvider {
   }
 }
 
+export interface GoogleTrafficEta {
+  /** Prefer duration_in_traffic; falls back to duration when traffic is absent. */
+  durationInTrafficSeconds: number;
+  durationSeconds: number;
+}
+
+/**
+ * Driving (or mode-mapped) Google Directions call that records duration_in_traffic.
+ * Returns null when no key is configured or Google does not return a route, so the
+ * journey worker can retry on the next ping instead of storing a fake ETA.
+ */
+export async function fetchGoogleDurationInTraffic(
+  config: ConfigService,
+  origin: { latitude: number; longitude: number },
+  destination: { latitude: number; longitude: number },
+  travelModeInput?: string,
+): Promise<GoogleTrafficEta | null> {
+  const apiKey =
+    config.get<string>('GOOGLE_DIRECTIONS_API_KEY')?.trim() ||
+    config.get<string>('GOOGLE_MAPS_API_KEY')?.trim() ||
+    config.get<string>('GOOGLE_PLACES_API_KEY')?.trim();
+  if (!apiKey) return null;
+
+  const travelMode = normalizeTravelMode(travelModeInput);
+  const mapped = providerTravelMode('google', travelMode);
+  const params = new URLSearchParams({
+    origin: `${origin.latitude},${origin.longitude}`,
+    destination: `${destination.latitude},${destination.longitude}`,
+    mode: mapped.value,
+    key: apiKey,
+  });
+  if (mapped.value === 'driving') {
+    params.set('departure_time', 'now');
+    params.set('traffic_model', 'best_guess');
+  }
+
+  const response = await fetchWithRetry(
+    `https://maps.googleapis.com/maps/api/directions/json?${params}`,
+  );
+  if (!response.ok) {
+    throw new Error(`Google Directions HTTP ${response.status}.`);
+  }
+
+  const data = (await response.json()) as {
+    status?: string;
+    error_message?: string;
+    routes?: Array<{
+      legs?: Array<{
+        duration?: { value?: number };
+        duration_in_traffic?: { value?: number };
+      }>;
+    }>;
+  };
+
+  if (data.status !== 'OK' || !data.routes?.[0]?.legs?.length) {
+    const detail = data.error_message ? ` — ${data.error_message}` : '';
+    throw new Error(`Google Directions returned ${data.status ?? 'UNKNOWN'}${detail}.`);
+  }
+
+  const leg = data.routes[0].legs?.[0];
+  const durationSeconds = leg?.duration?.value;
+  const trafficSeconds = leg?.duration_in_traffic?.value;
+  const chosen = trafficSeconds ?? durationSeconds;
+  if (chosen == null || !Number.isFinite(chosen)) return null;
+
+  return {
+    durationInTrafficSeconds: Math.max(0, Math.round(trafficSeconds ?? chosen)),
+    durationSeconds: Math.max(0, Math.round(durationSeconds ?? chosen)),
+  };
+}
+
 /**
  * Ordered provider chain: try the primary (Google when a key is present), then each
  * fallback in turn. The first provider that returns wins; every fall-through is logged

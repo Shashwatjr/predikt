@@ -1,3 +1,4 @@
+import { UnprocessableEntityException } from '@nestjs/common';
 import { LifecycleService } from './lifecycle.service';
 
 describe('LifecycleService journey fairness', () => {
@@ -73,6 +74,88 @@ describe('LifecycleService journey fairness', () => {
 
     expect(update).toHaveBeenCalled();
     expect(update.mock.calls[0][0].data.startTime).toEqual(update.mock.calls[0][0].data.visibleMovementStartTime);
+  });
+
+  it('rejects /journey/start when the creator is more than 1 km from the start point', async () => {
+    const update = jest.fn();
+    const prisma = {
+      predictionRoom: {
+        findUnique: jest.fn().mockResolvedValue({
+          roomId: 'room-far',
+          creatorUserId: 'u1',
+          status: 'predictions_locked',
+          startingLat: 12.9716,
+          startingLng: 77.5946,
+          expectedDurationSeconds: 1800,
+          gracePeriodSeconds: 3600,
+          journeyRoute: null,
+        }),
+        update,
+      },
+    } as any;
+
+    const service = new LifecycleService(prisma, auditService, notificationsService, badgeService, { grant: jest.fn() } as any);
+
+    await expect(
+      service.start('room-far', { userId: 'u1' } as any, {
+        startDelayMinutes: 3,
+        location: { lat: 12.9916, lng: 77.5946 },
+      }),
+    ).rejects.toBeInstanceOf(UnprocessableEntityException);
+
+    try {
+      await service.start('room-far', { userId: 'u1' } as any, {
+        startDelayMinutes: 3,
+        location: { lat: 12.9916, lng: 77.5946 },
+      });
+    } catch (error) {
+      const body = (error as UnprocessableEntityException).getResponse() as {
+        error: string;
+        message: string;
+        distanceMeters: number;
+      };
+      expect((error as UnprocessableEntityException).getStatus()).toBe(422);
+      expect(body).toEqual({
+        error: 'TOO_FAR_FROM_START',
+        message: 'You appear to be more than 1 km from your declared start point.',
+        distanceMeters: expect.any(Number),
+      });
+      expect(body.distanceMeters).toBeGreaterThan(1000);
+    }
+
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it('starts the journey when the creator is within 1 km of the start point', async () => {
+    const update = jest.fn().mockResolvedValue({
+      roomId: 'room-near',
+      autoCloseAt: new Date('2026-07-10T12:00:00.000Z'),
+    });
+    const prisma = {
+      predictionRoom: {
+        findUnique: jest.fn().mockResolvedValue({
+          roomId: 'room-near',
+          creatorUserId: 'u1',
+          status: 'predictions_locked',
+          startingLat: 12.9716,
+          startingLng: 77.5946,
+          expectedDurationSeconds: 1800,
+          gracePeriodSeconds: 3600,
+          journeyRoute: null,
+        }),
+        update,
+      },
+      roomCheckpoint: { upsert: jest.fn().mockResolvedValue({}) },
+      liveLocationEvent: { create: jest.fn().mockResolvedValue({}) },
+    } as any;
+
+    const service = new LifecycleService(prisma, auditService, notificationsService, badgeService, { grant: jest.fn() } as any);
+    await service.start('room-near', { userId: 'u1' } as any, {
+      startDelayMinutes: 3,
+      location: { lat: 12.974, lng: 77.5946 },
+    });
+
+    expect(update).toHaveBeenCalled();
   });
 
   it('marks a never-started room as abandoned after the cutoff', async () => {

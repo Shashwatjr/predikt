@@ -23,8 +23,66 @@ export type CheckpointBoard =
       standings: CheckpointStanding[];
     };
 
+/** One Google Maps duration_in_traffic reading stored on the room as checkpointEtas. */
+export interface CheckpointEta {
+  checkpoint?: number;
+  etaSeconds?: number | null;
+  etaMinutes?: number | null;
+  durationInTrafficSeconds?: number | null;
+  capturedAt?: string | null;
+  source?: string | null;
+}
+
+export type CheckpointEtaMap = Record<string, CheckpointEta>;
+
 interface Props {
   board?: CheckpointBoard | null;
+  /**
+   * Per-milestone ETAs from live-state `checkpointEtas`.
+   * Keyed by checkpoint percent ("20", "40", …).
+   */
+  checkpointEtas?: CheckpointEtaMap | null;
+  /**
+   * Polled live-state `etaMinutes` for this checkpoint.
+   * Used only when that milestone has no stored traffic ETA.
+   */
+  etaMinutes?: number | null;
+}
+
+export function milestoneEtaMinutes(
+  checkpoint: number,
+  checkpointEtas?: CheckpointEtaMap | null,
+  etaMinutes?: number | null,
+): number | null {
+  const entry = checkpointEtas?.[String(checkpoint)];
+  if (entry) {
+    if (entry.etaMinutes != null && Number.isFinite(entry.etaMinutes)) {
+      return Math.max(0, Math.round(entry.etaMinutes));
+    }
+    const seconds = entry.durationInTrafficSeconds ?? entry.etaSeconds;
+    if (seconds != null && Number.isFinite(seconds)) {
+      return Math.max(0, Math.ceil(seconds / 60));
+    }
+  }
+  if (etaMinutes != null && Number.isFinite(etaMinutes)) {
+    return Math.max(0, Math.round(etaMinutes));
+  }
+  return null;
+}
+
+function projectedFromMilestone(
+  board: Extract<CheckpointBoard, { available: true }>,
+  checkpointEtas?: CheckpointEtaMap | null,
+): Date {
+  const entry = checkpointEtas?.[String(board.checkpoint)];
+  const seconds = entry?.durationInTrafficSeconds ?? entry?.etaSeconds;
+  if (entry?.capturedAt && seconds != null && Number.isFinite(seconds)) {
+    const captured = new Date(entry.capturedAt);
+    if (!Number.isNaN(captured.getTime())) {
+      return new Date(captured.getTime() + seconds * 1000);
+    }
+  }
+  return new Date(board.projectedArrivalAt);
 }
 
 const MEDALS = ['🥇', '🥈', '🥉'];
@@ -35,17 +93,20 @@ function offBy(diffSeconds: number): string {
   return `${mins} min off`;
 }
 
-export default function CheckpointLeaderboard({ board }: Props) {
+export default function CheckpointLeaderboard({ board, checkpointEtas, etaMinutes }: Props) {
   const { colors } = useTheme();
   if (!board || !board.available || !board.standings.length) return null;
 
-  const projected = formatClock(new Date(board.projectedArrivalAt), false);
+  const milestoneMinutes = milestoneEtaMinutes(board.checkpoint, checkpointEtas, etaMinutes);
+  const projected = formatClock(projectedFromMilestone(board, checkpointEtas), false);
   const paceNote =
-    board.basis === 'eta_reread'
-      ? 'based on a live ETA re-read'
-      : board.basis === 'gps'
-        ? 'based on real pace'
-        : 'based on elapsed time';
+    milestoneMinutes != null
+      ? `Google Maps traffic ETA ${milestoneMinutes} min`
+      : board.basis === 'eta_reread'
+        ? 'based on a live ETA re-read'
+        : board.basis === 'gps'
+          ? 'based on real pace'
+          : 'based on elapsed time';
 
   return (
     <View style={[styles.wrap, { borderColor: colors.border, backgroundColor: colors.surface }]}>

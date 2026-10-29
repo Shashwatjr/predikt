@@ -119,4 +119,123 @@ describe('LiveProgressService', () => {
     expect(result.progressPercentage).toBe(100);
     expect(result.milestoneBanner?.message).toBe('Arrived. The Tea is ready.');
   });
+
+  it('exposes stored checkpoint ETAs on live-state', async () => {
+    const room = {
+      roomId: 'room-etas',
+      status: 'live',
+      safetyDelayMinutes: 0,
+      locationDisplayMode: 'approximate',
+      movementAvatarType: 'car',
+      checkpointEtas: {
+        '40': {
+          checkpoint: 40,
+          etaSeconds: 1500,
+          etaMinutes: 25,
+          durationInTrafficSeconds: 1500,
+          capturedAt: '2026-10-29T04:00:00.000Z',
+          source: 'google',
+        },
+      },
+    };
+    const prisma = {
+      predictionRoom: { findUnique: jest.fn().mockResolvedValue(room) },
+      liveLocationEvent: { findFirst: jest.fn().mockResolvedValue(null) },
+      roomMilestoneSnapshot: { findFirst: jest.fn().mockResolvedValue(null) },
+    } as any;
+    const service = new LiveProgressService(
+      prisma,
+      { evaluateRoomLifecycle: jest.fn() } as any,
+      { get: jest.fn() } as any,
+      { notifyRoomMembers: jest.fn() } as any,
+    );
+
+    const result = await service.getLiveState('room-etas');
+    expect(result.checkpointEtas['40']).toMatchObject({
+      etaSeconds: 1500,
+      etaMinutes: 25,
+      durationInTrafficSeconds: 1500,
+      source: 'google',
+    });
+  });
+
+  it('records Google duration_in_traffic at crossed checkpoints instead of a 60-minute default', async () => {
+    const originalFetch = global.fetch;
+    const fetchMock = jest.fn().mockResolvedValue({
+      ok: true,
+      json: jest.fn().mockResolvedValue({
+        status: 'OK',
+        routes: [
+          {
+            legs: [
+              {
+                duration: { value: 900 },
+                duration_in_traffic: { value: 1200 },
+              },
+            ],
+          },
+        ],
+      }),
+    });
+    global.fetch = fetchMock as any;
+
+    const update = jest.fn().mockResolvedValue({});
+    const prisma = {
+      predictionRoom: {
+        findUnique: jest.fn().mockResolvedValue({
+          roomId: 'room-ping',
+          creatorUserId: 'u1',
+          status: 'live',
+          startTime: new Date(Date.now() - 10 * 60 * 1000),
+          expectedDurationSeconds: 60 * 60,
+          locationDisplayMode: 'approximate',
+          startingLat: 12.9716,
+          startingLng: 77.5946,
+          destinationLat: 13.0,
+          destinationLng: 77.5946,
+          checkpointEtas: null,
+          journeyRoute: { travelMode: 'car' },
+        }),
+        update,
+      },
+      liveLocationEvent: { create: jest.fn().mockResolvedValue({}) },
+      roomCheckpoint: { upsert: jest.fn().mockResolvedValue({}) },
+      roomMilestoneSnapshot: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        count: jest.fn().mockResolvedValue(0),
+        upsert: jest.fn().mockResolvedValue({}),
+      },
+      $transaction: jest.fn(async (ops: Promise<unknown>[]) => Promise.all(ops)),
+    } as any;
+
+    const service = new LiveProgressService(
+      prisma,
+      { evaluateRoomLifecycle: jest.fn(), finalizeArrivalFromLocation: jest.fn() } as any,
+      { get: jest.fn((key: string) => (key === 'GOOGLE_MAPS_API_KEY' ? 'test-key' : undefined)) } as any,
+      { notifyRoomMembers: jest.fn() } as any,
+    );
+
+    try {
+      const result = await service.recordLivePing(
+        'room-ping',
+        { lat: 12.9858, lng: 77.5946 },
+        { userId: 'u1' } as any,
+      );
+
+      expect(fetchMock).toHaveBeenCalled();
+      const url = String(fetchMock.mock.calls[0][0]);
+      expect(url).toContain('departure_time=now');
+      expect(result.progressPercentage).toBeGreaterThanOrEqual(40);
+      expect(result.progressPercentage).toBeLessThan(60);
+
+      const stored = update.mock.calls[0][0].data.checkpointEtas;
+      expect(stored['20'].etaSeconds).toBe(1200);
+      expect(stored['20'].durationInTrafficSeconds).toBe(1200);
+      expect(stored['40'].etaMinutes).toBe(20);
+      expect(stored['60']).toBeUndefined();
+      expect(stored['20'].etaSeconds).not.toBe(60 * 60);
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
 });

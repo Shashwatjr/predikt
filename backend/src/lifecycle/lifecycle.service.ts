@@ -4,6 +4,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  UnprocessableEntityException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { EndRoomDto } from './dto/end-room.dto';
@@ -42,6 +43,7 @@ const DEFAULT_EXPECTED_DURATION_SECONDS = 60 * 60;
 const INACTIVITY_THRESHOLD_SECONDS = 20 * 60;
 const START_VISIBILITY_DELAY_MS = 2 * 60 * 1000;
 const START_VERIFY_DISTANCE_METERS = 2000;
+const START_PROXIMITY_METERS = 1000;
 export const ARRIVAL_CONFIRM_DISTANCE_METERS = 1000;
 const CHECKPOINT_MILESTONES = [50, 80] as const;
 const NO_SHOW_RIZZ_PENALTY = 5;
@@ -115,6 +117,9 @@ export class LifecycleService {
     if (!['predictions_open', 'predictions_locked', 'created'].includes(room.status)) {
       throw new BadRequestException('Room must be ready for live start');
     }
+
+    // Reject before any lock/start writes. Shared by POST /journey/start.
+    this.assertWithinStartProximity(room, dto);
 
     if (room.status === 'predictions_open') {
       if (featureFlags.checkpointLeaderboardV2) {
@@ -490,6 +495,25 @@ export class LifecycleService {
         createdAt: capturedAt,
       },
     });
+  }
+
+  private assertWithinStartProximity(room: any, dto: StartRoomDto) {
+    const lat = dto.location?.lat;
+    const lng = dto.location?.lng;
+    if (lat == null || lng == null) return;
+
+    const startLat = Number(room.startingLat ?? room.journeyRoute?.startLat);
+    const startLng = Number(room.startingLng ?? room.journeyRoute?.startLng);
+    if (!Number.isFinite(startLat) || !Number.isFinite(startLng)) return;
+
+    const distance = distanceMeters(lat, lng, startLat, startLng);
+    if (distance > START_PROXIMITY_METERS) {
+      throw new UnprocessableEntityException({
+        error: 'TOO_FAR_FROM_START',
+        message: 'You appear to be more than 1 km from your declared start point.',
+        distanceMeters: Math.round(distance),
+      });
+    }
   }
 
   private buildStartVerification(room: any, lat?: number, lng?: number) {
