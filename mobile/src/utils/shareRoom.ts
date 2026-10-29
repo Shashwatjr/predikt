@@ -38,7 +38,7 @@ function getWebBaseUrl() {
   if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.origin) {
     return window.location.origin.replace(/\/+$/, '');
   }
-  return Platform.OS === 'web' ? CANONICAL_WEB_BASE_URL : 'http://localhost:8081';
+  return CANONICAL_WEB_BASE_URL;
 }
 
 export function buildInviteUrl(inviteCode: string, forwardedBy?: string | null) {
@@ -102,26 +102,35 @@ export function buildSharePayload(room: SafePreview, forwardedBy?: string | null
     copyText: body,
     instagramCaption: body,
     whatsappText: body,
-    whatsappUrl: `https://api.whatsapp.com/send?text=${encodeURIComponent(body)}`,
+    whatsappUrl: `https://wa.me/?text=${encodeURIComponent(body)}`,
+    telegramUrl: `https://t.me/share/url?url=${encodeURIComponent(card.url)}&text=${encodeURIComponent(body.replace(`Open: ${card.url}`, '').trim())}`,
+    twitterUrl: `https://twitter.com/intent/tweet?url=${encodeURIComponent(card.url)}&text=${encodeURIComponent(body.replace(`Open: ${card.url}`, '').trim())}`,
+    facebookUrl: `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(card.url)}`,
+    smsUrl: `sms:?body=${encodeURIComponent(body)}`,
+    emailUrl: `mailto:?subject=${encodeURIComponent(card.title)}&body=${encodeURIComponent(body)}`,
   };
 }
 
-export async function openWhatsAppWithText(text: string): Promise<boolean> {
-  const encoded = encodeURIComponent(text);
-  const candidates = [
-    `https://api.whatsapp.com/send?text=${encoded}`,
-    `https://wa.me/?text=${encoded}`,
-    `whatsapp://send?text=${encoded}`,
-  ];
-  for (const url of candidates) {
-    try {
+/** A resolved openURL means only that the OS accepted the request, not that a message was sent. */
+export async function openShareUrl(url: string): Promise<boolean> {
+  try {
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      // RN Web's Linking ignores a blocked popup. Keep a handle so we can report failure.
+      const popup = window.open('about:blank', '_blank');
+      if (!popup) return false;
+      popup.opener = null;
+      popup.location.href = url;
+    } else {
       await Linking.openURL(url);
-      return true;
-    } catch {
-      // try the next scheme — iPhone Safari is picky about wa.me without a number
     }
+    return true;
+  } catch {
+    return false;
   }
-  return false;
+}
+
+export async function openWhatsAppWithText(text: string): Promise<boolean> {
+  return openShareUrl(`https://wa.me/?text=${encodeURIComponent(text)}`);
 }
 
 export function buildManualWhatsAppUrl(phoneNumber: string, text: string) {
