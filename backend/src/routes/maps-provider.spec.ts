@@ -1,5 +1,5 @@
 import { ConfigService } from '@nestjs/config';
-import { createMapsProvider, normalizeTravelMode, providerTravelMode } from './maps-provider';
+import { createMapsProvider, fetchGoogleDurationInTraffic, normalizeTravelMode, providerTravelMode } from './maps-provider';
 
 function config(values: Record<string, string | undefined>) {
   return {
@@ -155,5 +155,36 @@ describe('maps provider selection', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(preview.provider).toBe('google');
     expect(preview.durationSeconds).toBe(2400);
+  });
+
+  it('reads duration_in_traffic for a live checkpoint ETA', async () => {
+    const fetchMock = jest.fn().mockResolvedValue({
+      ok: true,
+      json: jest.fn().mockResolvedValue({
+        status: 'OK',
+        routes: [
+          {
+            legs: [
+              {
+                duration: { value: 600 },
+                duration_in_traffic: { value: 840 },
+              },
+            ],
+          },
+        ],
+      }),
+    });
+    global.fetch = fetchMock as any;
+
+    const eta = await fetchGoogleDurationInTraffic(
+      config({ GOOGLE_MAPS_API_KEY: 'server-key' }),
+      { latitude: 12.97, longitude: 77.59 },
+      { latitude: 12.98, longitude: 77.6 },
+      'car',
+    );
+
+    expect(eta).toEqual({ durationInTrafficSeconds: 840, durationSeconds: 600 });
+    expect(String(fetchMock.mock.calls[0][0])).toContain('departure_time=now');
+    expect(String(fetchMock.mock.calls[0][0])).toContain('traffic_model=best_guess');
   });
 });

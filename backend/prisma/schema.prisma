@@ -418,6 +418,9 @@ model PredictionRoom {
   autoCloseAt              DateTime?                @map("auto_close_at")
   noStartCutoffAt          DateTime?                @map("no_start_cutoff_at")
   arrivalConfirmedAt       DateTime?                @map("arrival_confirmed_at")
+  // Fresh Google Maps duration_in_traffic captured the first time progress crosses
+  // 20/40/60/80/90/95/100. Keyed by checkpoint percent. Viewers read this from live-state.
+  checkpointEtas           Json?                    @map("checkpoint_etas")
   // Prediction lock window (guest-predict UX): predictionsLockedAt is set when the
   // 60s window closes or someone hits "Lock now"; revealedAt is when blurred
   // predictions become visible to all participants. Both null until the room locks.
