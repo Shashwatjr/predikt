@@ -1,4 +1,7 @@
+import { UnprocessableEntityException } from '@nestjs/common';
 import { LifecycleService } from './lifecycle.service';
+import { featureFlags } from '../config/feature-flags';
+import { distanceMeters } from '../common/utils/geo';
 
 describe('LifecycleService journey fairness', () => {
   const auditService = { log: jest.fn() } as any;
@@ -9,6 +12,12 @@ describe('LifecycleService journey fairness', () => {
   const badgeService = {
     awardRoomBadges: jest.fn().mockResolvedValue([]),
   } as any;
+
+  const START = { lat: 12.9716, lng: 77.5946 };
+  // Match backend geo.ts earth radius so the fixture distances stay exact.
+  const METERS_PER_DEG_LAT = (6371000 * Math.PI) / 180;
+  const NEAR_999 = { lat: START.lat + 999 / METERS_PER_DEG_LAT, lng: START.lng };
+  const FAR_1001 = { lat: START.lat + 1001 / METERS_PER_DEG_LAT, lng: START.lng };
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -58,21 +67,178 @@ describe('LifecycleService journey fairness', () => {
           creatorUserId: 'u1',
           status: 'predictions_locked',
           roomCategory: 'travel',
+          startingLat: START.lat,
+          startingLng: START.lng,
           expectedDurationSeconds: 1800,
           gracePeriodSeconds: 900,
           journeyScheduledStartAt: null,
           noStartCutoffAt: null,
-          journeyRoute: { estimatedDurationSeconds: 1800 },
+          journeyRoute: { estimatedDurationSeconds: 1800, startLat: START.lat, startLng: START.lng },
         }),
         update,
       },
+      roomCheckpoint: { upsert: jest.fn().mockResolvedValue({}) },
+      liveLocationEvent: { create: jest.fn().mockResolvedValue({}) },
     } as any;
 
     const service = new LifecycleService(prisma, auditService, notificationsService, badgeService, { grant: jest.fn().mockResolvedValue({ applied: true }) } as any);
-    await service.start('room-now', { userId: 'u1' } as any, { startDelayMinutes: 0 });
+    await service.start('room-now', { userId: 'u1' } as any, {
+      startDelayMinutes: 0,
+      location: NEAR_999,
+    });
 
     expect(update).toHaveBeenCalled();
     expect(update.mock.calls[0][0].data.startTime).toEqual(update.mock.calls[0][0].data.visibleMovementStartTime);
+  });
+
+  describe('start proximity contract', () => {
+    function trackedRoom(overrides: Record<string, unknown> = {}) {
+      return {
+        roomId: 'room-prox',
+        creatorUserId: 'u1',
+        status: 'predictions_locked',
+        roomCategory: 'travel',
+        startingLat: START.lat,
+        startingLng: START.lng,
+        expectedDurationSeconds: 1800,
+        gracePeriodSeconds: 3600,
+        journeyRoute: { startLat: START.lat, startLng: START.lng, estimatedDurationSeconds: 1800 },
+        ...overrides,
+      };
+    }
+
+    it('allows a start at 999 m and rejects 1001 m with TOO_FAR_FROM_START', async () => {
+      expect(distanceMeters(START.lat, START.lng, NEAR_999.lat, NEAR_999.lng)).toBeLessThanOrEqual(1000);
+      expect(distanceMeters(START.lat, START.lng, FAR_1001.lat, FAR_1001.lng)).toBeGreaterThan(1000);
+
+      const update = jest.fn().mockResolvedValue({ roomId: 'room-prox', autoCloseAt: new Date() });
+      const prisma = {
+        predictionRoom: {
+          findUnique: jest.fn().mockResolvedValue(trackedRoom()),
+          update,
+        },
+        roomCheckpoint: { upsert: jest.fn().mockResolvedValue({}) },
+        liveLocationEvent: { create: jest.fn().mockResolvedValue({}) },
+      } as any;
+      const service = new LifecycleService(prisma, auditService, notificationsService, badgeService, { grant: jest.fn() } as any);
+
+      await service.start('room-prox', { userId: 'u1' } as any, {
+        startDelayMinutes: 3,
+        location: NEAR_999,
+      });
+      expect(update).toHaveBeenCalled();
+
+      update.mockClear();
+      try {
+        await service.start('room-prox', { userId: 'u1' } as any, {
+          startDelayMinutes: 3,
+          location: FAR_1001,
+        });
+        throw new Error('expected rejection');
+      } catch (error) {
+        expect(error).toBeInstanceOf(UnprocessableEntityException);
+        expect((error as UnprocessableEntityException).getStatus()).toBe(422);
+        expect((error as UnprocessableEntityException).getResponse()).toEqual({
+          error: 'TOO_FAR_FROM_START',
+          message: 'You appear to be more than 1 km from your declared start point.',
+          distanceMeters: expect.any(Number),
+        });
+        expect(
+          ((error as UnprocessableEntityException).getResponse() as { distanceMeters: number })
+            .distanceMeters,
+        ).toBeGreaterThan(1000);
+      }
+      expect(update).not.toHaveBeenCalled();
+    });
+
+    it('rejects missing creator GPS and missing origin with distinct stable errors', async () => {
+      const update = jest.fn();
+      const prismaMissingGps = {
+        predictionRoom: {
+          findUnique: jest.fn().mockResolvedValue(trackedRoom()),
+          update,
+        },
+      } as any;
+      const service = new LifecycleService(
+        prismaMissingGps,
+        auditService,
+        notificationsService,
+        badgeService,
+        { grant: jest.fn() } as any,
+      );
+
+      await expect(service.start('room-prox', { userId: 'u1' } as any, { startDelayMinutes: 3 })).rejects.toMatchObject({
+        response: {
+          error: 'CREATOR_GPS_REQUIRED',
+          message: 'Creator GPS is required to start this journey.',
+        },
+      });
+
+      const prismaMissingOrigin = {
+        predictionRoom: {
+          findUnique: jest.fn().mockResolvedValue(
+            trackedRoom({ startingLat: null, startingLng: null, journeyRoute: null }),
+          ),
+          update,
+        },
+      } as any;
+      const serviceMissingOrigin = new LifecycleService(
+        prismaMissingOrigin,
+        auditService,
+        notificationsService,
+        badgeService,
+        { grant: jest.fn() } as any,
+      );
+      await expect(
+        serviceMissingOrigin.start('room-prox', { userId: 'u1' } as any, {
+          startDelayMinutes: 3,
+          location: NEAR_999,
+        }),
+      ).rejects.toMatchObject({
+        response: {
+          error: 'START_ORIGIN_UNAVAILABLE',
+          message: 'This journey has no declared start point to verify against.',
+        },
+      });
+      expect(update).not.toHaveBeenCalled();
+    });
+
+    it('still enforces proximity when checkpointLeaderboardV2 is off', async () => {
+      const original = featureFlags.checkpointLeaderboardV2;
+      (featureFlags as { checkpointLeaderboardV2: boolean }).checkpointLeaderboardV2 = false;
+      try {
+        const update = jest.fn();
+        const prisma = {
+          predictionRoom: {
+            findUnique: jest.fn().mockResolvedValue(trackedRoom()),
+            update,
+          },
+        } as any;
+        const service = new LifecycleService(prisma, auditService, notificationsService, badgeService, { grant: jest.fn() } as any);
+        await expect(
+          service.start('room-prox', { userId: 'u1' } as any, {
+            startDelayMinutes: 3,
+            location: FAR_1001,
+          }),
+        ).rejects.toBeInstanceOf(UnprocessableEntityException);
+        expect(update).not.toHaveBeenCalled();
+      } finally {
+        (featureFlags as { checkpointLeaderboardV2: boolean }).checkpointLeaderboardV2 = original;
+      }
+    });
+
+    it('skips proximity for non location-tracked rooms', async () => {
+      const update = jest.fn().mockResolvedValue({ roomId: 'room-prox', autoCloseAt: new Date() });
+      const prisma = {
+        predictionRoom: {
+          findUnique: jest.fn().mockResolvedValue(trackedRoom({ roomCategory: 'custom' })),
+          update,
+        },
+      } as any;
+      const service = new LifecycleService(prisma, auditService, notificationsService, badgeService, { grant: jest.fn() } as any);
+      await service.start('room-prox', { userId: 'u1' } as any, { startDelayMinutes: 3 });
+      expect(update).toHaveBeenCalled();
+    });
   });
 
   it('marks a never-started room as abandoned after the cutoff', async () => {

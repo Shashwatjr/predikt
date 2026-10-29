@@ -4,6 +4,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  UnprocessableEntityException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { EndRoomDto } from './dto/end-room.dto';
@@ -41,7 +42,7 @@ const MULTIPLE_CHOICE_PARTICIPATION_CLOUT = 5;
 const DEFAULT_EXPECTED_DURATION_SECONDS = 60 * 60;
 const INACTIVITY_THRESHOLD_SECONDS = 20 * 60;
 const START_VISIBILITY_DELAY_MS = 2 * 60 * 1000;
-const START_VERIFY_DISTANCE_METERS = 2000;
+const START_PROXIMITY_METERS = 1000;
 export const ARRIVAL_CONFIRM_DISTANCE_METERS = 1000;
 const CHECKPOINT_MILESTONES = [50, 80] as const;
 const NO_SHOW_RIZZ_PENALTY = 5;
@@ -116,6 +117,13 @@ export class LifecycleService {
       throw new BadRequestException('Room must be ready for live start');
     }
 
+    // Location-tracked journeys must prove the creator is near the declared start
+    // before any prediction lock or journey write. Non-GPS rooms skip this.
+    const isLocationTracked = usesExclusiveLocationResource(room.roomCategory);
+    if (isLocationTracked) {
+      this.assertStartProximity(room, dto);
+    }
+
     if (room.status === 'predictions_open') {
       if (featureFlags.checkpointLeaderboardV2) {
         // v2 (checkpoint_leaderboard_v2): journey start does NOT lock everyone.
@@ -132,18 +140,6 @@ export class LifecycleService {
 
     // Non-GPS rooms have no live location to protect or coordinate, so they may
     // start immediately (no default delay) and become visible at once.
-    const isLocationTracked = usesExclusiveLocationResource(room.roomCategory);
-    if (featureFlags.checkpointLeaderboardV2 && isLocationTracked) {
-      if (dto.location?.lat == null || dto.location?.lng == null) {
-        throw new BadRequestException('Creator GPS is required to start this journey');
-      }
-      const startVerification = this.buildStartVerification(room, dto.location.lat, dto.location.lng);
-      if (startVerification.shouldBlock) {
-        throw new BadRequestException(
-          `Start verification failed. Move closer to ${room.startingPointLabel} before starting the journey.`,
-        );
-      }
-    }
     const startDelayMinutes =
       dto.startDelayMinutes ?? (isLocationTracked ? DEFAULT_START_DELAY_MINUTES : 0);
     const scheduledStartTime = new Date(Date.now() + startDelayMinutes * 60 * 1000);
@@ -522,18 +518,37 @@ export class LifecycleService {
     });
   }
 
-  private buildStartVerification(room: any, lat?: number, lng?: number) {
-    const expectedLat = room.startingLat ?? room.journeyRoute?.startLat ?? null;
-    const expectedLng = room.startingLng ?? room.journeyRoute?.startLng ?? null;
-    if (lat == null || lng == null || expectedLat == null || expectedLng == null) {
-      return { shouldBlock: false, shouldPrompt: false, distanceMeters: null };
+  /**
+   * Enforce the shared /journey/start proximity contract for location-tracked rooms.
+   * Never silently bypasses a missing GPS fix or a missing declared origin.
+   */
+  private assertStartProximity(room: any, dto: StartRoomDto) {
+    const lat = dto.location?.lat;
+    const lng = dto.location?.lng;
+    if (lat == null || lng == null || !Number.isFinite(Number(lat)) || !Number.isFinite(Number(lng))) {
+      throw new UnprocessableEntityException({
+        error: 'CREATOR_GPS_REQUIRED',
+        message: 'Creator GPS is required to start this journey.',
+      });
     }
 
-    const distance = distanceMeters(lat, lng, expectedLat, expectedLng);
-    return {
-      shouldBlock: distance > START_VERIFY_DISTANCE_METERS,
-      distanceMeters: distance,
-    };
+    const startLat = Number(room.startingLat ?? room.journeyRoute?.startLat);
+    const startLng = Number(room.startingLng ?? room.journeyRoute?.startLng);
+    if (!Number.isFinite(startLat) || !Number.isFinite(startLng)) {
+      throw new UnprocessableEntityException({
+        error: 'START_ORIGIN_UNAVAILABLE',
+        message: 'This journey has no declared start point to verify against.',
+      });
+    }
+
+    const distance = distanceMeters(Number(lat), Number(lng), startLat, startLng);
+    if (distance > START_PROXIMITY_METERS) {
+      throw new UnprocessableEntityException({
+        error: 'TOO_FAR_FROM_START',
+        message: 'You appear to be more than 1 km from your declared start point.',
+        distanceMeters: Math.round(distance),
+      });
+    }
   }
 
   private buildArrivalVerification(room: any, lat?: number, lng?: number) {
