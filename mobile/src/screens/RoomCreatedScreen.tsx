@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Linking,
+  Clipboard,
   Platform,
   ScrollView,
   Share,
@@ -10,6 +10,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { copyToClipboard } from '../utils/shareLine';
 import { appAlert } from '../utils/appAlert';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
@@ -24,6 +25,7 @@ import {
   buildSharePayload,
   isValidManualPhone,
   openWhatsAppWithText,
+  openShareUrl,
   shareViaWebShareApi,
 } from '../utils/shareRoom';
 import { journeyPalette } from '../theme/journeyPalette';
@@ -80,12 +82,11 @@ function LoadedRoomCreatedScreen({ navigation, room }: { navigation: Props['navi
   const { colors } = useTheme();
   const inviteCode = room.inviteCode ?? room.code ?? '';
   const [manualPhone, setManualPhone] = useState('');
-  const [showManualShare, setShowManualShare] = useState(false);
+  const [showMoreShare, setShowMoreShare] = useState(false);
   const [showRoomDetails, setShowRoomDetails] = useState(false);
+  const [shareHint, setShareHint] = useState<string | null>(null);
   const [lastCopiedLabel, setLastCopiedLabel] = useState<string | null>(null);
   const sharePayload = useMemo(() => buildSharePayload({ ...room, inviteCode }), [room, inviteCode]);
-  const creationMeta = room.scoringRule?.creationMeta ?? room.creationMeta ?? {};
-  const category = room.category ?? creationMeta.category ?? room.templateKey;
   const durationSeconds = [
     room.expectedDurationSeconds,
     room.route?.estimatedDurationSeconds,
@@ -122,54 +123,83 @@ function LoadedRoomCreatedScreen({ navigation, room }: { navigation: Props['navi
     }
   }
 
-  async function copyText(label: string, value: string) {
+  async function copyText(label: string, value: string, notify = true): Promise<boolean> {
     try {
-      if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(value);
-        await trackShare('room_shared', label === 'Invite link' ? 'link' : 'copy');
-        setLastCopiedLabel(label);
-        appAlert(`${label} copied`, 'Your invite is ready to send.');
-        return;
+      if (Platform.OS === 'web') {
+        if (!(await copyToClipboard(value))) throw new Error('Copy failed');
+      } else {
+        // Bundled with the deployed RN version; avoids changing native dependencies.
+        Clipboard.setString(value);
       }
-      await Share.share({ message: value, title: label });
-      await trackShare('room_shared', 'native_share');
+      setLastCopiedLabel(label);
+      if (notify) appAlert(`${label} copied`, 'Your invite is ready to paste.');
+      void trackShare('room_shared', label === 'Invite link' ? 'link' : 'copy');
+      return true;
     } catch {
-      appAlert('Copy unavailable', value);
+      appAlert('Copy unavailable', `Copy this invite manually:\n${value}`);
+      return false;
     }
   }
 
   async function invitePeople() {
     if (Platform.OS === 'web') {
       const shared = await shareViaWebShareApi({
-        shareTitle: `Join ${sharePayload.shareTitle}`,
+        shareTitle: sharePayload.shareTitle,
         shareText: sharePayload.shareText,
         inviteUrl: sharePayload.inviteUrl,
       });
       if (shared) {
-        await trackShare('room_shared', 'web_share');
+        void trackShare('room_shared', 'web_share');
         return;
       }
-      await copyText('Invite link', sharePayload.inviteUrl);
-      return;
+    } else {
+      try {
+        const outcome = await Share.share({ message: sharePayload.shareText, title: sharePayload.shareTitle });
+        if (outcome.action !== Share.dismissedAction) void trackShare('room_shared', 'native_share');
+        return;
+      } catch {
+        // A missing share sheet still leaves a real copy/manual path.
+      }
     }
-    await Share.share({
-      message: sharePayload.shareText,
-      title: `Join ${sharePayload.shareTitle}`,
-    });
-    await trackShare('room_shared', 'native_share');
+    setShareHint('Sharing was unavailable or cancelled. Paste the invite into your preferred app.');
+    await copyText('Invite link', sharePayload.inviteUrl);
   }
 
   async function openWhatsAppShare() {
-    await trackShare('room_shared', 'whatsapp');
-    const opened = await openWhatsAppWithText(sharePayload.whatsappText);
-    if (opened) return;
-    await copyText('Invite link', sharePayload.inviteUrl);
-    appAlert('WhatsApp did not open', 'The invite link was copied — paste it into WhatsApp.');
+    // Launch inside the tap gesture, before any analytics requests.
+    if (await openWhatsAppWithText(sharePayload.whatsappText)) {
+      setShareHint('WhatsApp was requested. If it did not open, use Share or Copy Invite Link. Nothing is sent automatically.');
+      void trackShare('room_shared', 'whatsapp');
+    } else {
+      setShareHint('WhatsApp could not open. Choose another app from Share, or copy the invite.');
+      await invitePeople();
+    }
+  }
+
+  async function openShareTarget(channel: string, url: string) {
+    if (await openShareUrl(url)) {
+      setShareHint('App requested. If it did not open, use Share or Copy Invite Link. Nothing is sent automatically.');
+      void trackShare('room_shared', channel);
+    } else {
+      setShareHint('The app could not open. Use Share or paste the invite into your app.');
+      await copyText('Invite link', sharePayload.inviteUrl);
+    }
   }
 
   async function copyInstagramCaption() {
-    await copyText('Instagram caption', sharePayload.instagramCaption);
-    await trackShare('room_shared', 'instagram');
+    if (!(await copyText('Instagram caption', sharePayload.instagramCaption, false))) return;
+    const opened = await openShareUrl('instagram://app');
+    setShareHint(opened
+      ? 'Caption and invite copied. If Instagram opened, paste into a post or story. Nothing was posted automatically.'
+      : 'Caption and invite copied. Instagram could not open; open it yourself and paste into a post or story.');
+    void trackShare('room_shared', 'instagram');
+  }
+
+  async function copyWeChatInvite() {
+    if (await copyText('Invite link', sharePayload.inviteUrl)) {
+      setShareHint('Invite copied. Open WeChat and paste it into your chat.');
+      void trackShare('room_shared', 'wechat');
+    }
   }
 
   async function openManualWhatsAppInvite() {
@@ -177,8 +207,7 @@ function LoadedRoomCreatedScreen({ navigation, room }: { navigation: Props['navi
       appAlert('Invalid phone number', 'Use digits only with an optional + prefix.');
       return;
     }
-    await trackShare('room_shared', 'phone_manual');
-    await Linking.openURL(buildManualWhatsAppUrl(manualPhone, sharePayload.whatsappText));
+    await openShareTarget('phone_manual', buildManualWhatsAppUrl(manualPhone, sharePayload.whatsappText));
   }
 
   return (
@@ -231,6 +260,8 @@ function LoadedRoomCreatedScreen({ navigation, room }: { navigation: Props['navi
         </View>
       </LinearGradient>
 
+      {shareHint ? <Text accessibilityRole="alert" style={[styles.feedbackCopy, { color: colors.textSecondary }]}>{shareHint}</Text> : null}
+
       {lastCopiedLabel ? (
         <View style={[styles.feedbackBanner, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <Text style={[styles.feedbackTitle, { color: colors.textPrimary }]}>{lastCopiedLabel} copied</Text>
@@ -247,26 +278,43 @@ function LoadedRoomCreatedScreen({ navigation, room }: { navigation: Props['navi
         </Text>
         <View style={styles.shareGrid}>
           <View style={styles.shareCell}>
-            <PrimaryButton label="WhatsApp" onPress={openWhatsAppShare} fullWidth />
+            <PrimaryButton label="Share invite" onPress={invitePeople} fullWidth />
+          </View>
+          <View style={styles.shareCell}>
+            <PrimaryButton label="WhatsApp" onPress={openWhatsAppShare} variant="secondary" fullWidth />
           </View>
           <View style={styles.shareCell}>
             <PrimaryButton label="Preview what friends see" onPress={() => setShowRoomDetails((value) => !value)} variant="secondary" fullWidth />
           </View>
         </View>
-        <TouchableOpacity style={styles.moreToggle} onPress={() => setShowManualShare((value) => !value)}>
+        <TouchableOpacity accessibilityRole="button" accessibilityState={{ expanded: showMoreShare }} style={styles.moreToggle} onPress={() => setShowMoreShare((value) => !value)}>
           <Text style={styles.moreToggleText}>
-            {showManualShare ? 'Hide extra share options' : 'More ways to share'}
+            {showMoreShare ? 'Hide extra share options' : 'More ways to share'}
           </Text>
         </TouchableOpacity>
 
-        {showManualShare ? (
+        {showMoreShare ? (
           <View style={styles.moreShareStack}>
             <View style={styles.shareGrid}>
+              {[
+                { label: 'Telegram', channel: 'telegram', url: sharePayload.telegramUrl },
+                { label: 'SMS', channel: 'sms', url: sharePayload.smsUrl },
+                { label: 'Email', channel: 'email', url: sharePayload.emailUrl },
+                { label: 'X / Twitter', channel: 'twitter', url: sharePayload.twitterUrl },
+                { label: 'Facebook', channel: 'facebook', url: sharePayload.facebookUrl },
+              ].map(({ label, channel, url }) => (
+                <View key={channel} style={styles.shareCell}>
+                  <PrimaryButton label={label} onPress={() => openShareTarget(channel, url)} variant="secondary" fullWidth />
+                </View>
+              ))}
+              <View style={styles.shareCell}>
+                <PrimaryButton label="WeChat · Copy Invite" onPress={copyWeChatInvite} variant="secondary" fullWidth />
+              </View>
               <View style={styles.shareCell}>
                 <PrimaryButton label="Native Share" onPress={invitePeople} variant="secondary" fullWidth />
               </View>
               <View style={styles.shareCell}>
-                <PrimaryButton label="Instagram Caption" onPress={copyInstagramCaption} variant="secondary" fullWidth />
+                <PrimaryButton label="Instagram · Copy Caption" onPress={copyInstagramCaption} variant="secondary" fullWidth />
               </View>
             </View>
             <Text style={[styles.manualShareLabel, { color: colors.textPrimary }]}>Manual WhatsApp invite</Text>
