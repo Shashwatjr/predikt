@@ -1,0 +1,10 @@
+[
+  {
+    "check": "coordinate-like route labels excluded from LiveRoom UI/accessibility",
+    "pass": false
+  },
+  {
+    "check": "coordinate-like route labels excluded from neutral summary",
+    "pass": false
+  }
+]
