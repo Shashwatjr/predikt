@@ -284,6 +284,10 @@ class GoogleMapsProvider implements MapsProvider {
       mode: mapped.value,
       key: apiKey,
     });
+    if (mapped.value === 'driving') {
+      params.set('departure_time', 'now');
+      params.set('traffic_model', 'best_guess');
+    }
 
     // fetchWithRetry gives one automatic retry on a network/timeout blip before we
     // surface the failure and let the chain fall back to a lower-accuracy provider.
@@ -304,6 +308,7 @@ class GoogleMapsProvider implements MapsProvider {
         legs?: Array<{
           distance?: { value?: number };
           duration?: { value?: number; text?: string };
+          duration_in_traffic?: { value?: number; text?: string };
         }>;
       }>;
     };
@@ -324,6 +329,11 @@ class GoogleMapsProvider implements MapsProvider {
     const encodedPolyline = route.overview_polyline?.points ?? '';
     const coordinates = encodedPolyline ? decodeGooglePolyline(encodedPolyline) : buildApproximateGeometry(start, destination).coordinates;
     const warnings = [mapped.warning].filter(Boolean) as string[];
+    const trafficSeconds = leg.duration_in_traffic?.value;
+    const durationSeconds = Math.max(
+      0,
+      Math.round(trafficSeconds ?? leg.duration?.value ?? 0),
+    );
 
     return {
       provider: 'google',
@@ -331,8 +341,11 @@ class GoogleMapsProvider implements MapsProvider {
       travelMode,
       travelModeLabel: MODE_LABELS[travelMode],
       distanceMeters: Math.max(1, Math.round(leg.distance?.value ?? 0)),
-      durationSeconds: Math.max(5 * 60, Math.round(leg.duration?.value ?? 0)),
-      etaLabel: leg.duration?.text ?? `${Math.round((leg.duration?.value ?? 0) / 60)} min`,
+      durationSeconds: Math.max(5 * 60, durationSeconds),
+      etaLabel:
+        leg.duration_in_traffic?.text ??
+        leg.duration?.text ??
+        `${Math.round(durationSeconds / 60)} min`,
       confidenceLevel: warnings.length ? 'medium' : 'high',
       isApproximate: warnings.length > 0,
       warnings,
@@ -350,6 +363,77 @@ class GoogleMapsProvider implements MapsProvider {
       },
     };
   }
+}
+
+export interface GoogleTrafficEta {
+  durationInTrafficSeconds: number;
+  durationSeconds: number;
+  distanceMeters: number;
+}
+
+/**
+ * Billable Google Directions read that prefers duration_in_traffic.
+ * Returns null when no key is configured so callers can skip without counting a call.
+ */
+export async function fetchGoogleDurationInTraffic(
+  config: ConfigService,
+  origin: { latitude: number; longitude: number },
+  destination: { latitude: number; longitude: number },
+  travelModeInput?: string,
+): Promise<GoogleTrafficEta | null> {
+  const apiKey =
+    config.get<string>('GOOGLE_DIRECTIONS_API_KEY')?.trim() ||
+    config.get<string>('GOOGLE_MAPS_API_KEY')?.trim() ||
+    config.get<string>('GOOGLE_PLACES_API_KEY')?.trim();
+  if (!apiKey) return null;
+
+  const travelMode = normalizeTravelMode(travelModeInput);
+  const mapped = providerTravelMode('google', travelMode);
+  const params = new URLSearchParams({
+    origin: `${origin.latitude},${origin.longitude}`,
+    destination: `${destination.latitude},${destination.longitude}`,
+    mode: mapped.value,
+    key: apiKey,
+  });
+  if (mapped.value === 'driving') {
+    params.set('departure_time', 'now');
+    params.set('traffic_model', 'best_guess');
+  }
+
+  const response = await fetchWithRetry(
+    `https://maps.googleapis.com/maps/api/directions/json?${params}`,
+  );
+  if (!response.ok) {
+    throw new Error(`Google Directions HTTP ${response.status}.`);
+  }
+
+  const data = (await response.json()) as {
+    status?: string;
+    error_message?: string;
+    routes?: Array<{
+      legs?: Array<{
+        distance?: { value?: number };
+        duration?: { value?: number };
+        duration_in_traffic?: { value?: number };
+      }>;
+    }>;
+  };
+
+  if (data.status !== 'OK' || !data.routes?.[0]?.legs?.length) {
+    const detail = data.error_message ? ` — ${data.error_message}` : '';
+    throw new Error(`Google Directions returned ${data.status ?? 'UNKNOWN'}${detail}.`);
+  }
+
+  const leg = data.routes[0].legs[0];
+  const durationSeconds = leg.duration?.value;
+  const trafficSeconds = leg.duration_in_traffic?.value ?? durationSeconds;
+  if (trafficSeconds == null || !Number.isFinite(trafficSeconds)) return null;
+
+  return {
+    durationInTrafficSeconds: Math.max(0, Math.round(trafficSeconds)),
+    durationSeconds: Math.max(0, Math.round(durationSeconds ?? trafficSeconds)),
+    distanceMeters: Math.max(0, Math.round(leg.distance?.value ?? 0)),
+  };
 }
 
 class OsrmMapsProvider implements MapsProvider {
