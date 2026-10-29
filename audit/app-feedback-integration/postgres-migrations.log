@@ -28,5 +28,5 @@ migrations/
     └─ migration.sql
   └─ 20260725130000_travel_eta_overhaul/
     └─ migration.sql
-      
+
 All migrations have been successfully applied.
