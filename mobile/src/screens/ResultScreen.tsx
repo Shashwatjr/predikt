@@ -140,7 +140,12 @@ export default function ResultScreen({ navigation, route }: Props) {
   const podiumTop3 = safeData.slice(0, 3);
   const winningRow = winner ?? podiumTop3[0];
   const closureState = initialResult?.closureType ?? room?.journeyStatus;
-  const isNeutralClosure = ['plan_changed', 'cancelled_by_host', 'auto_closed', 'abandoned'].includes(closureState ?? '');
+  // The room record also covers reopening a cancellation without navigation results.
+  const isCancelled = room?.status === 'cancelled' ||
+    [initialResult?.closureType, room?.journeyStatus].some((status) =>
+      ['cancelled', 'cancelled_by_host'].includes(status ?? ''),
+    );
+  const isNeutralClosure = isCancelled || ['plan_changed', 'auto_closed', 'abandoned'].includes(closureState ?? '');
   const categoryKey = room?.category ?? room?.creationMeta?.category ?? room?.templateKey ?? 'arrival_time';
   const categoryLabel = prettyCategory(categoryKey);
   const actualOutcome = formatActualOutcome(initialResult, room);
@@ -404,6 +409,25 @@ export default function ResultScreen({ navigation, route }: Props) {
           count,
         }))
         .sort((a, b) => b.count - a.count);
+
+  if (isCancelled) {
+    return (
+      <WebSideWingLayout rightPlacement="result_side">
+        <ScrollView contentContainerStyle={[styles.container, { backgroundColor: palette.bg }]}>
+          <SectionHeader title="Journey cancelled" subtitle={room?.roomTitle ?? 'My Prediktion'} />
+          <View style={[styles.heroCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Text accessibilityRole="header" style={[styles.heroTitle, { color: colors.textPrimary }]}>
+              This journey was cancelled
+            </Text>
+            <Text style={[styles.heroCopy, { color: colors.textSecondary }]}>
+              There is no arrival result or leaderboard for this journey. Nobody is counted as a loss.
+            </Text>
+          </View>
+          <PrimaryButton label="Back to Home" onPress={() => navigation.navigate('Home')} variant="secondary" icon="🏠" />
+        </ScrollView>
+      </WebSideWingLayout>
+    );
+  }
 
   return (
     <WebSideWingLayout rightPlacement="result_side">
