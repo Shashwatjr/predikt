@@ -4,6 +4,7 @@ import { LocationUpdateDto } from './dto/location-update.dto';
 import { CheckpointUpdateDto } from './dto/checkpoint-update.dto';
 import { LocationPingDto } from './dto/location-ping.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { OptionalJwtAuthGuard } from '../common/guards/optional-jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { User } from '@prisma/client';
 
@@ -43,8 +44,9 @@ export class LiveProgressController {
     return this.liveProgressService.recordLivePing(roomId, dto, user);
   }
 
+  @UseGuards(OptionalJwtAuthGuard)
   @Get('live-state')
-  getLiveState(@Param('roomId') roomId: string) {
-    return this.liveProgressService.getLiveState(roomId);
+  getLiveState(@Param('roomId') roomId: string, @CurrentUser() user: User | null) {
+    return this.liveProgressService.getLiveState(roomId, user);
   }
 }
