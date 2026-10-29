@@ -418,6 +418,17 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
       setLiveState(res.data);
       if (isTerminalJourneyState(res.data?.status, res.data?.journeyStatus)) {
         roomIsTerminal.current = true;
+        const terminalStatus = normalizeRoomStatus(res.data?.status);
+        const terminalJourney = String(res.data?.journeyStatus ?? '');
+        const cancelledTerminal =
+          terminalStatus === 'cancelled' ||
+          ['cancelled', 'auto_closed', 'abandoned', 'plan_changed', 'cancelled_by_host'].includes(terminalJourney);
+        // Completed rooms stay on this screen until the viewer opens the result.
+        // Cancelled rooms leave the live controls behind.
+        if (cancelledTerminal && !autoNavigatedToResult.current) {
+          autoNavigatedToResult.current = true;
+          navigation.navigate('Result', { roomId });
+        }
       }
       if (!res.data.startTime && res.data.defaultStartDelayMinutes) {
         setStartDelayMinutes(res.data.defaultStartDelayMinutes);
@@ -734,9 +745,11 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
       : normStatus === 'predictions_locked'
         ? 'locked'
         : 'open';
-  const isDraw = ['cancelled', 'auto_closed', 'abandoned', 'plan_changed', 'cancelled_by_host'].includes(
-    liveState?.journeyStatus ?? normStatus,
-  );
+  const isDraw =
+    normStatus === 'cancelled' ||
+    ['cancelled', 'auto_closed', 'abandoned', 'plan_changed', 'cancelled_by_host'].includes(
+      liveState?.journeyStatus ?? room?.journeyStatus ?? '',
+    );
   const creatorName = room?.creatorDisplayName ?? room?.creatorHandle ?? room?.creator?.name ?? 'the host';
   // Guest-facing "what do I do now" state: they've locked in; the only remaining
   // question is whether the journey has started.
@@ -805,11 +818,14 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
     isArrivalCategory &&
     trackingCountdownActive &&
     !['completed', 'cancelled'].includes(liveState?.status ?? '');
-  const showArrivalWaitingRoom =
+  // Guest delay window: show the route illustration inline rather than a full-screen
+  // waiting room, so predictions and participants remain visible below it.
+  const guestInDelayWindow =
     !isCreator &&
     isArrivalCategory &&
     !!liveState?.waitingForDelayedStart &&
     !isTerminal;
+  const showArrivalWaitingRoom = false;
 
   const creatorDesktopJourneyBoard =
     isDesktop && isCreator && !isGenericRoom && category !== 'weather_rain' && phase !== 'ended';
@@ -908,46 +924,8 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
     );
   }
 
-  if (showArrivalWaitingRoom) {
-    return (
-      <ScrollView
-        contentContainerStyle={[
-          styles.container,
-          { backgroundColor: palette.bg, maxWidth: layout.maxContentWidth, alignSelf: 'center', width: '100%' },
-        ]}
-      >
-        <ArrivalWaitingRoom
-          title={room?.roomTitle ?? 'Arrival room'}
-          statusLabel={liveState?.journeyStatus ? String(liveState.journeyStatus).replace(/_/g, ' ') : 'Preparing your journey'}
-          targetTime={waitingTargetTime}
-          startLabel={firstPlace(room?.startingPointLabel, room?.route?.startLabel, room?.routeSummary?.startLabel) ?? 'Start'}
-          destinationLabel={firstPlace(room?.destinationLabel, room?.route?.destinationLabel, room?.routeSummary?.destinationLabel) ?? 'Destination'}
-          expectedDurationMinutes={(() => {
-            const seconds = finiteDurationSeconds(
-              liveState?.expectedDurationSeconds,
-              room?.expectedDurationSeconds,
-              room?.route?.estimatedDurationSeconds,
-              room?.routeSummary?.estimatedDurationSeconds,
-            );
-            return seconds == null ? null : Math.round(seconds / 60);
-          })()}
-          modeLabel="Car"
-          modeIcon="🚗"
-          safetyMessage={liveState?.safetyMessage ?? 'Movement is delayed for safety.'}
-          cards={waitingCards as any}
-          statusMessage={liveState?.lifecycleMessage ?? 'Preparing your journey...'}
-          onHowItWorks={() => navigation.navigate('Help')}
-          onGhostModeDetails={() => navigation.navigate('Help')}
-          onEnableNotifications={() =>
-            appAlert(
-              'Notifications',
-              "You're all set — we'll surface the reveal here the moment tracking begins.",
-            )
-          }
-        />
-      </ScrollView>
-    );
-  }
+  // showArrivalWaitingRoom is always false — the full-screen waiting room is replaced
+  // by an inline route illustration with a delay countdown (see guestInDelayWindow below).
 
   const startPlace = firstPlace(
     room?.startingPointLabel,
@@ -1250,16 +1228,25 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
 
       {phase === 'ended' ? (
         <View style={styles.terminalBanner}>
-          <Text style={styles.terminalTitle}>{isDraw ? 'Result Ready' : 'Result Ready'}</Text>
+          <Text style={styles.terminalTitle}>
+            {isDraw
+              ? (['plan_changed'].includes(liveState?.journeyStatus ?? '') ? 'Plans changed' : 'Journey cancelled')
+              : 'Result Ready'}
+          </Text>
           <Text style={styles.terminalCopy}>
             {isDraw
-              ? 'This room closed neutrally — nobody counted as a loss. Here’s the recap.'
+              ? 'No result was scored. Nobody is counted as a loss.'
               : 'Predictions are in and the result is ready. See who made the closest guess.'}
           </Text>
+          {isDraw ? (
+            <Text style={[styles.terminalCopy, { marginTop: 4 }]}>
+              {isCreator ? 'You cancelled this journey.' : `The host cancelled this journey.`}
+            </Text>
+          ) : null}
           <PrimaryButton
-            label="View Result"
+            label={isDraw ? 'View Summary' : 'View Result'}
             onPress={() => navigation.navigate('Result', { roomId })}
-            icon="🏆"
+            icon={isDraw ? '📋' : '🏆'}
           />
         </View>
       ) : !creatorDesktopJourneyBoard ? (
@@ -1788,7 +1775,7 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
           </View>
           )}
         </View>
-      ) : (isGenericRoom ? safePredictions.length > 0 : !!liveState && (safePredictions.length || anyCheckpointAvailable)) ? (
+      ) : !isDraw && (isGenericRoom ? safePredictions.length > 0 : !!liveState && (safePredictions.length || anyCheckpointAvailable)) ? (
         <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           {isGenericRoom && genericSummaryRows.length > 0 ? (
             <View style={styles.genericSummaryWrap}>
@@ -1890,21 +1877,48 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
         </View>
       ) : null}
 
+      {/* Guest delay window: route illustration at 0% with countdown */}
+      {!creatorDesktopJourneyBoard && !isGenericRoom && guestInDelayWindow ? (
+        <>
+          <View style={[styles.safetyDelayBanner]}>
+            <Text style={styles.safetyDelayText}>
+              Journey live • Location shown with a 3-minute safety delay
+            </Text>
+            {viewerCountdownSeconds != null && viewerCountdownSeconds > 0 ? (
+              <Text style={styles.safetyDelayCountdown}>
+                Live progress available in {Math.floor(viewerCountdownSeconds / 60)}:{String(viewerCountdownSeconds % 60).padStart(2, '0')}
+              </Text>
+            ) : null}
+          </View>
+          <ArrivalJourneyViz
+            progressPercentage={0}
+            etaMinutes={liveState?.etaMinutes}
+            status="started"
+            delayedCar
+            startLabel={startPlace ?? 'Start'}
+            destinationLabel={destinationPlace ?? 'Destination'}
+            safetyMessage={liveState?.safetyMessage ?? 'Location shown with a safety delay.'}
+            primaryColor={categoryTheme.primaryColor}
+            secondaryColor={categoryTheme.secondaryColor}
+          />
+        </>
+      ) : null}
+
       {/* Live visualization — SVG only, never a map */}
-      {!creatorDesktopJourneyBoard && !isGenericRoom && liveProgressPending ? (
+      {!creatorDesktopJourneyBoard && !isGenericRoom && !guestInDelayWindow && liveProgressPending ? (
         <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <Text style={[styles.creatorTitle, { color: colors.textPrimary }]}>🚦 {getTravelStageFromProgress(20, 'creator')}</Text>
           <Text style={[styles.startDelayCopy, { color: colors.textSecondary, marginBottom: 0 }]}>
             Live progress will appear here shortly — hang tight. Guests see delayed checkpoint updates, not a live trail.
           </Text>
         </View>
-      ) : !creatorDesktopJourneyBoard && !isGenericRoom && liveState && category === 'food_eta' ? (
+      ) : !creatorDesktopJourneyBoard && !isGenericRoom && !guestInDelayWindow && liveState && category === 'food_eta' ? (
         <FoodEtaViz
           progressPercentage={pct}
           etaMinutes={liveState.etaMinutes}
           status={liveState.journeyStatus ?? liveState.status}
         />
-      ) : !creatorDesktopJourneyBoard && !isGenericRoom && liveState && category !== 'weather_rain' ? (
+      ) : !creatorDesktopJourneyBoard && !isGenericRoom && !guestInDelayWindow && liveState && category !== 'weather_rain' ? (
         <ArrivalJourneyViz
           progressPercentage={pct}
           etaMinutes={liveState.etaMinutes}
@@ -1915,14 +1929,14 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
           primaryColor={categoryTheme.primaryColor}
           secondaryColor={categoryTheme.secondaryColor}
         />
-      ) : !creatorDesktopJourneyBoard && !isGenericRoom ? (
+      ) : !creatorDesktopJourneyBoard && !isGenericRoom && !guestInDelayWindow ? (
         <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <Text style={[styles.waiting, { color: colors.textMuted }]}>Waiting for live updates…</Text>
         </View>
       ) : null}
 
       {/* Creator controls */}
-      {isCreator && room?.answerType === 'multiple_choice' ? (
+      {isCreator && !isDraw && room?.answerType === 'multiple_choice' ? (
         <View style={[styles.creatorCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <LinearGradient colors={[colors.purple + '30', 'transparent']} style={styles.creatorHeader}>
             <Text style={[styles.creatorTitle, { color: colors.textPrimary }]}>{category === 'open_prediction' ? 'Host Confirms Result' : 'Declare Result'}</Text>
@@ -1948,7 +1962,7 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
         </View>
       ) : null}
 
-      {isCreator && room?.answerType !== 'multiple_choice' && !creatorDesktopJourneyBoard ? (
+      {isCreator && room?.answerType !== 'multiple_choice' && !creatorDesktopJourneyBoard && !isDraw ? (
         <View style={[styles.creatorCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <LinearGradient colors={[colors.purple + '30', 'transparent']} style={styles.creatorHeader}>
             <Text style={[styles.creatorTitle, { color: colors.textPrimary }]}>⚙️  Host tools</Text>
@@ -1976,7 +1990,7 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
         </View>
       ) : null}
 
-      {isTerminal ? (
+      {isTerminal && !isDraw ? (
         <PrimaryButton
           label="View Result"
           onPress={() => navigation.navigate('Result', { roomId })}
@@ -1990,6 +2004,18 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
 
 const styles = StyleSheet.create({
   container: { flexGrow: 1, width: '100%', maxWidth: 880, alignSelf: 'center', padding: 20, paddingTop: 28 },
+  safetyDelayBanner: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(139,92,246,0.35)',
+    backgroundColor: 'rgba(46,16,101,0.5)',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    gap: 4,
+    marginBottom: 8,
+  },
+  safetyDelayText: { color: '#C4B5FD', fontSize: 13, fontWeight: '700' },
+  safetyDelayCountdown: { color: '#A78BFA', fontSize: 12, fontWeight: '600' },
   myPrediktionHeader: {
     flexDirection: 'row',
     alignItems: 'center',

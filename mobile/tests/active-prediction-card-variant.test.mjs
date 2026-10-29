@@ -56,7 +56,7 @@ test('Journey Home limits cards, uses friendly section naming, and shows view al
   const homeSource = read('src/screens/HomeScreen.tsx');
 
   assert.match(homeSource, /const HOME_JOURNEY_LIMIT = 3;/);
-  assert.match(homeSource, /title=\{showAllJourneys \? 'My journeys' : 'Recent journeys'\}/);
+  assert.match(homeSource, /'Your journeys'/);
   assert.match(homeSource, /journeys\.length > HOME_JOURNEY_LIMIT/);
 });
 

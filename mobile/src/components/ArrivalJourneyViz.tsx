@@ -62,6 +62,8 @@ type Props = {
   secondaryColor?: string;
   /** Nest inside a parent card — skips outer chrome and status copy. */
   embedded?: boolean;
+  /** Guest safety-delay marker: a red car held near the start until the first delayed update. */
+  delayedCar?: boolean;
 };
 
 export default function ArrivalJourneyViz({
@@ -74,6 +76,7 @@ export default function ArrivalJourneyViz({
   primaryColor = '#A855F7',
   secondaryColor = '#3B82F6',
   embedded = false,
+  delayedCar = false,
 }: Props) {
   const clamped = Math.max(0, Math.min(100, progressPercentage ?? 0));
   // Keep the car slightly ahead of the start pin when tracking has begun but
@@ -230,9 +233,18 @@ export default function ArrivalJourneyViz({
           <Circle cx={dot.x} cy={dot.y} r={28} fill="#EF4444" opacity={0.12} />
           <Circle cx={dot.x} cy={dot.y} r={17} fill="#EF4444" opacity={0.2} />
           <G transform={`translate(${dot.x}, ${dot.y}) rotate(${angle})`}>
-            <SvgText x={0} y={6} fontSize="24" textAnchor="middle">
-              🚗
-            </SvgText>
+            {delayedCar ? (
+              <>
+                <Rect x={-18} y={-7} width={32} height={13} rx={4} fill="#EF4444" />
+                <Rect x={-4} y={-14} width={16} height={9} rx={3} fill="#EF4444" />
+                <Circle cx={-8} cy={7} r={3.4} fill="#7F1D1D" />
+                <Circle cx={10} cy={7} r={3.4} fill="#7F1D1D" />
+              </>
+            ) : (
+              <SvgText x={0} y={6} fontSize="24" textAnchor="middle">
+                🚗
+              </SvgText>
+            )}
           </G>
         </Svg>
 

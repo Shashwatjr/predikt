@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -100,6 +101,8 @@ export default function HomeScreen({ navigation, route }: Props) {
   const [activeTab, setActiveTab] = useState<NavTab>('Home');
   const [sidebarItem, setSidebarItem] = useState<JourneySidebarItem>('Home');
   const [showAllJourneys, setShowAllJourneys] = useState(false);
+  const [historyTab, setHistoryTab] = useState<'active' | 'last3'>('active');
+  const [historyFilter, setHistoryFilter] = useState<'all' | 'completed' | 'cancelled'>('all');
   const [todaysTea, setTodaysTea] = useState<TodaysTea | null>(null);
   const [teaVisible, setTeaVisible] = useState(false);
   const [rewards, setRewards] = useState<RewardsMe | null>(null);
@@ -263,12 +266,46 @@ export default function HomeScreen({ navigation, route }: Props) {
     };
   }, [teaVisible, todaysTea]);
 
-  const journeys = useMemo(() => {
+  const TERMINAL_STATUSES = new Set(['cancelled', 'result_ready', 'completed']);
+  const TERMINAL_JOURNEY_STATUSES = new Set([
+    'completed', 'arrived_verified', 'auto_closed', 'abandoned', 'plan_changed', 'cancelled_by_host',
+  ]);
+
+  function isClosedJourney(entry: any) {
+    return (
+      TERMINAL_STATUSES.has(entry.status) ||
+      TERMINAL_JOURNEY_STATUSES.has(entry.journeyStatus ?? '')
+    );
+  }
+
+  function isCancelledJourney(entry: any) {
+    return (
+      entry.status === 'cancelled' ||
+      ['auto_closed', 'abandoned', 'plan_changed', 'cancelled_by_host'].includes(entry.journeyStatus ?? '')
+    );
+  }
+
+  const allJourneys = useMemo(() => {
     return [...activePredictions].sort((left, right) => {
       if (left.pinned !== right.pinned) return left.pinned ? -1 : 1;
       return journeySortTime(right) - journeySortTime(left);
     });
   }, [activePredictions]);
+
+  const activeJourneys = useMemo(() => allJourneys.filter((e) => !isClosedJourney(e)), [allJourneys]);
+
+  const last3Journeys = useMemo(() => {
+    const closed = allJourneys.filter(isClosedJourney);
+    const filtered =
+      historyFilter === 'completed'
+        ? closed.filter((e) => !isCancelledJourney(e))
+        : historyFilter === 'cancelled'
+          ? closed.filter(isCancelledJourney)
+          : closed;
+    return filtered.sort((a, b) => journeySortTime(b) - journeySortTime(a)).slice(0, 3);
+  }, [allJourneys, historyFilter]);
+
+  const journeys = historyTab === 'last3' ? last3Journeys : activeJourneys;
 
   const visibleJourneys = useMemo(() => {
     if (showAllJourneys) return journeys;
@@ -456,9 +493,50 @@ export default function HomeScreen({ navigation, route }: Props) {
     />
   ) : null;
 
+  const journeyTabBar = showDemoHub ? (
+    <View style={journeyHistoryStyles.tabBar}>
+      <View style={journeyHistoryStyles.tabRow}>
+        {(['active', 'last3'] as const).map((tab) => (
+          <Pressable
+            key={tab}
+            onPress={() => { setHistoryTab(tab); setShowAllJourneys(false); }}
+            style={[
+              journeyHistoryStyles.tab,
+              historyTab === tab && journeyHistoryStyles.tabActive,
+            ]}
+            accessibilityRole="tab"
+          >
+            <Text style={[journeyHistoryStyles.tabLabel, historyTab === tab && journeyHistoryStyles.tabLabelActive]}>
+              {tab === 'active' ? 'Active' : 'Last 3'}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+      {historyTab === 'last3' ? (
+        <View style={journeyHistoryStyles.filterRow}>
+          {(['all', 'completed', 'cancelled'] as const).map((f) => (
+            <Pressable
+              key={f}
+              onPress={() => setHistoryFilter(f)}
+              style={[
+                journeyHistoryStyles.filterChip,
+                historyFilter === f && journeyHistoryStyles.filterChipActive,
+              ]}
+              accessibilityRole="radio"
+            >
+              <Text style={[journeyHistoryStyles.filterLabel, historyFilter === f && journeyHistoryStyles.filterLabelActive]}>
+                {f.charAt(0).toUpperCase() + f.slice(1)}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
+    </View>
+  ) : null;
+
   const journeyList = showDemoHub ? (
     <JourneyListSection
-      title={showAllJourneys ? 'My journeys' : 'Recent journeys'}
+      title={showAllJourneys ? 'Your journeys' : 'Your journeys'}
       journeys={visibleJourneys}
       cardVariant="journeyHome"
       onOpen={(journey) => openRoom({ roomId: journey.roomId, rawRoom: journey })}
@@ -563,6 +641,7 @@ export default function HomeScreen({ navigation, route }: Props) {
             />
 
             {demoBanner}
+            {journeyTabBar}
             {journeyList}
           </ScrollView>
         </View>
@@ -601,6 +680,7 @@ export default function HomeScreen({ navigation, route }: Props) {
 
 
         {demoBanner}
+        {journeyTabBar}
         {journeyList}
       </ScrollView>
 
@@ -668,4 +748,42 @@ const styles = StyleSheet.create({
   },
   desktopAuraIcon: { fontSize: 13 },
   desktopAuraValue: { color: journeyPalette.textPrimary, fontSize: 13, fontWeight: '800' },
+});
+
+export const journeyHistoryStyles = StyleSheet.create({
+  tabBar: { gap: 10 },
+  tabRow: {
+    flexDirection: 'row',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: journeyPalette.border,
+    backgroundColor: journeyPalette.surface,
+    overflow: 'hidden',
+    alignSelf: 'flex-start',
+  },
+  tab: {
+    paddingHorizontal: 18,
+    paddingVertical: 8,
+  },
+  tabActive: { backgroundColor: 'rgba(139,92,246,0.22)' },
+  tabLabel: { color: journeyPalette.textSecondary, fontSize: 14, fontWeight: '700' },
+  tabLabelActive: { color: journeyPalette.textPrimary },
+  filterRow: {
+    flexDirection: 'row',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  filterChip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: journeyPalette.border,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+  },
+  filterChipActive: {
+    borderColor: 'rgba(139,92,246,0.6)',
+    backgroundColor: 'rgba(139,92,246,0.14)',
+  },
+  filterLabel: { color: journeyPalette.textSecondary, fontSize: 13, fontWeight: '600' },
+  filterLabelActive: { color: journeyPalette.textPrimary, fontWeight: '700' },
 });
