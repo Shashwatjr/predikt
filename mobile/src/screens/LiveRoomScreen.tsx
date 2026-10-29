@@ -13,6 +13,7 @@ import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import api, { getApiErrorMessage } from '../services/api';
 import appAlert from '../utils/appAlert';
+import CountdownRing from '../components/CountdownRing';
 import { getCategoryTheme } from '../config/categoryTheme';
 import LiveStatusCard from '../components/LiveStatusCard';
 import CoachMark from '../components/CoachMark';
@@ -106,6 +107,7 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
   const [ending, setEnding] = useState(false);
   const [confirmingArrival, setConfirmingArrival] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [starting, setStarting] = useState(false);
   const [guessSummary, setGuessSummary] = useState<string | null>(null);
   const [predictions, setPredictions] = useState<RoomPredictionEntry[]>([]);
   const [checkpointBoards, setCheckpointBoards] = useState<Record<number, CheckpointBoard | undefined>>({});
@@ -505,11 +507,40 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
     }
   }
 
+  function haversineMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
+    const R = 6371000;
+    const toRad = (d: number) => (d * Math.PI) / 180;
+    const dLat = toRad(lat2 - lat1);
+    const dLng = toRad(lng2 - lng1);
+    const a =
+      Math.sin(dLat / 2) ** 2 +
+      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
+
   async function handleStartRoom() {
     setStarting(true);
     try {
       const permission = await Location.requestForegroundPermissionsAsync();
       const coords = permission.status === 'granted' ? await Location.getCurrentPositionAsync({}) : null;
+
+      if (coords && room?.startingPointLat != null && room?.startingPointLng != null) {
+        const dist = haversineMeters(
+          coords.coords.latitude,
+          coords.coords.longitude,
+          room.startingPointLat,
+          room.startingPointLng,
+        );
+        if (dist > 1000) {
+          appAlert(
+            'Too far from start',
+            'You appear to be more than 1 km from your declared start point. Move closer or update your start location to begin.',
+          );
+          setStarting(false);
+          return;
+        }
+      }
+
       await api.post(`/rooms/${roomId}/journey/start`, {
         startDelayMinutes,
         location: coords
@@ -518,7 +549,15 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
       });
       fetchLiveState();
     } catch (err: unknown) {
-      appAlert('Start failed', getApiErrorMessage(err, 'Could not start this room.'));
+      const axiosErr = err as any;
+      if (axiosErr?.response?.status === 422 && axiosErr?.response?.data?.error === 'TOO_FAR_FROM_START') {
+        appAlert(
+          'Too far from start',
+          'You appear to be more than 1 km from your declared start point. Move closer or update your start location to begin.',
+        );
+      } else {
+        appAlert('Start failed', getApiErrorMessage(err, 'Could not start this room.'));
+      }
     } finally {
       setStarting(false);
     }
@@ -765,7 +804,11 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
     isArrivalCategory &&
     trackingCountdownActive &&
     !['completed', 'cancelled'].includes(liveState?.status ?? '');
-  const showArrivalWaitingRoom = false;
+  const showArrivalWaitingRoom =
+    !isCreator &&
+    isArrivalCategory &&
+    !!liveState?.waitingForDelayedStart &&
+    !isTerminal;
 
   const creatorDesktopJourneyBoard =
     isDesktop && isCreator && !isGenericRoom && category !== 'weather_rain' && phase !== 'ended';
@@ -917,6 +960,7 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
     !isGenericRoom &&
     category !== 'weather_rain' &&
     phase !== 'started' &&
+    phase !== 'ended' &&
     liveState.status !== 'live';
   const participantRows = safePredictions
     .filter((entry) => entry.status !== 'revoked')
@@ -1714,16 +1758,19 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
         </View>
       ) : null}
 
-      {isCreator && liveState && !isGenericRoom && category !== 'weather_rain' && !creatorDesktopJourneyBoard && (secondsUntilStart > 0 || liveState.status !== 'live') ? (
+      {isCreator && liveState && !isGenericRoom && category !== 'weather_rain' && !creatorDesktopJourneyBoard && !isTerminal && (secondsUntilStart > 0 || liveState.status !== 'live') ? (
         <View style={[styles.creatorCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <LinearGradient colors={[colors.purple + '30', 'transparent']} style={styles.creatorHeader}>
             <Text style={[styles.creatorTitle, { color: colors.textPrimary }]}>Start Journey</Text>
           </LinearGradient>
           <View style={styles.creatorBody}>
             {liveState.status === 'live' && secondsUntilStart > 0 ? (
-              <Text style={[styles.startDelayCopy, { color: colors.textSecondary }]}>
-                {isCreator ? `Journey timer starts in ${minutesUntilStart} min.` : `Friends will see this flip live in about ${minutesUntilStart} min.`}
-              </Text>
+              <View style={{ alignItems: 'center', marginBottom: 12 }}>
+                <CountdownRing
+                  seconds={secondsUntilStart}
+                  label={isCreator ? 'until tracking is visible to guests' : 'until friends see the journey'}
+                />
+              </View>
             ) : (
               <>
                 <Text style={[styles.startDelayCopy, { color: colors.textSecondary }]}>
@@ -1754,15 +1801,16 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
         </View>
       ) : null}
 
-      {!isCreator && liveState?.waitingForDelayedStart && trackingCountdownLabel && !suppressGuestStartCountdown && !isGenericRoom && category !== 'weather_rain' ? (
+      {!isCreator && liveState?.waitingForDelayedStart && viewerCountdownSeconds != null && !suppressGuestStartCountdown && !isGenericRoom && category !== 'weather_rain' ? (
         <View style={[styles.creatorCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <LinearGradient colors={[colors.purple + '30', 'transparent']} style={styles.creatorHeader}>
             <Text style={[styles.creatorTitle, { color: colors.textPrimary }]}>Journey starting soon</Text>
           </LinearGradient>
-          <View style={styles.creatorBody}>
-            <Text style={[styles.startDelayCopy, { color: colors.textSecondary }]}>
-              {trackingCountdownLabel}
-            </Text>
+          <View style={[styles.creatorBody, { alignItems: 'center' }]}>
+            <CountdownRing
+              seconds={viewerCountdownSeconds}
+              label="until tracking goes live"
+            />
           </View>
         </View>
       ) : null}
