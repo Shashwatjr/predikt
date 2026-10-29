@@ -25,6 +25,7 @@ describe('RoomsService memberships', () => {
       roomMembership: { upsert: jest.fn() },
       user: { update: jest.fn().mockResolvedValue({ creditBalance: 15 }) },
       creditLedger: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },
+      $queryRaw: jest.fn().mockResolvedValue([]),
       $transaction: jest.fn(async (callback: any) => callback(prisma)),
     } as any;
     const service = new RoomsService(prisma, auditService, notificationsService, { grant: jest.fn().mockResolvedValue({ applied: true }) } as any);
@@ -67,6 +68,7 @@ describe('RoomsService memberships', () => {
       roomMembership: { upsert: jest.fn() },
       user: { update: jest.fn().mockResolvedValue({ creditBalance: 15 }) },
       creditLedger: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },
+      $queryRaw: jest.fn().mockResolvedValue([]),
       $transaction: jest.fn(async (callback: any) => callback(prisma)),
     } as any;
     const service = new RoomsService(prisma, auditService, notificationsService, { grant: jest.fn().mockResolvedValue({ applied: true }) } as any);
@@ -106,6 +108,7 @@ describe('RoomsService memberships', () => {
       roomMembership: { upsert: jest.fn() },
       user: { update: jest.fn().mockResolvedValue({ creditBalance: 15 }) },
       creditLedger: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },
+      $queryRaw: jest.fn().mockResolvedValue([]),
       $transaction: jest.fn(async (callback: any) => callback(prisma)),
     } as any;
     const service = new RoomsService(prisma, auditService, notificationsService, { grant: jest.fn().mockResolvedValue({ applied: true }) } as any);

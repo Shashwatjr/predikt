@@ -569,11 +569,13 @@ describe('Security And Enterprise Hardening (integration)', () => {
     });
     expect(resultDeclaredLedgerCount).toBe(1);
 
+    // A completed room end resumes finalization (756bd2c) instead of rejecting.
+    // The credit assertion below is the duplicate-reward guard for that retry.
     await request(app.getHttpServer())
       .post(`/rooms/${firstRoomId}/end`)
       .set('Authorization', `Bearer ${creatorAuth.accessToken}`)
       .send({})
-      .expect(400);
+      .expect(201);
 
     const resultDeclaredLedgerCountAfterRetry = await prisma.creditLedger.count({
       where: { userId: creatorAuth.user.userId, eventType: 'result_declared', sourceId: firstRoomId },

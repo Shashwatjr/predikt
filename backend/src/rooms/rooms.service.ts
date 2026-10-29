@@ -9,6 +9,7 @@ import {
 import { CreateRoomDto } from './dto/create-room.dto';
 import {
   MovementAvatarType,
+  Prisma,
   RoomCategory,
   SocialMode,
   User,
@@ -698,6 +699,10 @@ export class RoomsService {
         where: { userId: creator.userId },
         data: { roomsCreatedCount: { increment: 1 } },
       });
+      // The user-row update above is held until commit, then the advisory lock
+      // serializes the per-user check. A failed room insert never reaches here,
+      // so a rejected create cannot write a credit.
+      await this.grantFirstRoomCredit(tx, creator.userId, room.roomId);
     });
 
     await this.auditService.log({
@@ -1428,6 +1433,43 @@ export class RoomsService {
     }
 
     return { success: true };
+  }
+
+  /**
+   * Credits +15 once per user for the first successfully created room.
+   * Idempotency key `first_room:${userId}` plus the transaction lock make
+   * retries and concurrent creates share one ledger row. Balance and ledger
+   * commit together; a unique-key conflict rolls this transaction back and
+   * leaves the prior grant in place.
+   */
+  private async grantFirstRoomCredit(
+    tx: Prisma.TransactionClient,
+    userId: string,
+    roomId: string,
+  ) {
+    const idempotencyKey = `first_room:${userId}`;
+    await tx.$queryRaw`SELECT 1 FROM (SELECT pg_advisory_xact_lock(hashtextextended(${idempotencyKey}, 0))) AS result`;
+    const existing = await tx.creditLedger.findUnique({
+      where: { idempotencyKey },
+    });
+    if (existing) return;
+
+    const updatedUser = await tx.user.update({
+      where: { userId },
+      data: { creditBalance: { increment: 15 } },
+    });
+    await tx.creditLedger.create({
+      data: {
+        userId,
+        eventType: 'first_room',
+        delta: 15,
+        balanceAfter: updatedUser.creditBalance,
+        sourceId: roomId,
+        sourceType: 'room',
+        idempotencyKey,
+        metadata: { label: 'First room credit bonus' },
+      },
+    });
   }
 
   private async enforceContentPolicy(fields: Record<string, unknown>, userId: string) {
