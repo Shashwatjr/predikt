@@ -33,7 +33,7 @@ function getWebBaseUrl() {
   if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.origin) {
     return window.location.origin.replace(/\/+$/, '');
   }
-  return Platform.OS === 'web' ? CANONICAL_WEB_BASE_URL : 'http://localhost:8081';
+  return CANONICAL_WEB_BASE_URL;
 }
 
 export function buildInviteUrl(inviteCode: string, forwardedBy?: string | null) {
@@ -98,16 +98,16 @@ export function buildSharePayload(room: SafePreview, forwardedBy?: string | null
   const title = room.roomTitle ?? room.title ?? 'My Prediktion room';
   const inviteUrl = buildInviteUrl(inviteCode, forwardedBy);
   const lockTime = formatLockTime(room);
-  const body = [
+  const message = [
     `Join my room on My Prediktion: ${title}`,
     safeChallengeLine(room),
     category === 'open_prediction' ? 'Best call earns Gems. Late heat is pure Rizz.' : 'Closest guess wins Aura.',
     `Room code: ${inviteCode}`,
     lockTime ? `Lock time: ${lockTime}` : null,
-    `Open: ${inviteUrl}`,
   ]
     .filter(Boolean)
     .join('\n');
+  const body = `${message}\nOpen: ${inviteUrl}`;
 
   return {
     inviteUrl,
@@ -116,26 +116,22 @@ export function buildSharePayload(room: SafePreview, forwardedBy?: string | null
     copyText: body,
     instagramCaption: body,
     whatsappText: body,
-    whatsappUrl: `https://api.whatsapp.com/send?text=${encodeURIComponent(body)}`,
+    whatsappUrl: `https://wa.me/?text=${encodeURIComponent(body)}`,
+    telegramUrl: `https://t.me/share/url?url=${encodeURIComponent(inviteUrl)}&text=${encodeURIComponent(message)}`,
+    twitterUrl: `https://twitter.com/intent/tweet?text=${encodeURIComponent(message)}&url=${encodeURIComponent(inviteUrl)}`,
+    facebookUrl: `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(inviteUrl)}`,
+    smsUrl: `sms:?body=${encodeURIComponent(body)}`,
+    emailUrl: `mailto:?subject=${encodeURIComponent(`Join ${title} on My Prediktion`)}&body=${encodeURIComponent(body)}`,
   };
 }
 
 export async function openWhatsAppWithText(text: string): Promise<boolean> {
-  const encoded = encodeURIComponent(text);
-  const candidates = [
-    `https://api.whatsapp.com/send?text=${encoded}`,
-    `https://wa.me/?text=${encoded}`,
-    `whatsapp://send?text=${encoded}`,
-  ];
-  for (const url of candidates) {
-    try {
-      await Linking.openURL(url);
-      return true;
-    } catch {
-      // try the next scheme — iPhone Safari is picky about wa.me without a number
-    }
+  try {
+    await Linking.openURL(`https://wa.me/?text=${encodeURIComponent(text)}`);
+    return true;
+  } catch {
+    return false;
   }
-  return false;
 }
 
 export function buildManualWhatsAppUrl(phoneNumber: string, text: string) {
