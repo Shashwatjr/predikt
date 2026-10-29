@@ -1,4 +1,6 @@
 import { LiveProgressService } from './live-progress.service';
+import { featureFlags } from '../config/feature-flags';
+import { OptionalJwtAuthGuard } from '../common/guards/optional-jwt-auth.guard';
 
 function mockLiveStatePrisma(room: Record<string, unknown>, snapshots: unknown[] = []) {
   return {
@@ -157,6 +159,105 @@ describe('LiveProgressService', () => {
     });
     expect(JSON.stringify(result)).not.toMatch(/"lat"|"lng"|rawLat|rawLng|latitude|longitude/);
   });
+
+  function delayedRoom(overrides: Record<string, unknown> = {}) {
+    return {
+      roomId: 'room-delay',
+      creatorUserId: 'creator-1',
+      status: 'live',
+      safetyDelayMinutes: 10,
+      locationDisplayMode: 'approximate',
+      movementAvatarType: 'car',
+      movementAvatarUrl: null,
+      isSponsored: false,
+      ...overrides,
+    };
+  }
+
+  function etaSnapshot(capturedAt: Date, overrides: Record<string, unknown> = {}) {
+    return {
+      checkpointPercent: 40,
+      etaSeconds: 1500,
+      remainingMeters: 4200,
+      source: 'google',
+      capturedAt,
+      ...overrides,
+    };
+  }
+
+  it('shows a fresh checkpoint only to the creator during the safety delay', async () => {
+    const fresh = new Date();
+    const prisma = mockLiveStatePrisma(delayedRoom(), [etaSnapshot(fresh)]);
+    const service = new LiveProgressService(
+      prisma,
+      { evaluateRoomLifecycle: jest.fn() } as any,
+      { get: jest.fn() } as any,
+      { notifyRoomMembers: jest.fn() } as any,
+    );
+
+    const creator = await service.getLiveState('room-delay', { userId: 'creator-1' });
+    const guest = await service.getLiveState('room-delay', { userId: 'guest-1' });
+    const anonymous = await service.getLiveState('room-delay', null);
+
+    expect(creator.checkpointEtas['40']).toMatchObject({
+      checkpoint: 40,
+      etaSeconds: 1500,
+      etaMinutes: 25,
+      remainingMeters: 4200,
+      source: 'google',
+      capturedAt: fresh.toISOString(),
+    });
+    expect(creator.etaMinutes).toBe(25);
+    expect(guest.checkpointEtas).toEqual({});
+    expect(guest.etaMinutes).toBeNull();
+    expect(anonymous.checkpointEtas).toEqual({});
+    expect(anonymous.etaMinutes).toBeNull();
+    for (const result of [creator, guest, anonymous]) {
+      expect(result).not.toHaveProperty('creatorUserId');
+      expect(JSON.stringify(result)).not.toContain('creator-1');
+      expect(JSON.stringify(result)).not.toMatch(/"lat"|"lng"|rawLat|rawLng|latitude|longitude/);
+    }
+    expect(prisma.roomMilestoneSnapshot.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { roomId: 'room-delay' },
+      }),
+    );
+    expect(prisma.roomMilestoneSnapshot.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          roomId: 'room-delay',
+          capturedAt: { lt: expect.any(Date) },
+        },
+      }),
+    );
+  });
+
+  it('shows guests a checkpoint only after it is older than the safety delay', async () => {
+    const visible = new Date(Date.now() - 11 * 60 * 1000);
+    const stillFresh = new Date();
+    const prisma = mockLiveStatePrisma(delayedRoom(), [
+      etaSnapshot(visible, { checkpointPercent: 20, etaSeconds: 2400, remainingMeters: 8000 }),
+      etaSnapshot(stillFresh, { checkpointPercent: 40 }),
+    ]);
+    const service = new LiveProgressService(
+      prisma,
+      { evaluateRoomLifecycle: jest.fn() } as any,
+      { get: jest.fn() } as any,
+      { notifyRoomMembers: jest.fn() } as any,
+    );
+
+    const guest = await service.getLiveState('room-delay', { userId: 'guest-1' });
+    expect(guest.checkpointEtas['20']).toMatchObject({
+      checkpoint: 20,
+      etaSeconds: 2400,
+      remainingMeters: 8000,
+      source: 'google',
+      capturedAt: visible.toISOString(),
+    });
+    expect(guest.checkpointEtas['40']).toBeUndefined();
+    expect(JSON.stringify(guest)).not.toMatch(/"lat"|"lng"|rawLat|rawLng|latitude|longitude/);
+    expect(guest).not.toHaveProperty('creatorUserId');
+  });
 });
 
 describe('LiveProgressService milestone ETA worker', () => {
@@ -178,6 +279,8 @@ describe('LiveProgressService milestone ETA worker', () => {
     const roomCheckpoint = { upsert: jest.fn().mockResolvedValue({}) };
     const roomMilestoneSnapshot = {
       findMany: jest.fn().mockResolvedValue(existingSnapshots),
+      findUnique: jest.fn().mockResolvedValue(null),
+      create: jest.fn().mockResolvedValue({}),
       upsert: jest.fn().mockResolvedValue({}),
       count: jest.fn().mockResolvedValue(
         existingSnapshots.filter((s) => s.source && !['derived', 'fallback', 'arrived'].includes(s.source))
@@ -268,15 +371,42 @@ describe('LiveProgressService milestone ETA worker', () => {
     expect(snapshotCreates.find((c: any) => c.checkpointPercent === 20).etaSeconds).not.toBe(1200);
   });
 
-  it('retries after provider failure without writing a paid snapshot', async () => {
-    // fetchWithRetry attempts twice; reject both for the first ping, then succeed.
-    const fetchMock = jest
-      .fn()
-      .mockRejectedValueOnce(new Error('Google Directions HTTP 500'))
-      .mockRejectedValueOnce(new Error('Google Directions HTTP 500'))
-      .mockResolvedValueOnce(googleTrafficResponse(1100));
+  it('consumes the checkpoint attempt when the provider fails and does not retry it', async () => {
+    const fetchMock = jest.fn().mockResolvedValue({
+      ok: false,
+      status: 500,
+      json: async () => ({}),
+    });
     global.fetch = fetchMock as any;
     const { prisma, roomMilestoneSnapshot } = pingPrisma([]);
+    const stored: Array<Record<string, unknown>> = [];
+    roomMilestoneSnapshot.findMany.mockImplementation(async () => stored.map((row) => ({ ...row })));
+    roomMilestoneSnapshot.create.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => {
+      if (stored.some((row) => row.checkpointPercent === data.checkpointPercent)) {
+        const error = new Error('Unique constraint failed') as Error & { code: string };
+        error.code = 'P2002';
+        throw error;
+      }
+      stored.push({ ...data });
+      return data;
+    });
+    roomMilestoneSnapshot.upsert.mockImplementation(
+      async ({
+        where,
+        create,
+        update,
+      }: {
+        where: { roomId_checkpointPercent?: { checkpointPercent: number } };
+        create: Record<string, unknown>;
+        update: Record<string, unknown>;
+      }) => {
+        const pct = where.roomId_checkpointPercent?.checkpointPercent ?? create.checkpointPercent;
+        const index = stored.findIndex((row) => row.checkpointPercent === pct);
+        if (index >= 0) stored[index] = { ...stored[index], ...update, checkpointPercent: pct };
+        else stored.push({ ...create });
+        return {};
+      },
+    );
     const service = new LiveProgressService(
       prisma,
       { evaluateRoomLifecycle: jest.fn(), finalizeArrivalFromLocation: jest.fn() } as any,
@@ -286,15 +416,47 @@ describe('LiveProgressService milestone ETA worker', () => {
     const mid = { lat: start.lat + (dest.lat - start.lat) * 0.45, lng: start.lng };
 
     await service.recordLivePing('room-ping', mid, { userId: 'u1' } as any);
-    expect(roomMilestoneSnapshot.upsert).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const failed = stored.find((row) => row.checkpointPercent === 40);
+    expect(failed).toMatchObject({ source: 'provider-failed' });
+    expect(typeof failed?.etaSeconds).toBe('number');
+    expect(stored.find((row) => row.checkpointPercent === 20)).toMatchObject({ source: 'derived' });
 
     await service.recordLivePing('room-ping', mid, { userId: 'u1' } as any);
-    expect(fetchMock).toHaveBeenCalledTimes(3);
-    expect(roomMilestoneSnapshot.upsert).toHaveBeenCalled();
-    const paid = roomMilestoneSnapshot.upsert.mock.calls
-      .map((c: any) => c[0].create)
-      .filter((c: any) => c.source === 'google');
-    expect(paid).toHaveLength(1);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(stored.filter((row) => row.source === 'google')).toHaveLength(0);
+  });
+
+  it('counts provider failures toward the five-call cap and still stores 100 as zero', async () => {
+    const fetchMock = jest.fn().mockResolvedValue(googleTrafficResponse(800));
+    global.fetch = fetchMock as any;
+    const existing = [20, 40, 60, 80, 95].map((checkpointPercent) => ({
+      checkpointPercent,
+      source: 'provider-failed',
+      etaSeconds: 900,
+      capturedAt: new Date(Date.now() - 60_000),
+    }));
+    const { prisma, roomMilestoneSnapshot } = pingPrisma(existing);
+    const service = new LiveProgressService(
+      prisma,
+      {
+        evaluateRoomLifecycle: jest.fn(),
+        finalizeArrivalFromLocation: jest.fn().mockResolvedValue({ finalized: true, result: {} }),
+      } as any,
+      { get: jest.fn((key: string) => (key === 'GOOGLE_MAPS_API_KEY' ? 'test-key' : undefined)) } as any,
+      { notifyRoomMembers: jest.fn() } as any,
+    );
+
+    await service.recordLivePing('room-ping', { lat: dest.lat, lng: dest.lng }, { userId: 'u1' } as any);
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(roomMilestoneSnapshot.create).not.toHaveBeenCalled();
+    const creates = roomMilestoneSnapshot.upsert.mock.calls.map((c: any) => c[0].create);
+    expect(creates.find((c: any) => c.checkpointPercent === 100)).toMatchObject({
+      etaSeconds: 0,
+      source: 'arrived',
+    });
+    expect(creates.every((c: any) => c.source !== 'google')).toBe(true);
   });
 
   it('respects the five-call billable cap', async () => {
@@ -402,5 +564,113 @@ describe('LiveProgressService milestone ETA worker', () => {
       etaSeconds: 0,
       source: 'arrived',
     });
+  });
+
+  function uniqueConflict() {
+    const error = new Error('Unique constraint failed') as Error & { code: string };
+    error.code = 'P2002';
+    return error;
+  }
+
+  async function raceProviderClaims(
+    create: jest.Mock,
+    run: () => Promise<unknown>,
+  ) {
+    let claims = 0;
+    let releaseFirst: () => void = () => undefined;
+    const firstWaiting = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    create.mockImplementation(async ({ data }: { data: { source?: string } }) => {
+      if (data.source !== 'provider-attempt') return data;
+      claims += 1;
+      if (claims === 1) {
+        await firstWaiting;
+        return data;
+      }
+      releaseFirst();
+      throw uniqueConflict();
+    });
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error('second claim did not arrive')), 1000);
+    });
+    try {
+      await Promise.race([run(), timeout]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+    return claims;
+  }
+
+  it('uses one provider attempt when a checkpoint post and a live ping cross the same milestone together', async () => {
+    const fetchMock = jest.fn().mockResolvedValue(googleTrafficResponse(1200, 900));
+    global.fetch = fetchMock as any;
+    const { prisma, roomMilestoneSnapshot } = pingPrisma([]);
+    const flags = featureFlags as { checkpointLeaderboardV2: boolean };
+    const previous = flags.checkpointLeaderboardV2;
+    flags.checkpointLeaderboardV2 = true;
+    const service = new LiveProgressService(
+      prisma,
+      { evaluateRoomLifecycle: jest.fn(), finalizeArrivalFromLocation: jest.fn().mockResolvedValue({ finalized: false }) } as any,
+      { get: jest.fn((key: string) => (key === 'GOOGLE_MAPS_API_KEY' ? 'test-key' : undefined)) } as any,
+      { notifyRoomMembers: jest.fn() } as any,
+    );
+    const mid = { lat: start.lat + (dest.lat - start.lat) * 0.5, lng: start.lng };
+    try {
+      const claims = await raceProviderClaims(roomMilestoneSnapshot.create, () =>
+        Promise.all([
+          service.recordClientCheckpoint(
+            'room-ping',
+            { checkpointPct: 40, lat: mid.lat, lng: mid.lng },
+            { userId: 'u1' } as any,
+          ),
+          service.recordLivePing('room-ping', mid, { userId: 'u1' } as any),
+        ]),
+      );
+      expect(claims).toBe(2);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const googleWrites = roomMilestoneSnapshot.upsert.mock.calls
+        .map((call: any) => call[0].create)
+        .filter((row: any) => row.checkpointPercent === 40 && row.source === 'google');
+      expect(googleWrites).toHaveLength(1);
+    } finally {
+      flags.checkpointLeaderboardV2 = previous;
+    }
+  });
+
+  it('uses one provider attempt when two live pings cross the same milestone together', async () => {
+    const fetchMock = jest.fn().mockResolvedValue(googleTrafficResponse(1000));
+    global.fetch = fetchMock as any;
+    const { prisma, roomMilestoneSnapshot } = pingPrisma([]);
+    const service = new LiveProgressService(
+      prisma,
+      { evaluateRoomLifecycle: jest.fn(), finalizeArrivalFromLocation: jest.fn().mockResolvedValue({ finalized: false }) } as any,
+      { get: jest.fn((key: string) => (key === 'GOOGLE_MAPS_API_KEY' ? 'test-key' : undefined)) } as any,
+      { notifyRoomMembers: jest.fn() } as any,
+    );
+    const mid = { lat: start.lat + (dest.lat - start.lat) * 0.5, lng: start.lng };
+    const claims = await raceProviderClaims(roomMilestoneSnapshot.create, () =>
+      Promise.all([
+        service.recordLivePing('room-ping', mid, { userId: 'u1' } as any),
+        service.recordLivePing('room-ping', mid, { userId: 'u1' } as any),
+      ]),
+    );
+    expect(claims).toBe(2);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const googleWrites = roomMilestoneSnapshot.upsert.mock.calls
+      .map((call: any) => call[0].create)
+      .filter((row: any) => row.source === 'google');
+    expect(googleWrites).toHaveLength(1);
+  });
+});
+
+describe('OptionalJwtAuthGuard', () => {
+  const guard = new OptionalJwtAuthGuard();
+
+  it('keeps anonymous and rejected credentials on the public live-state path', () => {
+    expect(guard.handleRequest(null, false)).toBeNull();
+    expect(guard.handleRequest(new Error('expired'), false)).toBeNull();
+    expect(guard.handleRequest(null, { userId: 'guest-1' })).toEqual({ userId: 'guest-1' });
   });
 });

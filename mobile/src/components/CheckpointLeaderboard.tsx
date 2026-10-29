@@ -87,7 +87,7 @@ function paceNoteFor(
   if (entry?.source === 'google' && minutes != null) {
     return `Google Maps traffic ETA ${minutes} min`;
   }
-  if (entry?.source === 'derived' || entry?.source === 'fallback') {
+  if (entry?.source === 'derived' || entry?.source === 'fallback' || entry?.source === 'provider-failed') {
     return minutes != null
       ? `derived ETA ${minutes} min`
       : 'based on a derived ETA';
