@@ -1,3 +1,4 @@
+import { safeLocationLabels } from '../common/utils/location-label';
 import {
   BadRequestException,
   ForbiddenException,
@@ -421,6 +422,7 @@ export class RoomsService {
   ) {}
 
   async createFromRoute(dto: any, creator: RoomCreatorIdentity) {
+    dto = safeLocationLabels({ ...dto });
     const room = await this.create(dto, creator);
     if (dto.routeMeta) {
       await this.prisma.journeyRoute.create({
@@ -447,6 +449,7 @@ export class RoomsService {
   }
 
   async create(dto: CreateRoomDto, creator: RoomCreatorIdentity) {
+    dto = safeLocationLabels({ ...dto });
     await this.enforceContentPolicy(
       {
         roomTitle: dto.roomTitle,
@@ -852,7 +855,7 @@ export class RoomsService {
   }
 
   async findById(roomId: string, requestingUser: User) {
-    const room = await this.prisma.predictionRoom.findUnique({
+    const room = safeLocationLabels(await this.prisma.predictionRoom.findUnique({
       where: { roomId },
       include: {
         creator: { select: ROOM_CREATOR_SELECT },
@@ -867,7 +870,7 @@ export class RoomsService {
           select: { progressPercentage: true, createdAt: true },
         },
       },
-    });
+    }));
     if (!room) throw new NotFoundException('Room not found');
 
     const isCreator = room.creatorUserId === requestingUser.userId;

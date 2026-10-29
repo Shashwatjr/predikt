@@ -1,3 +1,4 @@
+import { safeLocationLabels } from '../utils/locationLabel';
 import axios, { AxiosError, AxiosHeaders, InternalAxiosRequestConfig } from 'axios';
 import { Platform } from 'react-native';
 
@@ -43,6 +44,11 @@ const api = axios.create({
   baseURL: API_BASE_URL,
   headers: { 'Content-Type': 'application/json' },
   timeout: 12_000,
+});
+
+api.interceptors.response.use((response) => {
+  response.data = safeLocationLabels(response.data);
+  return response;
 });
 
 export function setAuthToken(token: string | null) {

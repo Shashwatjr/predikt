@@ -333,8 +333,13 @@ export class LiveProgressService {
     const dueCheckpoints = MILESTONE_ETA_CHECKPOINTS.filter(
       (checkpoint) => progressPercentage >= checkpoint && !existingByCheckpoint.has(checkpoint),
     );
-    const currentCheckpoint =
-      dueCheckpoints.length > 0 ? dueCheckpoints[dueCheckpoints.length - 1] : null;
+    // An in-flight or completed higher checkpoint owns this crossing. A ping
+    // must not turn a skipped earlier checkpoint into a second provider attempt.
+    const reachedCheckpoint = [...MILESTONE_ETA_CHECKPOINTS].reverse().find(
+      (checkpoint) => progressPercentage >= checkpoint,
+    );
+    const currentCheckpoint = reachedCheckpoint != null &&
+      !existingByCheckpoint.has(reachedCheckpoint) ? reachedCheckpoint : null;
     const earlierMissed =
       currentCheckpoint == null
         ? []
@@ -484,10 +489,10 @@ export class LiveProgressService {
         }
       : null;
     const scoringRule = room.scoringRule as { startDelayMinutes?: number } | null;
-    const visibleStartTime = room.visibleMovementStartTime ?? room.startTime;
+    const visibleStartTime = isCreator ? room.startTime : room.visibleMovementStartTime ?? room.startTime;
     const viewerShouldStillWait = !!visibleStartTime && now < visibleStartTime;
     const timedProgress = this.buildTimedProgress(room, now);
-    const milestoneBanner = this.buildMilestoneBanner(timedProgress.progressPercentage);
+    const delayedViewer = !isCreator && safetyDelayMs > 0;
     const snapshots = await this.prisma.roomMilestoneSnapshot.findMany({
       where: {
         roomId,
@@ -523,9 +528,13 @@ export class LiveProgressService {
     const derivedEtaMinutes =
       viewerShouldStillWait
         ? null
-        : delayedEvent?.etaMinutes ?? snapshotEtaMinutes ?? timedProgress.etaMinutes;
+        : delayedEvent?.etaMinutes ?? snapshotEtaMinutes ?? (delayedViewer ? null : timedProgress.etaMinutes);
     const liveEtaMinutes =
       room.status === 'live' && derivedEtaMinutes === 0 ? 1 : derivedEtaMinutes;
+
+    const visibleProgress = viewerShouldStillWait ? 0 : delayedEvent?.progressPercentage ??
+      (delayedViewer ? latestSnapshot?.checkpointPercent ?? 0 : timedProgress.progressPercentage);
+    const milestoneBanner = this.buildMilestoneBanner(visibleProgress);
 
     // Privacy boundary: viewer-facing live state uses safety-delayed progress and must never expose raw or exact GPS coordinates.
     return {
@@ -535,7 +544,7 @@ export class LiveProgressService {
       journeyScheduledStartAt: room.journeyScheduledStartAt?.toISOString() ?? null,
       journeyStartedAt: room.journeyStartedAt?.toISOString() ?? null,
       lastTravellerUpdateAt: room.lastTravellerUpdateAt?.toISOString() ?? null,
-      expectedDurationSeconds: room.expectedDurationSeconds ?? null,
+      expectedDurationSeconds: delayedViewer ? null : room.expectedDurationSeconds ?? null,
       gracePeriodSeconds: room.gracePeriodSeconds ?? null,
       autoCloseAt: room.autoCloseAt?.toISOString() ?? null,
       noStartCutoffAt: room.noStartCutoffAt?.toISOString() ?? null,
@@ -555,7 +564,7 @@ export class LiveProgressService {
       displayedProgressTimestamp: delayedEvent?.createdAt?.toISOString() ?? null,
       safetyDelayMinutes: room.safetyDelayMinutes,
       waitingForDelayedStart: viewerShouldStillWait,
-      progressPercentage: viewerShouldStillWait ? 0 : (delayedEvent?.progressPercentage ?? timedProgress.progressPercentage),
+      progressPercentage: visibleProgress,
       etaMinutes: viewerShouldStillWait ? null : liveEtaMinutes,
       // Participant-safe milestone ETAs from RoomMilestoneSnapshot only (no coordinates).
       checkpointEtas: this.publicCheckpointEtas(visibleSnapshots),
@@ -660,6 +669,7 @@ export class LiveProgressService {
           etaSeconds: reconstructed,
           remainingMeters: reconstructedRemaining,
           source: 'derived',
+          preserveExisting: true,
         }),
       );
     }
@@ -733,7 +743,7 @@ export class LiveProgressService {
       return {
         etaSeconds: existing.etaSeconds ?? derivedSeconds,
         remainingMeters: existing.remainingMeters ?? remainingMeters,
-        source: existing.source ?? 'derived',
+        source: existing.source === PROVIDER_ATTEMPT_SOURCE ? 'derived' : existing.source ?? 'derived',
         persistCurrent: false,
       };
     }
@@ -850,17 +860,18 @@ export class LiveProgressService {
     etaSeconds: number;
     remainingMeters: number | null;
     source: string;
+    preserveExisting?: boolean;
   }) {
     const { roomId, checkpoint, lat, lng, capturedAt, etaSeconds, remainingMeters, source } = input;
     return [
       this.prisma.roomCheckpoint.upsert({
         where: { roomId_checkpoint: { roomId, checkpoint } },
-        update: { lat, lng, capturedAt, etaSeconds, source },
+        update: input.preserveExisting ? {} : { lat, lng, capturedAt, etaSeconds, source },
         create: { roomId, checkpoint, lat, lng, capturedAt, etaSeconds, source },
       }),
       this.prisma.roomMilestoneSnapshot.upsert({
         where: { roomId_checkpointPercent: { roomId, checkpointPercent: checkpoint } },
-        update: { capturedAt, etaSeconds, remainingMeters, source },
+        update: input.preserveExisting ? {} : { capturedAt, etaSeconds, remainingMeters, source },
         create: {
           roomId,
           checkpointPercent: checkpoint,

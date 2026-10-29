@@ -90,7 +90,10 @@ export class LeaderboardsService {
       return { available: false, checkpoint, reason: 'predictions_open' };
     }
 
-    const cp = room.checkpoints.find((c) => c.checkpoint === checkpoint);
+    const cutoff = Date.now() - Math.max(0, room.safetyDelayMinutes ?? 0) * 60_000;
+    const isCreator = room.creatorUserId === requestingUser.userId;
+    const cp = room.checkpoints.find((c) => c.checkpoint === checkpoint &&
+      c.source !== 'provider-attempt' && (isCreator || c.capturedAt.getTime() < cutoff));
     if (!cp) {
       return { available: false, checkpoint, reason: 'not_reached' };
     }
@@ -178,19 +181,23 @@ export class LeaderboardsService {
 
     // Current best projected arrival: prefer the freshest milestone snapshot ETA,
     // then the checkpoint-based projection, then the static plan.
-    const latestSnapshot = room.milestoneSnapshots[0];
+    const isCreator = room.creatorUserId === requestingUser.userId;
+    const cutoff = Date.now() - Math.max(0, room.safetyDelayMinutes ?? 0) * 60_000;
+    const visible = (row: { capturedAt: Date; source?: string | null }) =>
+      row.source !== 'provider-attempt' && (isCreator || row.capturedAt.getTime() < cutoff);
+    const latestSnapshot = room.milestoneSnapshots.find(visible);
     let projectedArrival: Date | null = null;
     let basis: 'snapshot_eta' | 'checkpoint' | 'plan' = 'plan';
     if (latestSnapshot?.etaSeconds != null) {
       projectedArrival = new Date(latestSnapshot.capturedAt.getTime() + latestSnapshot.etaSeconds * 1000);
       basis = 'snapshot_eta';
     } else {
-      const latestCp = [...room.checkpoints].sort((a, b) => b.checkpoint - a.checkpoint)[0];
+      const latestCp = room.checkpoints.filter(visible).sort((a, b) => b.checkpoint - a.checkpoint)[0];
       const projected = latestCp ? this.projectArrival(room, latestCp, latestCp.checkpoint) : null;
       if (projected) {
         projectedArrival = projected.arrival;
         basis = 'checkpoint';
-      } else if (room.startTime && room.expectedDurationSeconds) {
+      } else if (isCreator && room.startTime && room.expectedDurationSeconds) {
         projectedArrival = new Date(room.startTime.getTime() + room.expectedDurationSeconds * 1000);
         basis = 'plan';
       }

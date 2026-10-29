@@ -117,3 +117,17 @@ describe('LeaderboardsService.checkpointLeaderboard', () => {
     expect(board.projectedArrivalAt).toBe('2026-07-16T18:40:00.000Z');
   });
 });
+
+describe('checkpoint safety delay', () => {
+  it('gives creators current data and guests only older checkpoints', async () => {
+    const fresh = { checkpoint: 50, lat: 0, lng: 0.05, etaSeconds: 1200, source: 'google', capturedAt: new Date() };
+    const room = buildRoom({ safetyDelayMinutes: 10, checkpoints: [fresh] });
+    const service = makeService(room, []);
+    expect((await service.checkpointLeaderboard('room-1', 50, { userId: 'host' } as any)).available).toBe(true);
+    expect((await service.checkpointLeaderboard('room-1', 50, viewer)).available).toBe(false);
+    fresh.capturedAt = new Date(Date.now() - 660_000);
+    expect((await service.checkpointLeaderboard('room-1', 50, viewer)).available).toBe(true);
+    fresh.source = 'provider-attempt';
+    expect((await service.checkpointLeaderboard('room-1', 50, { userId: 'host' } as any)).available).toBe(false);
+  });
+});

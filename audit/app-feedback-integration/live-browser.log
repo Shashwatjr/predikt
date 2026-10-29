@@ -18,7 +18,18 @@ PASS no Start 1440 predictions_locked cancelled_by_host
 PASS no Start 1440 predictions_locked arrived_verified
 PASS creator distinct delay view 1440
 PASS guest waiting view 1440
+PASS creator current checkpoint ETA and immediate illustration 390
+PASS complete location tap bubbles 390
+PASS fresh guest checkpoint withheld 390
+PASS delayed guest checkpoint and illustration displayed 390
+PASS creator current checkpoint ETA and immediate illustration 1440
+PASS complete location tap bubbles 1440
+PASS complete location hover bubble 1440
+PASS fresh guest checkpoint withheld 1440
+PASS delayed guest checkpoint and illustration displayed 1440
 PASS raw coordinate properties excluded
-BLOCKER coordinate-like route labels enter LiveRoom UI/accessibility
-BLOCKER coordinate-like route labels enter neutral summary
+PASS coordinate-like route labels excluded
+PASS coordinate-like route labels excluded from summary
+PASS coordinate-like route labels excluded
+PASS coordinate-like route labels excluded from summary
 PASS no browser errors

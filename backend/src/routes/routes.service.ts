@@ -1,3 +1,4 @@
+import { safeLocationLabel } from '../common/utils/location-label';
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { RoomsService } from '../rooms/rooms.service';
@@ -961,6 +962,8 @@ export class RoutesService {
   async preview(body: RoutePreviewDto) {
     const start = await this.resolveRouteStart(body);
     const destination = await this.placeDetails(body.destinationPlaceId);
+    start.label = safeLocationLabel(start.label, 'startLabel');
+    destination.label = safeLocationLabel(destination.label, 'destinationLabel');
     const routeEstimate = await createMapsProvider(this.config).getRoutePreview(
       start,
       destination,

@@ -1,3 +1,5 @@
+import { map } from 'rxjs/operators';
+import { safeLocationLabels } from './common/utils/location-label';
 import { ValidationPipe } from '@nestjs/common';
 import { INestApplication } from '@nestjs/common';
 import helmet from 'helmet';
@@ -74,6 +76,10 @@ export function configureApp(app: INestApplication, config: ConfigService) {
   app.enableCors({
     credentials: true,
     origin: originDelegate,
+  });
+
+  app.useGlobalInterceptors({
+    intercept: (_context, next) => next.handle().pipe(map((data) => safeLocationLabels(data))),
   });
 
   app.useGlobalPipes(

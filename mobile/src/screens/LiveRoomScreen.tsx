@@ -19,7 +19,7 @@ import LiveStatusCard from '../components/LiveStatusCard';
 import CoachMark from '../components/CoachMark';
 import ArrivalWaitingRoom from '../components/ArrivalWaitingRoom';
 import RoomPredictionList, { RoomPredictionEntry } from '../components/RoomPredictionList';
-import CheckpointLeaderboard, { CheckpointBoard } from '../components/CheckpointLeaderboard';
+import CheckpointLeaderboard, { CheckpointBoard, CheckpointEtaMap } from '../components/CheckpointLeaderboard';
 import LiveLeaderboard, { LiveLeaderboardData } from '../components/LiveLeaderboard';
 import { deriveArrivalBenchmarks, formatClock } from '../utils/benchmarks';
 import { botGuessTeaser, botEtaTeaser, botEtaRead } from '../utils/botVoice';
@@ -55,6 +55,7 @@ interface LiveState {
   secondsUntilStart: number | null;
   progressPercentage: number | null;
   etaMinutes: number | null;
+  checkpointEtas?: CheckpointEtaMap | null;
   locationDisplayMode: string;
   safetyMessage: string;
   waitingForDelayedStart?: boolean;
@@ -1476,6 +1477,9 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
               secondaryColor="#3B82F6"
               embedded
             />
+            {checkpointList.map((cp) => (
+              <CheckpointLeaderboard key={cp} board={checkpointBoards[cp]} checkpointEtas={liveState?.checkpointEtas} etaMinutes={liveState?.etaMinutes} />
+            ))}
           </View>
 
           <View style={[styles.creatorDesktopStatusStrip, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -1815,7 +1819,7 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
           ) : null}
           {!isGenericRoom
             ? checkpointList.map((cp) => (
-                <CheckpointLeaderboard key={cp} board={checkpointBoards[cp]} />
+                <CheckpointLeaderboard key={cp} board={checkpointBoards[cp]} checkpointEtas={liveState?.checkpointEtas} etaMinutes={liveState?.etaMinutes} />
               ))
             : null}
           {canRePredict ? (

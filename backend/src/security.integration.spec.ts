@@ -454,7 +454,7 @@ describe('Security And Enterprise Hardening (integration)', () => {
       .expect(403);
   });
 
-  it('keeps private room details behind membership while invite preview stays safe', async () => {
+  it('blocks private room details and unauthenticated invite previews', async () => {
     const roomId = await createCustomRoom(creatorAuth.accessToken, {
       roomTitle: `Private Membership ${runId}`,
       visibility: 'private',
@@ -477,7 +477,7 @@ describe('Security And Enterprise Hardening (integration)', () => {
 
     const preview = await request(app.getHttpServer())
       .get(`/rooms/invite/${room.inviteCode}`)
-      .expect(200);
+      .expect(403);
     expect(JSON.stringify(preview.body)).not.toContain('passwordHash');
     expect(JSON.stringify(preview.body)).not.toContain('"email"');
     expect(JSON.stringify(preview.body)).not.toContain('12.9');
