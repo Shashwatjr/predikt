@@ -533,10 +533,14 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
     setStarting(true);
     try {
       const permission = await Location.requestForegroundPermissionsAsync();
-      const coords =
-        permission.status === 'granted'
-          ? await Location.getCurrentPositionAsync({}).catch(() => null)
-          : null;
+      if (permission.status !== 'granted') {
+        appAlert(
+          'Location required',
+          'Allow location access so we can confirm you\'re at the start point before the journey begins.',
+        );
+        return;
+      }
+      const coords = await Location.getCurrentPositionAsync({}).catch(() => null);
       await api.post(`/rooms/${roomId}/journey/start`, {
         startDelayMinutes,
         location: coords
@@ -546,15 +550,14 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
       fetchLiveState();
     } catch (err: unknown) {
       const axiosErr = err as any;
-      if (
-        axiosErr?.response?.status === 422 &&
-        axiosErr?.response?.data?.error === 'TOO_FAR_FROM_START'
-      ) {
-        appAlert(
-          'Too far from start',
-          axiosErr.response.data.message ??
-            'You appear to be more than 1 km from your declared start point. Move closer or update your start location to begin.',
-        );
+      const errCode = axiosErr?.response?.data?.error;
+      const errMsg = axiosErr?.response?.data?.message;
+      if (errCode === 'CREATOR_GPS_REQUIRED') {
+        appAlert('Location required', errMsg ?? 'Enable location access so we can confirm you\'re at the start point.');
+      } else if (errCode === 'START_ORIGIN_UNAVAILABLE') {
+        appAlert('Start point unavailable', errMsg ?? 'Your start point couldn\'t be verified. Check that your room has a defined starting location.');
+      } else if (errCode === 'TOO_FAR_FROM_START') {
+        appAlert('Too far from start', errMsg ?? 'You appear to be more than 1 km from your declared start point. Move closer or update your start location to begin.');
       } else {
         appAlert('Start failed', getApiErrorMessage(err, 'Could not start this room.'));
       }

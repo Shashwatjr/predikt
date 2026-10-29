@@ -135,13 +135,23 @@ export class LifecycleService {
     const isLocationTracked = usesExclusiveLocationResource(room.roomCategory);
     if (featureFlags.checkpointLeaderboardV2 && isLocationTracked) {
       if (dto.location?.lat == null || dto.location?.lng == null) {
-        throw new BadRequestException('Creator GPS is required to start this journey');
+        throw new BadRequestException({
+          error: 'CREATOR_GPS_REQUIRED',
+          message: 'Enable location access so we can confirm you\'re at the start point before the journey begins.',
+        });
       }
       const startVerification = this.buildStartVerification(room, dto.location.lat, dto.location.lng);
       if (startVerification.shouldBlock) {
-        throw new BadRequestException(
-          `Start verification failed. Move closer to ${room.startingPointLabel} before starting the journey.`,
-        );
+        if (startVerification.distanceMeters == null) {
+          throw new BadRequestException({
+            error: 'START_ORIGIN_UNAVAILABLE',
+            message: 'Your start point couldn\'t be verified. Check that your room has a defined starting location.',
+          });
+        }
+        throw new BadRequestException({
+          error: 'TOO_FAR_FROM_START',
+          message: `You appear to be more than 1 km from your declared start point. Move closer to ${room.startingPointLabel ?? 'the start'} or update your start location to begin.`,
+        });
       }
     }
     const startDelayMinutes =
