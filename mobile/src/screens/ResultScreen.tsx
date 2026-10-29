@@ -178,16 +178,20 @@ export default function ResultScreen({ navigation, route }: Props) {
   const isNeutralClosure = ['plan_changed', 'cancelled_by_host', 'auto_closed', 'abandoned'].includes(closureState ?? '');
   const categoryKey = room?.category ?? room?.creationMeta?.category ?? room?.templateKey ?? 'arrival_time';
   const actualOutcome = formatActualOutcome(initialResult, room);
-  const winningPrediction = winningRow?.predictedReachedTime
-    ? new Date(winningRow.predictedReachedTime).toLocaleString()
-    : 'Pending';
+  const winningPrediction = isNeutralClosure
+    ? 'No result'
+    : winningRow?.predictedReachedTime
+      ? new Date(winningRow.predictedReachedTime).toLocaleString()
+      : 'Pending';
   const winnerHandle = !hasScoredRows || isNeutralClosure ? null : formatWinnerHandle(winningRow);
   const differenceMinutes = winningRow?.differenceFromActualMinutes;
-  const differenceLabel = !hasScoredRows
-    ? 'Pending'
-    : typeof differenceMinutes === 'number'
-      ? `${differenceMinutes.toFixed(1)} min`
-      : 'Pending';
+  const differenceLabel = isNeutralClosure
+    ? '—'
+    : !hasScoredRows
+      ? 'Pending'
+      : typeof differenceMinutes === 'number'
+        ? `${differenceMinutes.toFixed(1)} min`
+        : 'Pending';
   const auraEarned = hasScoredRows ? (winningRow?.totalRoomAura ?? winningRow?.pointsAwarded ?? 0) : null;
   const dotBonus = winningRow?.dotBonus ?? winningRow?.rankBonusAura;
   // The viewer's own reward for this room. Aura is the per-room value we can
@@ -431,7 +435,7 @@ export default function ResultScreen({ navigation, route }: Props) {
               <View style={styles.resultsStatGrid}>
                 <ResultStatCard
                   eyebrow="Winner"
-                  value={winnerHandle ?? 'Pending'}
+                  value={isNeutralClosure ? 'No winner' : (winnerHandle ?? 'Pending')}
                   note={isNeutralClosure ? 'Fair reset in effect' : 'Closest valid guess'}
                   accent="#FBBF24"
                 />
@@ -449,7 +453,7 @@ export default function ResultScreen({ navigation, route }: Props) {
                 />
                 <ResultStatCard
                   eyebrow="Aura"
-                  value={auraEarned == null ? 'Pending' : `+${auraEarned}`}
+                  value={isNeutralClosure ? '—' : auraEarned == null ? 'Pending' : `+${auraEarned}`}
                   note="Winner reward"
                   accent="#38BDF8"
                 />
@@ -481,18 +485,18 @@ export default function ResultScreen({ navigation, route }: Props) {
                       {room?.roomTitle ?? 'My Prediktion'}
                     </Text>
                     <Text style={[styles.receiptSubline, { color: colors.textSecondary }]}>
-                      Winner: {winnerHandle ?? 'Pending'}
+                      Winner: {isNeutralClosure ? 'No winner' : (winnerHandle ?? 'Pending')}
                     </Text>
                   </View>
                   <View style={styles.receiptStamp}>
                     <Text style={styles.receiptStampEmoji}>🏆</Text>
-                    <Text style={styles.receiptStampText}>{hasScoredRows && !isNeutralClosure ? 'Winner locked' : 'Result pending'}</Text>
+                    <Text style={styles.receiptStampText}>{isNeutralClosure ? 'Closed' : hasScoredRows ? 'Winner locked' : 'Result pending'}</Text>
                   </View>
                 </View>
 
                 <View style={[styles.receiptHero, { borderColor: colors.border }]}>
                   <Text style={[styles.receiptWinnerEyebrow, { color: colors.textSecondary }]}>Closest guess</Text>
-                  <Text style={[styles.receiptWinnerName, { color: colors.textPrimary }]}>{winnerHandle}</Text>
+                  <Text style={[styles.receiptWinnerName, { color: colors.textPrimary }]}>{isNeutralClosure ? 'No winner' : winnerHandle}</Text>
                   <Text style={[styles.receiptWinnerValue, { color: colors.purpleLight }]}>{winningPrediction}</Text>
                   <Text style={[styles.receiptWinnerNote, { color: colors.textSecondary }]}>
                     {typeof differenceMinutes === 'number' && differenceMinutes === 0

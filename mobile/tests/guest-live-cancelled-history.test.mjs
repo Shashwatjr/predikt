@@ -50,6 +50,10 @@ test('guest delay window (guestInDelayWindow) is detected and shows route illust
     /progressPercentage=\{0\}/.test(delayBlock),
     'ArrivalJourneyViz must be rendered with progress=0 during the safety delay',
   );
+  assert.ok(
+    /delayedCar/.test(delayBlock),
+    'the safety-delay illustration must use the delayed red car marker',
+  );
 });
 
 test('guest delay banner shows safety delay message and countdown', () => {
@@ -127,16 +131,20 @@ test('creator and guest receive role-specific cancellation wording', () => {
   );
 });
 
-test('terminal state auto-navigates to Result so guests are not stuck on live UI', () => {
+test('terminal state auto-navigates cancelled rooms to Result and leaves completed rooms in place', () => {
   const src = read('src/screens/LiveRoomScreen.tsx');
   const fetchLive = src.slice(src.indexOf('async function fetchLiveState'), src.indexOf('async function fetchCheckpointBoards'));
   assert.ok(
-    /autoNavigatedToResult\.current = true/.test(fetchLive),
-    'fetchLiveState must set the auto-navigation guard when it detects a terminal state',
+    /cancelledTerminal && !autoNavigatedToResult\.current/.test(fetchLive),
+    'fetchLiveState must navigate only after it classifies the room as cancelled',
   );
   assert.ok(
     /navigation\.navigate\('Result'/.test(fetchLive),
-    'fetchLiveState must navigate to Result when it detects a terminal state',
+    'fetchLiveState must navigate cancelled rooms to Result',
+  );
+  assert.ok(
+    /terminalStatus === 'cancelled'/.test(fetchLive),
+    'completed rooms must not be treated as the auto-navigation trigger',
   );
 });
 
@@ -190,6 +198,35 @@ test('HomeScreen Last 3 tab has All | Completed | Cancelled filter', () => {
   assert.ok(/historyFilter/.test(src), 'historyFilter state must exist');
   assert.ok(/'all'/.test(src) && /'completed'/.test(src) && /'cancelled'/.test(src),
     'all three filter values must be present');
+});
+
+test('cancelled rooms hide the prediction board, host tools, and result trophy button', () => {
+  const src = read('src/screens/LiveRoomScreen.tsx');
+  assert.ok(
+    /!isDraw && \(isGenericRoom/.test(src),
+    'cancelled rooms must not render the prediction board that carries Lock and Pending',
+  );
+  assert.ok(
+    /!creatorDesktopJourneyBoard && !isDraw/.test(src),
+    'cancelled rooms must not render Host tools',
+  );
+  assert.ok(
+    /isTerminal && !isDraw/.test(src),
+    'cancelled rooms must not render the completed-journey result button',
+  );
+  const result = read('src/screens/ResultScreen.tsx');
+  assert.ok(
+    /isNeutralClosure \? 'No winner'/.test(result),
+    'cancelled results must not fall back to a Pending winner',
+  );
+});
+
+test('Last 3 filters by journey type before taking the three most recent', () => {
+  const src = read('src/screens/HomeScreen.tsx');
+  const block = src.slice(src.indexOf('const last3Journeys'), src.indexOf('const last3Journeys') + 700);
+  const filterAt = block.search(/historyFilter === 'cancelled'/);
+  const sliceAt = block.search(/\.slice\(0, 3\)/);
+  assert.ok(filterAt > -1 && sliceAt > filterAt, 'Cancelled must be applied before the last-3 slice');
 });
 
 test('HomeScreen derives activeJourneys and last3Journeys from activePredictions', () => {

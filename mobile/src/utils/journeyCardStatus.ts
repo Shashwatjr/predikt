@@ -72,7 +72,12 @@ export function journeyPillLabel(
   journeyStatus?: string | null,
 ): string {
   if (tone === 'live') return 'Live';
-  if (tone === 'done') return 'Result ready';
+  if (tone === 'done') {
+    const normalized = String(status ?? '').toLowerCase();
+    const journey = String(journeyStatus ?? '').toLowerCase();
+    if (normalized === 'cancelled' || ENDED_JOURNEY_STATUSES.includes(journey)) return 'Cancelled';
+    return 'Result ready';
+  }
   if (tone === 'wait') return 'Waiting';
 
   const normalized = String(status ?? '').toLowerCase();

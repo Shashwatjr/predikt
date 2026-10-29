@@ -1905,13 +1905,25 @@ export default function LiveRoomScreen({ navigation, route }: Props) {
       ) : null}
 
       {/* Live visualization — SVG only, never a map */}
-      {!creatorDesktopJourneyBoard && !isGenericRoom && !guestInDelayWindow && liveProgressPending ? (
+      {!creatorDesktopJourneyBoard && !isGenericRoom && !guestInDelayWindow && liveProgressPending && isCreator ? (
         <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <Text style={[styles.creatorTitle, { color: colors.textPrimary }]}>🚦 {getTravelStageFromProgress(20, 'creator')}</Text>
           <Text style={[styles.startDelayCopy, { color: colors.textSecondary, marginBottom: 0 }]}>
             Live progress will appear here shortly — hang tight. Guests see delayed checkpoint updates, not a live trail.
           </Text>
         </View>
+      ) : !creatorDesktopJourneyBoard && !isGenericRoom && !guestInDelayWindow && liveProgressPending && !isCreator ? (
+        <ArrivalJourneyViz
+          progressPercentage={0}
+          etaMinutes={null}
+          status="started"
+          delayedCar
+          startLabel={startPlace ?? 'Start'}
+          destinationLabel={destinationPlace ?? 'Destination'}
+          safetyMessage={liveState?.safetyMessage ?? 'Location shown with a safety delay.'}
+          primaryColor={categoryTheme.primaryColor}
+          secondaryColor={categoryTheme.secondaryColor}
+        />
       ) : !creatorDesktopJourneyBoard && !isGenericRoom && !guestInDelayWindow && liveState && category === 'food_eta' ? (
         <FoodEtaViz
           progressPercentage={pct}

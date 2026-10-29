@@ -300,7 +300,9 @@ export default function ActivePredictionCard({
               <Text style={styles.journeyHomeMeta}>Winner: {item.winnerName}</Text>
             ) : null}
             {completedTimeLabel ? (
-              <Text style={styles.journeyHomeMeta}>Completed: {completedTimeLabel}</Text>
+              <Text style={styles.journeyHomeMeta}>
+                {String(item.status).toLowerCase() === 'cancelled' ? 'Cancelled' : 'Completed'}: {completedTimeLabel}
+              </Text>
             ) : null}
             <Text style={styles.journeyHomeMeta}>
               {item.participantCount} {item.participantCount === 1 ? 'participant' : 'participants'}

@@ -89,6 +89,7 @@ test('pill labels stay short enough to sit beside the route in a grid card', () 
   const cases = [
     ['live', 'live', false, null, 'Live'],
     ['done', 'result_ready', false, null, 'Result ready'],
+    ['done', 'cancelled', false, 'plan_changed', 'Cancelled'],
     ['wait', 'predictions_open', false, null, 'Waiting'],
     ['neutral', 'predictions_open', true, null, 'Locked in'],
     ['neutral', 'predictions_locked', false, null, 'Closed'],
