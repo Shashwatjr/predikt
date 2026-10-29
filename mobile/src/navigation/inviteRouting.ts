@@ -105,6 +105,7 @@ export function classifyInvitePreview(
   httpStatus?: number,
   now = Date.now(),
 ): InviteEntryState {
+  if (httpStatus === 403) return 'private';
   if (!preview || httpStatus === 400 || httpStatus === 404) return 'invalid';
   const status = normalizeStatus(preview.status ?? preview.safePreview?.status);
   const journey = (preview.journeyStatus ?? preview.safePreview?.journeyStatus ?? '').toLowerCase();

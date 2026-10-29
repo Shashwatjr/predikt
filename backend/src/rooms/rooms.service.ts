@@ -25,6 +25,7 @@ import {
 import { findBannedBettingTerms } from '../common/utils/content-policy';
 import { POLICY_BLOCK_MESSAGE } from '../common/constants/policy.constants';
 import { safePublicUser } from '../common/utils/safe-user-select';
+import { publicInviteRoom } from './public-invite';
 import { ShareRoomEventDto } from './dto/share-room-event.dto';
 import { NotificationsService } from '../notifications/notifications.service';
 import { featureFlags } from '../config/feature-flags';
@@ -315,8 +316,8 @@ function buildSafeInvitePreview(room: any) {
     lockTime: room.lockTime ?? room.predictionCloseTime,
     visibility: room.visibility,
     participantCount: participantIds.size,
-    creatorDisplayName: room.creator?.name ?? null,
-    creatorHandle: room.creator?.prediktHandle ?? null,
+    creatorDisplayName: room.locationDisplayMode === 'ghost' ? null : room.creator?.name ?? null,
+    creatorHandle: room.locationDisplayMode === 'ghost' ? null : room.creator?.prediktHandle ?? null,
     benchmarks: buildArrivalBenchmarks(room),
     canLateJoinPredict: canUserStillPredictAfterJourneyStart(room),
     predictionWindow: buildPredictionWindow(room),
@@ -326,12 +327,13 @@ function buildSafeInvitePreview(room: any) {
     selectedRoomTheme: room.selectedRoomTheme ?? null,
     routeSummary: room.journeyRoute
       ? {
-          startLabel: room.journeyRoute.startLabel,
-          destinationLabel: room.journeyRoute.destinationLabel,
+          startLabel: null,
+          destinationLabel: null,
           travelMode: room.journeyRoute.travelMode,
+          estimatedDurationSeconds: room.journeyRoute.estimatedDurationSeconds,
         }
       : null,
-    safePreview: safeRoomProjection(room, { includeInviteCode: true }),
+    safePreview: publicInviteRoom(room),
   };
 }
 
@@ -399,12 +401,11 @@ function buildShareCopy(room: any, inviteUrl: string) {
 
 function safeRoomSummary(room: any) {
   return {
-    ...safeRoomProjection(room, { includeInviteCode: true }),
-    pinnedCommentText: room.pinnedCommentText,
-    instagramStoryText: room.instagramStoryText,
-    facebookPostText: room.facebookPostText,
-    resultShareText: room.resultShareText,
-    creator: safePublicUser(room.creator),
+    ...publicInviteRoom(room),
+    creator: room.locationDisplayMode === 'ghost' ? null : {
+      name: room.creator?.name ?? null,
+      prediktHandle: room.creator?.prediktHandle ?? null,
+    },
   };
 }
 
@@ -1315,6 +1316,7 @@ export class RoomsService {
       },
     });
     if (!room) throw new NotFoundException('Room not found');
+    if (room.visibility === 'private') throw new ForbiddenException('This room is private.');
     return safeRoomSummary(room);
   }
 
@@ -1336,6 +1338,7 @@ export class RoomsService {
       },
     });
     if (!room) throw new NotFoundException('Room not found');
+    if (room.visibility === 'private') throw new ForbiddenException('This room is private.');
     await this.auditService.log({
       actorType: 'system',
       actorId: null,

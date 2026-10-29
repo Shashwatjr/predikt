@@ -34,6 +34,7 @@ test('invite routing, share card, and preview HTML', async () => {
 
   const now = Date.parse('2026-10-25T00:00:00Z');
   assert.equal(routing.classifyInvitePreview(null, 404, now), 'invalid');
+  assert.equal(routing.describeInviteEntry({ preview: null, httpStatus: 403 }).state, 'private');
   assert.equal(
     routing.classifyInvitePreview(
       { status: 'created', lockTime: '2026-10-01T00:00:00Z', visibility: 'invite_only' },
@@ -115,6 +116,8 @@ test('invite routing, share card, and preview HTML', async () => {
   });
   assert.match(html, /property="og:title"/);
   assert.match(html, /property="og:description"/);
+  assert.match(html, /property="og:image" content="https:\/\/myprediktion.com\/og.png"/);
+  assert.equal(html.includes('forwardedBy'), false);
   assert.match(html, /Exact location is hidden/);
   assert.equal(html.includes('Hidden Destination'), false);
   assert.equal(html.includes('<script'), false);
