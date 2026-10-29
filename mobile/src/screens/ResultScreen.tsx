@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   AccessibilityInfo,
   Animated,
@@ -15,6 +15,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import ViewShot from 'react-native-view-shot';
 import { RootStackParamList } from '../navigation/types';
 import PrimaryButton from '../components/PrimaryButton';
+import RouteMapPreview from '../components/RouteMapPreview';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
@@ -55,6 +56,9 @@ export default function ResultScreen({ navigation, route }: Props) {
   const [data, setData] = useState<any[]>(initialResult?.rankings ?? []);
   const [winner, setWinner] = useState<any>(initialResult?.winner ?? null);
   const [room, setRoom] = useState<any>(null);
+  const [roomLoaded, setRoomLoaded] = useState(false);
+  const [predictionsLoaded, setPredictionsLoaded] = useState(false);
+  const [predictionsError, setPredictionsError] = useState(false);
   const [badges, setBadges] = useState<RoomBadge[]>([]);
   const [predictions, setPredictions] = useState<RoomPredictionEntry[]>(
     (initialResult?.predictionEntries as RoomPredictionEntry[] | undefined) ?? [],
@@ -91,7 +95,9 @@ export default function ResultScreen({ navigation, route }: Props) {
       const res = await api.get(`/rooms/${roomId}/predictions`);
       setPredictions((res.data ?? []) as RoomPredictionEntry[]);
     } catch {
-      // ignore
+      setPredictionsError(true);
+    } finally {
+      setPredictionsLoaded(true);
     }
   }
 
@@ -109,7 +115,9 @@ export default function ResultScreen({ navigation, route }: Props) {
         setBadges(badgesRes.value.data);
       }
     } catch {
-      // ignore
+      // Room metadata remains explicitly unavailable.
+    } finally {
+      setRoomLoaded(true);
     }
   }
 
@@ -136,6 +144,21 @@ export default function ResultScreen({ navigation, route }: Props) {
   }
 
   const safePredictions = toArray<RoomPredictionEntry>(predictions);
+  const closure = resolveNeutralClosure(room, initialResult);
+  // Resolve the room before entering scored-result UI on a reopened journey.
+  if (!roomLoaded && !closure) {
+    return <View style={styles.container}><Text style={{ color: colors.textPrimary }}>Loading journey summary…</Text></View>;
+  }
+  if (closure) {
+    return (
+      <NeutralJourneySummary
+        room={room} result={initialResult} closure={closure} predictions={safePredictions}
+        roomLoaded={roomLoaded} predictionsLoaded={predictionsLoaded} predictionsError={predictionsError}
+        onHome={() => navigation.navigate('Home')}
+      />
+    );
+  }
+
   // Only the scored leaderboard decides winners and rewards. Revealed persisted
   // predictions supply guess/error details omitted by the leaderboard endpoint.
   const safeData = toArray<any>(data).map((row) => {
@@ -340,10 +363,7 @@ export default function ResultScreen({ navigation, route }: Props) {
   ).filter(
     (entry) => entry.status !== 'revoked' && !!entry.selectedOptionKey,
   );
-  const farthestRow = useMemo(
-    () => [...rankingRows].reverse().find((row) => !row.isWinner) ?? rankingRows[rankingRows.length - 1],
-    [rankingRows],
-  );
+  const farthestRow = [...rankingRows].reverse().find((row) => !row.isWinner) ?? rankingRows[rankingRows.length - 1];
   const farthestGuessLabel = farthestRow ? playfulFarthestLabel(farthestRow.rank) : 'Chaos cameo';
   const isNarrowReceipt = width < 480;
   const genericVoteSummary = genericPredictions.reduce<Record<string, number>>((acc, entry) => {
@@ -617,6 +637,102 @@ export default function ResultScreen({ navigation, route }: Props) {
           ) : null}
           <PrimaryButton label="Back to Home" onPress={() => navigation.navigate('Home')} variant="secondary" icon="🏠" />
         </View>
+      </ScrollView>
+    </WebSideWingLayout>
+  );
+}
+
+
+const NEUTRAL_CLOSURES: Record<string, string> = {
+  cancelled: 'Journey cancelled',
+  cancelled_by_host: 'Cancelled by host',
+  plan_changed: 'Plans changed',
+  auto_closed: 'Journey automatically closed',
+  abandoned: 'Journey abandoned',
+};
+
+export function resolveNeutralClosure(room: any, result: any): string | null {
+  // Inspect every source: a stale "completed" value must not mask a cancellation.
+  const states = [result?.closureType, result?.journeyStatus, result?.status, result?.type,
+    room?.closureType, room?.journeyStatus, room?.status, room?.type, room?.result?.closureType,
+    room?.result?.journeyStatus, room?.result?.status, room?.result?.type];
+  return states.map((value) => typeof value === 'string' ? value.toLowerCase() : '')
+    .find((value) => Object.hasOwn(NEUTRAL_CLOSURES, value)) ?? null;
+}
+
+function knownText(...values: unknown[]): string | null {
+  return values.find((value): value is string => typeof value === 'string' && !!value.trim())?.trim() ?? null;
+}
+
+function validDateLabel(value: unknown): string | null {
+  if (!(typeof value === 'string' || value instanceof Date)) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toLocaleString();
+}
+
+export function NeutralJourneySummary({ room, result, closure, predictions, roomLoaded, predictionsLoaded,
+  predictionsError, onHome }: {
+  room: any; result: any; closure: string; predictions: RoomPredictionEntry[];
+  roomLoaded: boolean; predictionsLoaded: boolean; predictionsError: boolean; onHome: () => void;
+}) {
+  const { colors } = useTheme();
+  const state = result ?? room?.result;
+  const reason = knownText(state?.closureMessage, room?.closureMessage, state?.closureReasonCode, room?.closureReasonCode);
+  const closedAt = [state?.closedAt, state?.cancelledAt, state?.autoClosedAt, state?.abandonedAt,
+    room?.closedAt, room?.cancelledAt, room?.autoClosedAt, room?.abandonedAt]
+    .map(validDateLabel).find(Boolean);
+  const start = knownText(room?.startingPointLabel, room?.route?.startLabel, room?.routeSummary?.startLabel);
+  const destination = knownText(room?.destinationLabel, room?.route?.destinationLabel, room?.routeSummary?.destinationLabel);
+  const participants = new Map<string, string>();
+  const addParticipant = (person: any) => {
+    if (!person) return;
+    const name = knownText(person.prediktHandle ? `@${String(person.prediktHandle).replace(/^@/, '')}` : null, person.name);
+    const id = person.userId ?? name;
+    if (id) participants.set(String(id), name ?? 'Name unavailable');
+  };
+  addParticipant(room?.creator ?? state?.creator);
+  toArray<any>(room?.participants).forEach((entry) => addParticipant(entry.user ?? entry));
+  predictions.forEach((entry) => addParticipant(entry.user));
+  const copyStyle = { color: colors.textSecondary };
+  return (
+    <WebSideWingLayout rightPlacement="result_side">
+      <ScrollView contentContainerStyle={[styles.container, { backgroundColor: palette.bg }]}>
+        <SectionHeader title={NEUTRAL_CLOSURES[closure]} subtitle={room?.roomTitle} />
+        <View style={[styles.heroCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <Text accessibilityRole="header" style={[styles.heroTitle, { color: colors.textPrimary }]}>
+            {closure === 'cancelled' || closure === 'cancelled_by_host' ? 'This journey was cancelled' : 'This journey closed without a result'}
+          </Text>
+          <Text style={[styles.heroCopy, copyStyle]}>No arrival result was scored. Nobody is counted as a loss.</Text>
+          <Text style={copyStyle}>Reason: {reason?.replace(/_/g, ' ') ?? 'Not provided'}</Text>
+          <Text style={copyStyle}>Closed: {closedAt ?? 'Time unavailable'}</Text>
+        </View>
+        <View style={[styles.heroCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <Text style={copyStyle}>Start: {start ?? 'Unavailable'}</Text>
+          <Text style={copyStyle}>Destination: {destination ?? 'Unavailable'}</Text>
+          <RouteMapPreview embedded preview={start && destination ? { startLabel: start, destinationLabel: destination } : null}
+            emptyLabel="Route summary unavailable" emptyCopy="The available record does not include both route labels. Exact location stays hidden." />
+          {!roomLoaded ? <Text style={copyStyle}>Loading journey details…</Text> : !room ? <Text style={copyStyle}>Journey details could not be loaded.</Text> : null}
+        </View>
+        <View style={[styles.heroCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <Text style={[styles.section, { color: colors.textPrimary }]}>Participants</Text>
+          {[...participants].map(([id, name]) => <Text key={id} style={copyStyle}>{name}</Text>)}
+          <Text style={copyStyle}>{participants.size ? 'Known participants from the available records; a complete roster may be unavailable.' : 'Participant details unavailable.'}</Text>
+        </View>
+        <View style={[styles.heroCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <Text style={[styles.section, { color: colors.textPrimary }]}>Submitted predictions</Text>
+          {predictions.map((entry, index) => (
+            <View key={entry.predictionId ?? index} style={styles.genericSummaryWrap}>
+              <Text style={{ color: colors.textPrimary }}>{knownText(entry.user?.name, entry.user?.prediktHandle) ?? 'Name unavailable'}</Text>
+              <Text style={copyStyle}>
+                {entry.status === 'revoked' ? 'Withdrawn' : knownText(entry.selectedOptionKey)?.replace(/_/g, ' ') ?? validDateLabel(entry.predictedReachedTime) ?? 'Prediction submitted; value unavailable or withheld'}
+              </Text>
+            </View>
+          ))}
+          {predictionsError ? <Text style={copyStyle}>Could not load predictions. Only available records are shown.</Text>
+            : !predictionsLoaded ? <Text style={copyStyle}>Loading submitted predictions…</Text>
+            : !predictions.length ? <Text style={copyStyle}>No submitted predictions were returned.</Text> : null}
+        </View>
+        <PrimaryButton label="Back to Home" onPress={onHome} variant="secondary" />
       </ScrollView>
     </WebSideWingLayout>
   );
