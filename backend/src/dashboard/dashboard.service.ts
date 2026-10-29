@@ -82,7 +82,8 @@ function formatMinutesLabel(totalMinutes: number | null) {
   return minutes ? `${hours}h ${minutes}m left` : `${hours}h left`;
 }
 
-function progressStatusLabel(progress: number, roomStatus: string) {
+function progressStatusLabel(progress: number, roomStatus: string, journeyStatus?: string | null) {
+  if (roomStatus === 'cancelled' || ['cancelled_by_host', 'plan_changed', 'auto_closed', 'abandoned'].includes(journeyStatus ?? '')) return 'Cancelled';
   if (roomStatus === 'completed') return 'Result ready';
   // Live rooms at 0% are delayed-start / privacy hold — not "Not started".
   if (roomStatus === 'live' && progress <= 0) return 'Journey underway';
@@ -210,7 +211,7 @@ export class DashboardService {
   async activePredictions(user: User) {
     const rooms = await this.prisma.predictionRoom.findMany({
       where: {
-        status: { in: ['predictions_open', 'predictions_locked', 'live', 'completed'] },
+        status: { in: ['predictions_open', 'predictions_locked', 'live', 'completed', 'cancelled'] },
         OR: [
           { creatorUserId: user.userId },
           { roomMemberships: { some: { userId: user.userId, status: 'joined' } } },
@@ -371,7 +372,7 @@ export class DashboardService {
   async clearActivePredictions(user: User, dto: ClearActivePredictionsDto) {
     const visibleRooms = await this.prisma.predictionRoom.findMany({
       where: {
-        status: { in: ['predictions_open', 'predictions_locked', 'live', 'completed'] },
+        status: { in: ['predictions_open', 'predictions_locked', 'live', 'completed', 'cancelled'] },
         OR: [
           { creatorUserId: user.userId },
           { roomMemberships: { some: { userId: user.userId, status: 'joined' } } },
@@ -591,9 +592,9 @@ export class DashboardService {
       (prediction) => prediction.userId === userId && !prediction.revokedAt,
     );
     const liveProgress = this.buildLiveProgress(room, userPredictions);
-    const normalizedStatus = room.status === 'completed' ? 'result_ready' : room.status;
+    const normalizedStatus = room.status === 'completed' ? 'result_ready' : room.status === 'cancelled' ? 'cancelled' : room.status;
     const winner = room.results?.[0];
-    const completionTime = room.actualEndTime ?? room.arrivalConfirmedAt ?? room.updatedAt;
+    const completionTime = room.cancelledAt ?? room.actualEndTime ?? room.arrivalConfirmedAt ?? room.updatedAt;
 
     return {
       roomId: room.roomId,
@@ -681,7 +682,7 @@ export class DashboardService {
     const myPrediction = userPredictions[0]?.predictedReachedTime ?? null;
 
     return {
-      statusLabel: progressStatusLabel(progressPercentApprox, room.status),
+      statusLabel: progressStatusLabel(progressPercentApprox, room.status, room.journeyStatus),
       progressPercentApprox,
       etaLabel: etaMinutes !== null ? 'Approx. ETA' : 'Estimated ETA pending',
       etaTime: formatEtaTime(etaDate),
